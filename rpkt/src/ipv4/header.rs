@@ -30,6 +30,26 @@ pub const IPV4_HEADER_TEMPLATE: Ipv4Header<[u8; 20]> = Ipv4Header {
     ],
 };
 
+/// protocol Ipv4 {
+///   // ip version field
+///   version: 4| u8, u8 | 4
+///   header_len: Bit(4), Start(4), End(Some(60)), Mult(4) | Repr(u8), Arg(u8) | Default(20),
+///   dscp: Bit(6) | Repr(u8), Arg(u8) | Default(0),
+///   ecn: 2 | u8, u8 | 0, 
+///   packet_len: Bit(16), Start(header_len), End(None), Mult(1) | Repr(u16), Arg(u16) | Default(20),
+///   ident: 16 | u16, u16 | 0,
+///   flag_reserved: 1 | u8, u8 | 0
+///   flag_dont_frag: 1 | u8, bool | true,
+///   flag_more_frag: 1 | u8, bool | false,
+///   frag_offset: 13 | u16, u16 | 0,
+///   time_to_live: 8 | u8, u8 | 0,
+///   protocol: 8 | u8, IpProtocol | IpProtocol::TCP,
+///   checksum: 16 | u16, u16 | 0,
+///   src_ip: 32 | &[u8], Ipv4Addr | [0;0;0;0],
+///   dst_ip: 32 | &[u8], Ipv4Addr | [0;0;0;0],
+///   Ipv4Option,
+///   Payload,
+/// }
 #[derive(Clone, Copy, Debug)]
 pub struct Ipv4Header<T> {
     buf: T,

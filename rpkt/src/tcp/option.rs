@@ -9,6 +9,32 @@ const SELECTIVE_ACK: u8 = 5;
 const TIMESTAMPS: u8 = 8;
 const TCP_FASTOPEN: u8 = 34;
 
+///
+/// sub_type Eol {
+///   kind: TcpOption::Eol,
+///   type: Bit(8), Mult(1) | Start(0), End(Some(0)) | Repr(u8), Arg(u8) | Default(0), 
+/// }
+/// 
+/// sub_type Nop {
+///    kind: TcpOption:Nop, 
+///    type: Bit(8), Mult(1) | Start(1), End(Some(1)) | Repr(u8), Arg(u8) | Default(1), 
+/// }
+/// 
+/// sub_type Mss {
+///    kind: TcpOption::Mss,
+///    type: Bit(8), Mult(1) | Start(2), End(Some(2)) | Repr(u8), Arg(u8) | Default(2), 
+///    header_len: Bit(8), Mult(1) | Start(4), End(Some(4)) | Repr(u8), Arg(u8) | Default(4), 
+///    mss: Bit(16), Mult(1) | Start(0), End(None) | Repr(u16), Arg(u16) | Default(0),
+/// }
+/// 
+/// sub_type Wsopt {
+///    kind: TcpOption::Wsopt,
+///    type: Bit(8), Mult(1) | Start(3), End(Some(3)) | Repr(u8), Arg(u8) | Default(3), 
+///    header_len: Bit(8), Mult(1) | Start(3), End(Some(3)) | Repr(u8), Arg(u8) | Default(3), 
+///    wsopt: Bit(8), Mult(1) | Start(0), End(None) | Repr(u8), Arg(u8) | Default(0),
+/// }
+/// 
+/// 
 pub enum TcpOption<'a> {
     Eol,
     Nop,

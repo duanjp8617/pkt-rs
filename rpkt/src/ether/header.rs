@@ -16,6 +16,12 @@ pub const ETHER_HEADER_TEMPLATE: EtherHeader<[u8; 14]> = EtherHeader {
     ],
 };
 
+///
+/// protocol Arp(header, packet) {
+///    dest_mac_addr: 48,&[u8] | MacAddr | [00;00;00;00;00;00]
+///    src_mac_addr: 48,&[u8] | MacAddr | [00;00;00;00;00;00]
+///    ether_type: 16,u16 | EtherType | EtherType::IPV4 
+/// }
 #[derive(Clone, Copy, Debug)]
 pub struct EtherHeader<T> {
     buf: T,

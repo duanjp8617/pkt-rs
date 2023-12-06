@@ -21,7 +21,7 @@ run-packet = {path = "../rpkt", package = "rpkt", optional = true, version = "0.
 
 [features]
 # `multiseg` feature enables non-contiguous `Mbuf` and `Pbuf`
-# default = ["multiseg"]
+default = ["multiseg"]
 multiseg = ["dep:run-packet"]
 
 [dev-dependencies]

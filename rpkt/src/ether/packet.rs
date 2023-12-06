@@ -65,8 +65,14 @@ impl<T: Buf> EtherPacket<T> {
 
     #[inline]
     pub fn payload(self) -> T {
+        assert!(
+            ETHER_HEADER_LEN <= self.buf.remaining(),
+            "cannot obtain the ethernet payload, please check packet buffer format"
+        );
+
         let mut buf = self.release();
         buf.advance(ETHER_HEADER_LEN);
+
         buf
     }
 }
@@ -74,7 +80,10 @@ impl<T: Buf> EtherPacket<T> {
 impl<T: PktMut> EtherPacket<T> {
     #[inline]
     pub fn prepend_header<HT: AsRef<[u8]>>(mut buf: T, header: &EtherHeader<HT>) -> EtherPacket<T> {
-        assert!(buf.chunk_headroom() >= ETHER_HEADER_LEN);
+        assert!(
+            buf.chunk_headroom() >= ETHER_HEADER_LEN,
+            "cannot prepend the ethernet header, please check argument formats"
+        );
         buf.move_back(ETHER_HEADER_LEN);
 
         let data = &mut buf.chunk_mut()[0..ETHER_HEADER_LEN];
