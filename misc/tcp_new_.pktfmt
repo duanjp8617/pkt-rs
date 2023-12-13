@@ -1,0 +1,256 @@
+Field: Fixed length header field, containing 4 different indiators:
+  * Bit: unsigned integer value converted to 'u64', indicating the total length of the field in bits, optional: no
+  * Repr: How the field is read/write internally, valid values include u8, u16, u32, u64, &[u8] (we use imutable slice)
+          to represent regular byte slice,
+          + length of Bit must be a dividable by 8, in order for it to be represented as a slice
+          + the bits contained in the Repr must be larger than Bit
+          + If Bit >= 64, it will always represented as slice
+          optional: yes. If it is not explicitly specified, we perform the following conversion to automatically derive a Repr:
+          + If Bit <= 32, upscale to the nearest Repr (u8, u16, u32)
+          + If 32 < Bit <= 64, upscale to u64
+          + If Bit > 64 && Bit % 8 == 0, convert to &[u8]
+  * Arg: Type of the argument this field is returned or passed as an argument, the Type of Arg should be consistent with Repr:
+         + if Arg and Repr are the same, then there will be no conversion,
+         + otherwise, the type of Arg must implement the From trait for Repr
+         + If Arg is not slice, then it will generate regular getter/setter
+         + If Arg is slice, then it will directly return slice/mutable slice
+         optional: yes, if it is omitted, it will have the same type as the Repr
+  * Default: the default value of the field. Its type will be the same as the Arg. If Arg is a slice, then the value will be a 
+         array converted to a slice
+         optional: yes, if it is omitted, it will be the default value of Arg
+  * Constant: whether the field is a fixed value, if it is true, then the Default value will become a fixed value of this field. 
+         optional: yes, default to false
+  * LenField: whether the field contains length information about the packet. 
+         LenField contains four parts, including:
+         + Type: valid value includes Heaeder, Payload, Packet
+         + Min: The minimum value of the header
+         + Max: The maximum value of the header, or None, indicating that the value could be the maximum value represented by the Bit 
+         + Mult: A multiplier for the Bit value
+
+Tcp: protocol {
+    fields: [
+       src_port: Field {
+              Bit: 16, 
+              Repr: u16,
+              Arg: u16,
+              Default: 0,
+              Fixed: false,
+       }, 
+       dst_port: Field {Bit: 16},
+       seq: Field {Bit: 32},
+       ack: Field {Bit: 32},
+       dataoff: Field {Bit: 4, Gen: Gen_none},
+       reserved: Field {Bit: 4},
+       cwr: Field {Bit: 1, Arg: bool, Default: false},
+       ece: Field {Bit: 1, Arg: bool, Default: false},
+       urg: Field {Bit: 1, Arg: bool, Default: false},
+       ack: Field {Bit: 1, Arg: bool, Default: false},
+       psh: Field {Bit: 1, Arg: bool, Default: false},
+       rst: Field {Bit: 1, Arg: bool, Default: false},
+       syn: Field {Bit: 1, Arg: bool, Default: false},
+       fin: Field {Bit: 1, Arg: bool, Default: false},
+       window_size: Field {Bit: 16},
+       checksum: Field {Bit: 16},
+       urgent_pointer: Field {Bit: 16},
+    ]
+    header_len: HeaderLen {Expr: dataoff * 4, Start: 20, End: Some(60), Default: }
+}
+
+Tcp: {
+     Header: {
+         Fields: [
+              src_port: {
+                  Bit: 16, 
+                  Repr: u16,
+                  Arg: u16,
+                  Default: 0,
+                  Constant: false
+              }, 
+              dst_port: {Bit: 16},
+              seq: {Bit: 32},
+              ack: {Bit: 32},
+              header_len: {
+                     Bit: 4, 
+                     Default: 20, 
+                     LenField: {
+                            Type: Header,
+                            Min: 20, 
+                            Max: None,
+                            Mult: 4
+                     }
+              },
+              reserved: {Bit: 4},
+              cwr: {Bit: 1, Arg: bool, Default: false},
+              ece: {Bit: 1, Arg: bool, Default: false},
+              urg: {Bit: 1, Arg: bool, Default: false},
+              ack: {Bit: 1, Arg: bool, Default: false},
+              psh: {Bit: 1, Arg: bool, Default: false},
+              rst: {Bit: 1, Arg: bool, Default: false},
+              syn: {Bit: 1, Arg: bool, Default: false},
+              fin: {Bit: 1, Arg: bool, Default: false},
+              window_size: {Bit: 16},
+              checksum: {Bit: 16},
+              urgent_pointer: {Bit: 16},
+         ],
+         VarFields: [
+              option_bytes: {
+                     Len: header_len - 20, 
+              }
+         ]
+     },
+     Payload: {}
+}
+
+TcpOptEol: {
+       Header: {
+              Fields: [
+                     type: {Bit: 8, Default: 0, Constant: true}
+              ]
+       } 
+}
+
+TcpOptNop {
+       Header: {
+              Fields: [
+                     type: {Bit: 8, Default: 1, Constant: true}
+              ]
+       }
+}
+
+TcpOptMss {
+       Header: {
+              Fields: [
+                     type: {Bit: 8, Default: 2, Constant: true},
+                     header_len: {
+                            Bit: 8,
+                            Default: 4, 
+                            Constant: true,
+                            LenField: {
+                                   Type: Header,
+                                   Min: 4, 
+                                   Max: Some(4),
+                                   Mult: 1
+                            }
+                     },
+                     mss: {Bit: 16},
+              ]
+       }
+}
+
+TcpOptWsopt {
+       Header: {
+              Fields: [
+                     type: {Bit: 8, Default: 3, Constant: true},
+                     header_len: {
+                            Bit: 8,
+                            Default: 3, 
+                            Constant: true,
+                            LenField: {
+                                   Type: Header,
+                                   Min: 3, 
+                                   Max: Some(3),
+                                   Mult: 1
+                            }
+                     },
+                     wsopt: {Bit: 8},
+              ]
+       }
+}
+
+TcpOptSackperm {
+       Header: {
+              Fields: [
+                     type: {Bit: 8, Default: 4, Constant: true},
+                     header_len: {
+                            Bit: 8,
+                            Default: 2, 
+                            Constant: true,
+                            LenField: {
+                                   Type: Header,
+                                   Min: 2, 
+                                   Max: Some(2),
+                                   Mult: 1
+                            }
+                     },
+              ]
+       }
+}
+
+TcpOptSack {
+       Header: {
+              Fields: [
+                     type: {Bit: 8, Default: 5, Constant: true},
+                     header_len: {
+                            Bit: 8,
+                            Default: 10, 
+                            Constant: true,
+                            LenField: {
+                                   Type: Header,
+                                   Min: 2, 
+                                   Max: Some(34),
+                                   Mult: 1
+                            }
+                     },
+              ],
+              VarFields: [
+                     sacks: {
+                            Len: header_len - 2, 
+                            ItemSize: 8, 
+                            Arg: SelectiveAck
+                     }
+              ]
+       }
+}
+
+TcpOptTs {
+       Header: {
+              Fields: [
+                     type: {Bit: 8, Default: 8, Constant: true},
+                     header_len: {
+                            Bit: 8,
+                            Default: 10, 
+                            Constant: true,
+                            LenField: {
+                                   Type: Header,
+                                   Min: 10, 
+                                   Max: Some(10),
+                                   Mult: 1
+                            }
+                     },
+                     ts: {Bit: 32},
+                     ts_echo: {Bit: 32},
+              ]
+       }
+}
+
+TcpOptFo {
+       Header: {
+              Fields: [
+                     type: {Bit: 8, Default: 34, Constant: true},
+                     header_len: {
+                            Bit: 8,
+                            Default: 18, 
+                            Constant: true,
+                            LenField: {
+                                   Type: Header,
+                                   Min: 18, 
+                                   Max: Some(18),
+                                   Mult: 1
+                            }
+                     },
+                     fo: {Bit: 128},
+              ]
+       }
+       Group: {
+              GroupName: TcpOpt,
+              Tag: Fo,
+              Cond: type == 34,
+              // Note: the length field should be the same
+       }
+}
+
+TcpOpt {
+       Option: {
+
+       }
+}

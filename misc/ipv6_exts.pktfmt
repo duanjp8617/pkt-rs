@@ -1,0 +1,18 @@
+use xx::IpProtocol;
+%%
+
+packet Ipv6Frag {
+    fixed_header = [
+        next_header = Field{bit = 8, arg = IpProtocol, default = IpProtocol::UDP},
+        reserved = Field{bit = 8},
+        frag_offset = Field{bit = 13},
+        res = Field{bit = 2},
+        m = Field{bit = 1, arg = bool, default = false},
+        ident = Field{bit = 32},
+    ],
+    with_payload = true,
+}
+
+
+
+%%

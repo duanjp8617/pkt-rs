@@ -1,0 +1,51 @@
+use xx::IpProtocol;
+use xx::Ipv4Addr;
+
+%%
+
+packet Ipv4 {
+    fix_header = [
+        version = Field{bit = 4},
+        header_len = Field{
+            bit = 4,
+            arg = usize,
+            default = 20,
+            len_field = LenField {
+                type = Header,
+                min = 20,
+                max = None,
+                mult = 4
+            }
+        },
+        dscp = Field{bit = 6},
+        ecn = Field{bit = 2},
+        packet_len = field {
+            bit = 16,
+            arg = usize,
+            default = 20,
+            len_field = Lenfield {
+                type = Packet,
+                min = header_len,
+                max = None,
+                mult = 1
+            }
+        },
+        ident = Field {bit = 16},
+        flag_reserved = Field{bit = 1},
+        dont_frag = Field{bit = 1, arg = bool},
+        more_frag = Field{bit = 1, arg = bool},
+        ttl = Field{bit = 8},
+        protocol = Field{bit = 8, arg = IpProtocol},
+        checksum = Field{bit = 16},
+        src_ip = Field{bit = 32, repr = &[u8], arg = Ipv4Addr},
+        dst_ip = Field{bit = 32, repr = &[u8], arg = Ipv4Addr},
+    ],
+    var_header = [
+        option_bytes = VarField {
+            len = header_len - 20
+        }
+    ],
+    with_payload = true
+}
+
+%%

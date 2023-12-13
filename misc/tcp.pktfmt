@@ -1,0 +1,47 @@
+%%
+
+packet Tcp {
+    fix_header = [
+        src_port = Field {
+            bit = 16,
+            repr = u16,
+            arg = u16,
+            default = 0,
+        },
+        dst_port = Field {bit = 16},
+        seq = Field {bit = 32},
+        ack = Field {bit = 32},
+        header_len = Field {
+            bit = 4, 
+            repr = u8,
+            arg = usize,
+            default = 20, 
+            len_field = LenField {
+                type = Header,
+                min = 20,
+                max = None,
+                mult = 4,
+            }
+        },
+        reserved = Field { bit = 4 },
+        cwr = Field {bit = 1, Arg = bool, default = false},
+        ece = Field {bit = 1, Arg = bool, default = false},
+        urg = Field {bit = 1, Arg = bool, default = false},
+        ack = Field {bit = 1, Arg = bool, default = false},
+        psh = Field {bit = 1, Arg = bool, default = false},
+        rst = Field {bit = 1, Arg = bool, default = false},
+        syn = Field {bit = 1, Arg = bool, default = false},
+        fin = Field {bit = 1, Arg = bool, default = false},
+        window_size = Field {bit=16},
+        checksum = Field {bit = 16},
+        urgent_pointer = Field {bit = 16},
+    ],
+    var_header = [
+        option_bytes = VarField {
+            len = header_len - 20,
+        }
+    ],
+    with_payload = true,
+}
+
+%%

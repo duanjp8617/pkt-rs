@@ -1,0 +1,157 @@
+use prelude::SelectiveAck;
+
+%%
+
+message TcpOptEol {
+    fixed_header = [
+        type = Field {bit = 8, default = 0},
+    ],
+    tag = Eol,
+    cond = (type == 0),
+}
+
+message TcpOptNop {
+    fixed_header = [
+        type = Field {bit = 8, default = 1},
+    ],
+    tag = Nop,
+    cond = (type == 1),
+}
+
+message TcpOptMss {
+    fixed_header = [
+        type = Field {bit = 8, default = 2},
+        header_len = Field {
+            bit = 8, 
+            default = 4,
+            len_field = LenField {
+                type = header, 
+                min = 4,
+                max = Some(4),
+                Mult = 1,
+            }
+        },
+        mss = Field {bit = 16}
+    ],
+    tag = Mss,
+    cond = (type == 2),
+}
+
+message TcpOptWsopt {
+    fixed_header = [
+        type = Field {bit = 8, default = 3},
+        header_len = Field {
+            bit = 8, 
+            default = 3,
+            len_field = LenField {
+                type = header, 
+                min = 3,
+                max = Some(3),
+                Mult = 1,
+            }
+        },
+        wsopt = Field {bit = 8}
+    ],
+    tag = Wsopt,
+    cond = (type == 3),
+}
+
+message TcpOptSackperm {
+    fixed_header = [
+        type = Field {bit = 8, default = 4},
+        header_len = Field {
+            bit = 8, 
+            default = 2,
+            len_field = LenField {
+                type = header, 
+                min = 2,
+                max = Some(2),
+                Mult = 1,
+            }
+        },
+    ]
+    tag = Sackperm,
+    cond = (type == 4),
+}
+
+message TcpOptSack {
+    fixed_header = [
+        type = Field {bit = 8, default = 5},
+        header_len = Field {
+            bit = 8, 
+            default = 10,
+            len_field = LenField {
+                type = header, 
+                min = 2,
+                max = Some(34),
+                Mult = 1,
+            }
+        },
+    ],
+    var_header = [
+        sacks = VarField {
+            len = header_len - 2,
+            itemsize = 8,
+            arg = SelectiveAck
+        }
+    ],
+    tag = Sack,
+    cond = (type == 5),
+}
+
+message TcpOptTs {
+    fixed_header = [
+        type = Field {bit = 8, default = 8},
+        header_len = Field {
+            bit = 8, 
+            default = 10,
+            len_field = LenField {
+                type = header, 
+                min = 10,
+                max = Some(10),
+                Mult = 1,
+            }
+        },
+        ts = Field {bit = 32},
+        ts_echo = Field {bit = 32},
+    ],
+    tag = Ts,
+    cond = (type == 8),
+}
+
+message TcpOptFo {
+    fixed_header = [
+        type = Field {bit = 8, default = 34},
+        header_len = Field {
+            bit = 8, 
+            default = 18,
+            len_field = LenField {
+                type = header, 
+                min = 18,
+                max = Some(18),
+                Mult = 1,
+            }
+        },
+        fo = Field {bit = 128},
+    ],
+    tag = Fo,
+    cond = (type == 34),
+}
+
+group TcpOpt {
+    messages = [
+        TcpOptEol, 
+        TcpOptNop, 
+        TcpOptMss,
+        TcpOptWsopt,
+        TcpOptSackperm,
+        TcpOptSack,
+        TcpOptTs,
+        TcpOptFo
+    ],
+    enable_writer = true,
+    enable_iter = true,
+    enable_iter_mut = true,
+}
+
+%%

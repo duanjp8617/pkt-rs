@@ -1,0 +1,14 @@
+use xx::EtherType;
+use xx::MacAddr;
+%%
+
+packet Ether {
+    fixed_header = [
+        dest_mac = Field {bit = 48, arg = MacAddr},
+        src_mac = Field {bit = 48, arg = MacAddr},
+        ethertype = Field {bit = 16, arg = EtherType, default = EtherType::IPV4},
+    ],
+    with_payload = true,
+}
+
+%%
