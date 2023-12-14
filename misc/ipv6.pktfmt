@@ -2,19 +2,14 @@ use xx::IpProtocol;
 %%
 
 packet Ipv6 {
-    fixed_header = [
+    header = [
         version = Field{bit = 4, default = 6}, 
         traffic_class = Field{bit = 8},
         flow_label = Field {bit = 20},
-        payload_len = Field{
+        payload_len_ = Field{
             bit = 16,
             default = 0,
-            len_field = LenField {
-                type = Payload,
-                min = 0,
-                max = None,
-                mult = 1,
-            }
+            gen = false
         },
         next_header = Field{bit = 8, arg = IpProtocol, default = IpProtocol::UDP},
         hop_limit = Field{bit = 8},
@@ -22,6 +17,12 @@ packet Ipv6 {
         dst_addr = Field{bit = 128},
     ],
     with_payload = true,
+    payload_len = PayloadLen {
+        expr = payload_len_, 
+        mult = 1,
+        min = 0, 
+        max = None
+    }
 }
 
 

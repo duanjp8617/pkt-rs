@@ -1,23 +1,23 @@
 %%
 
 packet Udp {
-    fixed_header = [
+    header = [
         src_port = Field {bit = 16},
         dst_port = Field {bit = 16},
-        packet_len = Field {
+        length = Field {
             bit = 16,
             default = 8,
-            len_field = LenField {
-                type = Packet,
-                min = 8,
-                max = None,
-                mult = 1
-            }
+            gen = false,
         },
         checksum = Field {bit = 16},
     ],
     with_payload = true,
+    packet_len = PacketLen {
+        expr = length,
+        mult = 1,
+        min = 8,
+        max = None,
+    }
 }
-
 
 %%

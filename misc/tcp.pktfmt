@@ -1,7 +1,7 @@
 %%
 
 packet Tcp {
-    fix_header = [
+    header = [
         src_port = Field {
             bit = 16,
             repr = u16,
@@ -11,17 +11,10 @@ packet Tcp {
         dst_port = Field {bit = 16},
         seq = Field {bit = 32},
         ack = Field {bit = 32},
-        header_len = Field {
+        data_off = Field {
             bit = 4, 
-            repr = u8,
-            arg = usize,
             default = 20, 
-            len_field = LenField {
-                type = Header,
-                min = 20,
-                max = None,
-                mult = 4,
-            }
+            gen = false,
         },
         reserved = Field { bit = 4 },
         cwr = Field {bit = 1, Arg = bool, default = false},
@@ -37,11 +30,129 @@ packet Tcp {
         urgent_pointer = Field {bit = 16},
     ],
     var_header = [
-        option_bytes = VarField {
-            len = header_len - 20,
-        }
+        option_bytes = VarField {}
     ],
     with_payload = true,
+    header_len = HeaderLen {
+        expr = data_off,
+        mult = 4,
+        min = 20,
+        max = None,
+    }
+}
+
+message TcpOptEol {
+    header = [
+        type = Field {bit = 8, default = 0},
+    ],
+    cond = (type == 0),
+}
+
+message TcpOptNop {
+    header = [
+        type = Field {bit = 8, default = 1},
+    ],
+    cond = (type == 1),
+}
+
+message TcpOptMss {
+    header = [
+        type = Field {bit = 8, default = 2},
+        len = Field {
+            bit = 8, 
+            default = 4,
+            gen = false,
+        },
+        mss = Field {bit = 16}
+    ],
+    cond = (type == 2),
+}
+
+message TcpOptWsopt {
+    header = [
+        type = Field {bit = 8, default = 3},
+        len = Field {
+            bit = 8, 
+            default = 3,
+            gen = false,
+        },
+        wsopt = Field {bit = 8}
+    ],
+    cond = (type == 3),
+}
+
+message TcpOptSackperm {
+    header = [
+        type = Field {bit = 8, default = 4},
+        len = Field {
+            bit = 8, 
+            default = 2,
+            gen = false,
+        },
+    ]
+    cond = (type == 4),
+}
+
+message TcpOptSack {
+    header = [
+        type = Field {bit = 8, default = 5},
+        len = Field {
+            bit = 8, 
+            default = 10,
+        },
+    ],
+    var_field = VarField {
+        name = sacks,
+        itemsize = 8,
+        arg = SelectiveAck,
+    }
+    header_len = HeaderLen {
+        expr = len,
+        mult = 1,
+        min = 10,
+        max = Some(34),
+    }
+    cond = (type == 5),
+}
+
+message TcpOptTs {
+    header = [
+        type = Field {bit = 8, default = 8},
+        len = Field {
+            bit = 8, 
+            default = 10,
+            gen = false,
+        },
+        ts = Field {bit = 32},
+        ts_echo = Field {bit = 32},
+    ],
+    cond = (type == 8),
+}
+
+message TcpOptFo {
+    fixed_header = [
+        type = Field {bit = 8, default = 34},
+        len = Field {
+            bit = 8, 
+            default = 18,
+            gen = false,
+        },
+        fo = Field {bit = 128},
+    ],
+    cond = (type == 34),
+}
+
+iter_group TcpOpt {
+    messages = [
+        eol = TcpOptEol, 
+        nop = TcpOptNop, 
+        mss = TcpOptMss,
+        wsopt = TcpOptWsopt,
+        sackperm = TcpOptSackperm,
+        sack = TcpOptSack,
+        ts = TcpOptTs,
+        fo = TcpOptFo
+    ]
 }
 
 %%

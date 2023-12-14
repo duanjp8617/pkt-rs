@@ -1,0 +1,164 @@
+%%
+
+message NdpRouterSolicit {
+    header = [
+        type = Field{bit = 8, default = 133},
+        code = Field{bit = 8},
+        checksum = Field{bit = 16},
+        reserved = Field{bit = 16},
+    ],
+    var_header = [
+        option_bytes = VarField {}
+    ],
+    cond = (type == 133)
+}
+
+message NdpRouterAdv {
+    header = [
+        type = Field{bit = 8, default = 134},
+        code = Field{bit = 8},
+        checksum = Field{bit = 16},
+        reserved = Field{bit = 16},
+        cur_hop_limit = Field{bit = 8},
+        m_flag = Field{bit = 1, arg = bool, default = false},
+        o_flag = Field{bit = 1, arg = bool, default = false},
+        reserved = Field{bit = 6},
+        router_lifetime = Field{bit = 16},
+        reachable_time = Field{bit = 32},
+        retrans_timer = Field{bit = 32},
+    ],
+    var_header = [
+        option_bytes = VarField {}
+    ],
+    cond = (type == 134)
+}
+
+message NdpNeighborSolicit {
+    header = [
+        type = Field{bit = 8, default = 133},
+        code = Field{bit = 8},
+        checksum = Field{bit = 16},
+        reserved = Field{bit = 32},
+        target_addr = Field{bit = 128},
+    ],
+    var_header = [
+        option_bytes = VarField {}
+    ],
+    cond = (type == 135)
+}
+
+message NdpNeighborAdv {
+    header = [
+        type = Field{bit = 8, default = 133},
+        code = Field{bit = 8},
+        checksum = Field{bit = 16},
+        r_flag = Field{bit = 1, arg = bool, default = false},
+        s_flag = Field{bit = 1, arg = bool, default = false},
+        o_flag = Field{bit = 1, arg = bool, default = false},
+        reserved = Field{bit = 29},
+        target_addr = Field{bit = 128},
+    ],
+    var_header = [
+        option_bytes = VarField {}
+    ],
+    cond = (type == 136)
+}
+
+message NdpRedirect {
+    header = [
+        type = Field{bit = 8, default = 133},
+        code = Field{bit = 8},
+        checksum = Field{bit = 16},
+        reserved = Field{bit = 32},
+        target_addr = Field{bit = 128},
+        dest_addr = Field{bit = 128},
+    ],
+    var_header = [
+        option_bytes = VarField {}
+    ],
+    cond = (type == 137)
+}
+
+message NdpOptLinkAddr {
+    header = [
+        type = Field {bit = 8, default = 1},
+        len = Field {
+            bit = 8, 
+            default = 1,
+        },
+    ],
+    var_header = [
+        data = VarField {}
+    ],
+    header_len = HeaderLen {
+        expr = len,
+        mult = 8,
+        min = 1,
+        max = Some(2040),
+    }
+    cond = (type == 1) || (type == 2),
+}
+
+message NdpOptPrefixInfo {
+    header = [
+        type = Field {bit = 8, default = 3},
+        len = Field {
+            bit = 8, 
+            default = 4,
+        },
+        prefix_len = Field{bit = 8},
+        l_flag = Field{bit = 1, arg = bool, default = false},
+        a_flag = Field{bit = 1, arg = bool, default = false},
+        reserved1 = Field{bit = 6},
+        valid_lifetime = Field{bit = 32},
+        preferred_lifetime = Field{bit = 32},
+        reserved2 = Field{bit =32},
+        prefix = Field{bit = 128},
+    ]
+    cond = (type == 3),
+}
+
+message NdpOptRedirectedHdr {
+    header = [
+        type = Field {bit = 8, default = 4},
+        len = Field {
+            bit = 8, 
+            default = 1,
+        },
+        reserved1 = Field{bit = 48}
+    ],
+    var_header = [
+        data = VarField {}
+    ],
+    header_len = HeaderLen {
+        expr = len,
+        mult = 8,
+        min = 1,
+        max = Some(2040),
+    }
+    cond = (type == 4),
+}
+
+message NdpOptMtu {
+    header = [
+        type = Field {bit = 8, default = 5},
+        len = Field {
+            bit = 8, 
+            default = 1,
+        },
+        reserved = Field{bit = 16},
+        mtu = Field{bit = 32},
+    ]
+    cond = (type == 5),
+}
+
+iter_group NdpOpt {
+    messages = [
+        la = NdpOptLinkAddr,
+        prefix = NdpOptPrefixInfo,
+        rh = NdpOptRedirectedHdr,
+        mtu = NdpOptMtu
+    ]
+}
+
+%%

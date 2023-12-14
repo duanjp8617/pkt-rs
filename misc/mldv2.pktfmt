@@ -1,0 +1,84 @@
+%%
+
+message Mldv1 {
+    header = [
+        type = Field{bit = 8, default = 130},
+        code = Field{bit = 8},
+        checksum = Field{bit = 16},
+        max_resp_delay = Field{bit = 16},
+        reserved = Field{bit = 16},
+        multicast_addr = Field{bit = 128}
+    ],
+    cond = (type == 130) || (type == 131) || (type == 132)
+}
+
+message Mldv2Query {
+    header = [
+        type = Field{bit = 8, default = 130},
+        code = Field{bit = 8},
+        checksum = Field{bit = 16},
+        max_resp_delay = Field{bit = 16},
+        reserved = Field{bit = 16},
+        multicast_addr = Field{bit = 128},
+        resv = Field{bit = 4},
+        s_flag = Field{bit = 1, arg= bool, default = false},
+        qrv = Field{bit = 3},
+        qqic = Field{bit = 8},
+        num_of_src = Field{bit = 16},
+    ],
+    var_header = [
+        src_addrs = VarField {
+            item_size = 128,
+        }
+    ],
+    header_len = HeaderLen {
+        expr = num_of_src * 16 + 28,
+        mult = 1,
+        min = 28, 
+        max = 1,048,588
+    },
+    cond = (type == 130)
+}
+
+message Mldv2Report {
+    header = [
+        type = Field{bit = 8, default = 143},
+        reserved1 = Field{bit = 8},
+        checksum = Field{bit = 16},
+        reserved2 = Field{bit = 16},
+        num_of_record = Field{bit = 16},
+    ],
+    var_header = [
+        record_data = VarField {}
+    ],
+    cond = (type == 143)
+}
+
+message MulticastAddrRecord {
+    header = [
+        record_type = Field{bit = 8},
+        aux_data_len = Field{bit = 8},
+        num_of_src = Field{bit = 16},
+        multicast_addr = Field{bit = 128},
+    ],
+    var_header = [
+        src_addr = VarField {
+            len = num_of_src * 16,
+            itemsize = 16, 
+        },
+        data = VarField {
+            len = aux_data_len * 4
+        }
+    ],
+    header_len = HeaderLen {
+        expr = num_of_src * 16 + aux_data_len * 4 + 20
+    }
+}
+
+iter_group MulticastAddrRecord {
+    messages = [
+        ar = MulticastAddrRecord
+    ]
+}
+
+%%

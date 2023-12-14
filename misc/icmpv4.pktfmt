@@ -1,0 +1,98 @@
+%%
+
+packet Icmpv4 {
+    header = [
+        type = Field{bit = 8},
+        code = Field{bit = 8},
+        checksum = Field{bit = 16}
+    ],
+    var_header = [
+        data = VarField {
+            len = header_len - 4
+        }
+    ],
+    with_payload = false,
+}
+
+message Icmpv4DestUnreachable {
+    header = [
+        type = Field{bit = 8, default = 3},
+        code = Field{bit = 8},
+        checksum = Field{bit = 16},
+        unused = Field{bit = 32},
+    ],
+    var_header = [
+        data = VarField {}
+    ],
+    cond = (type == 3)
+}
+
+message Icmpv4DestUnreachable {
+    header = [
+        type = Field{bit = 8, default = 5},
+        code = Field{bit = 8},
+        checksum = Field{bit = 16},
+        gateway_addr = Field{bit = 32, repr = &[u8]},
+    ],
+    var_header = [
+        data = VarField {}
+    ],
+    cond = (type == 5)
+}
+
+message Icmpv4TimeExceed {
+    header = [
+        type = Field{bit = 8, default = 11},
+        code = Field{bit = 8},
+        checksum = Field{bit = 16}
+        unused = Field{bit = 32},
+    ],
+    var_header = [
+        data = VarField {}
+    ],
+    cond = (type == 11)
+}
+
+message Icmpv4ParamProblem {
+    header = [
+        type = Field{bit = 8, default = 12},
+        code = Field{bit = 8},
+        checksum = Field{bit = 16},
+        pointer = Field{bit = 8},
+        unused = Field{bit = 24},
+    ],
+    var_header = [
+        data = VarField {}
+    ],
+    cond = (type == 12)
+}
+
+message Icmpv4Echo {
+    header = [
+        type = Field{bit = 8, default = 8},
+        code = Field{bit = 8},
+        checksum = Field{bit = 16},
+        ident = Field{bit = 16},
+        seq = Field{bit = 16},
+    ],
+    var_header = [
+        data = VarField {}
+    ],
+    cond = (type == 8) || (type == 0)
+}
+
+message Icmpv4Timestamp {
+    header = [
+        type = Field{bit = 8, default = 13},
+        code = Field{bit = 8},
+        checksum = Field{bit = 16},
+        ident = Field{bit = 16},
+        seq = Field{bit = 16},
+        ori_ts = Field{bit = 32},
+        rx_ts = Field{bit = 32},
+        tx_ts = Field{bit = 32},
+    ],
+    cond = (type == 13) || (type == 14)
+}
+
+%%

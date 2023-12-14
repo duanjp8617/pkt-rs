@@ -1,0 +1,81 @@
+%%
+
+packet Icmpv6 {
+    header = [
+        type = Field{bit = 8},
+        code = Field{bit = 8},
+        checksum = Field{bit = 16}
+    ],
+    var_header = [
+        data = VarField {}
+    ],
+    with_payload = false,
+}
+
+message Icmpv6DestUnreachable {
+    header = [
+        type = Field{bit = 8, default = 1},
+        code = Field{bit = 8},
+        checksum = Field{bit = 16},
+        unused = Field{bit = 32},
+    ],
+    var_header = [
+        data = VarField {}
+    ],
+    cond = (type == 1)
+}
+
+message Icmpv6PacketTooBig {
+    header = [
+        type = Field{bit = 8, default = 2},
+        code = Field{bit = 8},
+        checksum = Field{bit = 16},
+        mtu = Field{bit = 32},
+    ],
+    var_header = [
+        data = VarField {}
+    ],
+    cond = (type == 2)
+}
+
+message Icmpv6TimeExceed {
+    header = [
+        type = Field{bit = 8, default = 3},
+        code = Field{bit = 8},
+        checksum = Field{bit = 16}
+        unused = Field{bit = 32},
+    ],
+    var_header = [
+        data = VarField {}
+    ],
+    cond = (type == 3)
+}
+
+message Icmpv4ParamProblem {
+    header = [
+        type = Field{bit = 8, default = 4},
+        code = Field{bit = 8},
+        checksum = Field{bit = 16},
+        pointer = Field{bit = 32},
+    ],
+    var_header = [
+        data = VarField {}
+    ],
+    cond = (type == 4)
+}
+
+message Icmpv6Echo {
+    header = [
+        type = Field{bit = 8, default = 128},
+        code = Field{bit = 8},
+        checksum = Field{bit = 16},
+        ident = Field{bit = 16},
+        seq = Field{bit = 16},
+    ],
+    var_header = [
+        data = VarField {}
+    ],
+    cond = (type == 128) || (type == 129)
+}
+
+%%

@@ -6,7 +6,7 @@ use xx::Ipv4Addr;
 %%
 
 packet Arp {
-    fixed_header = [
+    header = [
         hardware_type = Field{bit = 16, arg = Hardware},
         protocol_type = Field{bit = 16, arg = EtherType},
         hardware_addr_len = Field{bit = 8, default = 6},

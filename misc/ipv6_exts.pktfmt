@@ -1,8 +1,10 @@
 use xx::IpProtocol;
 %%
 
-packet Ipv6Frag {
-    fixed_header = [
+packet Ipv6ExtFrag {
+    header = [
+        /* this is fuck
+        I don't know why I'm doing it! */
         next_header = Field{bit = 8, arg = IpProtocol, default = IpProtocol::UDP},
         reserved = Field{bit = 8},
         frag_offset = Field{bit = 13},
@@ -13,6 +15,125 @@ packet Ipv6Frag {
     with_payload = true,
 }
 
+packet Ipv6ExtRouting {
+    header = [
+        next_header = Field{bit = 8, arg = IpProtocol, default = IpProtocol::UDP},
+        hdr_ext_len = Field {
+            bit = 8,
+            default = 0,
+            gen = false
+        },
+        routing_type = Field{bit = 8},
+        segments_left = Field{bit = 8},
+    ],
+    var_header = [
+        data = VarField {}
+    ],
+    with_payload = true,
+    header_len = HeaderLen {
+        expr = hdr_ext_len + 1,
+        mult = 8,
+        min = 8,
+        max = 2048,
+    }
+}
 
+message Ipv6ExtRoutingType1 {
+    header = [
+        next_header = Field{bit = 8, arg = IpProtocol, default = IpProtocol::UDP},
+        hdr_ext_len = Field {
+            bit = 8,
+            default = 2,
+            gen = false
+        },
+        routing_type = Field{bit = 8, default = 0},
+        segments_left = Field{bit = 8},
+        reserved = Field{bit = 32},
+    ],
+    var_header = [
+        addr = VarField {
+            item_size = 16,
+        }
+    ],
+    header_len = HeaderLen {
+        expr = hdr_ext_len + 1,
+        mult = 8, 
+        min = 8,
+        max = 2048,
+    }
+    cond = (routing_type == 0),
+}
+
+message Ipv6ExtRoutingType2 {
+    header = [
+        next_header = Field{bit = 8, arg = IpProtocol, default = IpProtocol::UDP},
+        hdr_ext_len = Field {
+            bit = 8,
+            default = 2,
+            gen = false
+        },
+        routing_type = Field{bit = 8, default = 2},
+        segments_left = Field{bit = 8},
+        reserved = Field{bit = 32},
+        home_addr = Field{bit = 128},
+    ]
+    cond = (routing_type == 2),
+}
+
+packet Ipv6ExtOpt {
+    header = [
+        next_header = Field{bit = 8, arg = IpProtocol, default = IpProtocol::UDP},
+        hdr_ext_len = Field {
+            bit = 8,
+            default = 0,
+            gen = false
+        },
+    ],
+    var_header = [
+        data = VarField {}
+    ],
+    with_payload = true,
+    header_len = HeaderLen {
+        expr = hdr_ext_len + 1,
+        mult = 8,
+        min = 8,
+        max = 2048,
+    }
+}
+
+message Ipv6ExtOptPad1 {
+    header = [
+        type = Field {bit = 8, default = 0},
+    ],
+    cond = (type == 0),
+}
+
+message Ipv6ExtOptPadN {
+    header = [
+        type = Field {bit = 8, default = 0},
+        opt_data_len = Field {
+            bit = 8,
+            default = 0,
+            gen = false,
+        }
+    ],
+    var_header = [
+        data = VarField {}
+    ],
+    header_len = HeaderLen {
+        expr = opt_data_len + 2,
+        mult = 1,
+        min = 2,
+        max = 257,
+    }
+    cond = (type == 1),
+}
+
+iter_group Ipv6Opt {
+    messages = [
+        pad1 = Ipv6OptPad1,
+        padn = Ipv6OptPadN,
+    ]
+}
 
 %%

@@ -4,18 +4,12 @@ use xx::Ipv4Addr;
 %%
 
 packet Ipv4 {
-    fix_header = [
+    header = [
         version = Field{bit = 4},
-        header_len = Field{
+        data_off = Field{
             bit = 4,
-            arg = usize,
             default = 20,
-            len_field = LenField {
-                type = Header,
-                min = 20,
-                max = None,
-                mult = 4
-            }
+            gen = false,
         },
         dscp = Field{bit = 6},
         ecn = Field{bit = 2},
@@ -41,11 +35,101 @@ packet Ipv4 {
         dst_ip = Field{bit = 32, repr = &[u8], arg = Ipv4Addr},
     ],
     var_header = [
-        option_bytes = VarField {
-            len = header_len - 20
+        option_bytes = VarField {}
+    ],
+    with_payload = true,
+    header_len = HeaderLen {
+        expr = data_off, 
+        mult = 4, 
+        min = 20,
+        max = None,
+    }
+}
+
+message Ipv4OptEol {
+    header = [
+        type = Field {bit = 8, default = 0},
+    ],
+    cond = (type == 0),
+}
+
+message Ipv4OptNop {
+    header = [
+        type = Field {bit = 8, default = 1},
+    ],
+    cond = (type == 1),
+}
+
+message Ipv4OptTimestamp {
+    header = [
+        type = Field {bit = 8, default = 68},
+        len = Field {
+            bit = 8,
+            default = 4
+            gen = false,
+        },
+        pointer = Field {bit = 8, default = 5},
+        oflw = Field {bit = 4}, 
+        flg = Field {bit = 4},
+    ],
+    var_header = [
+        data = VarField {}
+    ],
+    header_len = HeaderLen {
+        expr = len,
+        mult = 1,
+        min = 4,
+        max = None,
+    },
+    cond = (type == 68)
+}
+
+message Ipv4OptRecordRoute {
+    header = [
+        type = Field {bit = 8, default = 7},
+        len = Field {
+            bit = 8,
+            default = 3
+            gen = false,
+        },
+        pointer = Field {bit = 8, default = 4},
+    ],
+    var_header = [
+        data = VarField {
+            item_size = 4,
         }
     ],
-    with_payload = true
+    header_len = HeaderLen {
+        expr = len,
+        mult = 1,
+        min = 3, 
+        max = None,
+    }
+    cond = (type == 7),
 }
+
+message Ipv4OptRouteAlert {
+    header = [
+        type = Field {bit = 8, default = 1},
+        len = Field {
+            bit = 8,            
+            default = 4,
+            gen = false,
+        },
+        data = Field{bit = 16}
+    ],
+    cond = (type == 148),
+}
+
+iter_group Ipv4Opt {
+    messages = [
+        eol = Ipv4OptEol,
+        nop = Ipv4OptNop,
+        ts = Ipv4OptTimestamp,
+        rr = Ipv4OptRecordRoute,
+        ra = Ipv4OptRouteAlert,
+    ],
+}
+
 
 %%
