@@ -4,6 +4,7 @@ members = [
   "rpkt-dpdk-sys",
   "rpkt-dpdk",
   "rpkt-time",
+  "pktcc",
   "examples",
 ]
 resolver = "2"

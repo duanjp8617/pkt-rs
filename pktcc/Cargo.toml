@@ -1,0 +1,13 @@
+[package]
+name = "pktcc"
+description = "a source-to-source compiler for network protocols"
+keywords = ["network-packet", "packet-parser", "network-protocols"]
+categories = ["network-programming"]
+
+workspace = ".."
+repository.workspace = true
+authors.workspace = true
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
