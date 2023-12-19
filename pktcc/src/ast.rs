@@ -1,124 +1,84 @@
-#[derive(Copy, Clone, Eq, PartialEq, PartialOrd, Ord, Debug)]
-pub struct Bit(u64);
 
-#[derive(Clone, Eq, PartialEq, Debug)]
-pub enum Repr {
-    U8,
-    U16,
-    U32,
-    U64,
-    ByteSlice(u64),
+#[derive(Debug)]
+pub enum AlgExpr {
+    Num(u64),
+    IdentV(String),
+    Op(Box<AlgExpr>, AlgOp, Box<AlgExpr>),
 }
 
-impl Repr {
-    pub fn infer_from_bit(bit: Bit) -> Self {
-        if bit.0 <= 8 {
-            Self::U8
-        } else if bit.0 <= 16 {
-            Self::U16
-        } else if bit.0 <= 32 {
-            Self::U32
-        } else if bit.0 <= 64 {
-            Self::U64
-        } else {
-            if bit.0 % 8 == 0 {
-                Self::ByteSlice(bit.0 / 8)
-            } else {
-                Self::ByteSlice(bit.0 / 8 + 1)
-            }
-        }
-    }
+
+#[derive(Debug)]
+pub enum AlgOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
 }
 
-#[derive(Clone, Eq, PartialEq, Debug)]
-pub enum Arg {
-    BuiltinType(Repr),
-    CustomType(String),
-}
 
-#[derive(Clone, Eq, PartialEq, Debug)]
-pub enum DefaultVal {
-    UInt(u64),
-    ByteArray(Vec<u8>),
-    TypeVal(String),
-}
-
-impl DefaultVal {
-    pub fn infer_from_arg(repr: &Repr) -> Self {
-        match repr {
-            Repr::ByteSlice(sl) => {
-                let mut v = Vec::new();
-                v.resize(*sl as usize, 0);
-                Self::ByteArray(v)
-            }
-            _ => Self::UInt(0),
-        }
-    }
-}
-
-pub enum OpExpr {
-    UInt(u64),
-    Ident(String),
-    Add(Box<OpExpr>, Box<OpExpr>),
-    Sub(Box<OpExpr>, Box<OpExpr>),
-    Mult(Box<OpExpr>, Box<OpExpr>),
-    Div(Box<OpExpr>, Box<OpExpr>),
-}
-
+#[derive(Debug)]
 pub enum CmpExpr {
-    Eq(Box<OpExpr>, Box<OpExpr>),
-    Ne(Box<OpExpr>, Box<OpExpr>),
-    Lt(Box<OpExpr>, Box<OpExpr>),
-    Le(Box<OpExpr>, Box<OpExpr>),
-    Gt(Box<OpExpr>, Box<OpExpr>),
-    Ge(Box<OpExpr>, Box<OpExpr>),
-}
-
-pub enum BinopExpr {
+    Op(Box<AlgExpr>, CmpOp, Box<AlgExpr>),
     Neg(Box<CmpExpr>),
     And(Box<CmpExpr>, Box<CmpExpr>),
     Or(Box<CmpExpr>, Box<CmpExpr>),
 }
 
-pub enum LenType {
-    HeaderLen,
-    PayloadLen,
-    PacketLen,
+
+#[derive(Debug)]
+pub enum CmpOp {
+    Eq,
+    Ne,
+    Lt,
+    Le,
+    Gt,
+    Ge,
 }
 
-pub struct Field {
-    bit: Bit,
-    repr: Repr,
-    arg: Arg,
-    default: DefaultVal,
-    gen: bool,
+#[derive(Debug)]
+pub enum BuiltinType {
+    U8,
+    U16,
+    U32,
+    U64,
+    ByteSlice,
+    True,
+    False,
 }
 
-pub struct VarField {
-    len: OpExpr,
-    item_size: Option<u64>,
-    arg: Option<String>,
+#[derive(Debug)]
+pub enum Primitive {
+    IdentT(String),
+    BuiltinType(BuiltinType),
+    RsExpr(String),
+    AlgExpr(Box<AlgExpr>),
+    CmpExpr(Box<CmpExpr>),
 }
 
-pub struct LenField {
-    t: LenType,
-    expr: OpExpr,
-    min: u64,
-    max: u64,
+pub enum Value {
+    Primitive(Primitive),
+    List(Vec<Box<Assignment>>),
+    Ctor(Box<Ctor>),
 }
 
-pub struct Packet {
-    header: Vec<Field>,
-    var_header: Vec<VarField>,
-    with_payload: bool,
-    header_len: Option<LenField>,
-    payload_len: Option<LenField>,
-    packet_len: Option<LenField>,
+pub struct Assignment {
+    idv: String,
+    value: Box<Value>,
 }
 
-pub struct Message {
-    header: Vec<Field>,
-    var_header: Vec<VarField>,
-    header_len: Option<LenField>,
-    cond: Option<BinopExpr>
+pub struct Ctor {
+    idt: String,
+    list: Vec<Box<Assignment>>,
+}
+
+pub enum DefType {
+    Message,
+    Packet,
+    IterGroup,
+}
+
+pub struct Definition {
+    t: DefType,
+    idt: String,
+    list: Vec<Box<Assignment>>,
 }

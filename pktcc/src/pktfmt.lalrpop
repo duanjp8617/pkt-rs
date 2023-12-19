@@ -1,0 +1,81 @@
+use std::str::FromStr;
+use crate::ast::*;
+
+grammar;
+
+pub Primitive: Primitive = {
+    <BuiltinType> => Primitive::BuiltinType(<>),
+    <IdentT> => Primitive::IdentT(<>),
+    <RsExpr> => Primitive::RsExpr(<>),
+    <AlgExpr> => Primitive::AlgExpr(<>),
+    <CmpExpr> => Primitive::CmpExpr(<>),
+}
+
+AlgExpr: Box<AlgExpr> = {
+    <l: AlgExpr> "+" <r: AlgFactor> => Box::new(AlgExpr::Op(l, AlgOp::Add, r)),
+    <l: AlgExpr> "-" <r: AlgFactor> => Box::new(AlgExpr::Op(l, AlgOp::Sub, r)),
+    AlgFactor
+}
+
+AlgFactor: Box<AlgExpr> = {
+    <l: AlgFactor> "*" <r: AlgTerm> => Box::new(AlgExpr::Op(l, AlgOp::Mul, r)),
+    <l: AlgFactor> "/" <r: AlgTerm> => Box::new(AlgExpr::Op(l, AlgOp::Div, r)),
+    AlgTerm
+}
+
+AlgTerm: Box<AlgExpr> = {
+    Num => Box::new(AlgExpr::Num(<>)),
+    IdentV => Box::new(AlgExpr::IdentV(<>)),
+    "(" <e: AlgExpr> ")" => e
+}
+
+CmpExpr: Box<CmpExpr> = {
+    <CmpExpr> "&&" <CmpTerm> => Box::new(CmpExpr::And(<>)),
+    <CmpExpr> "||" <CmpTerm> => Box::new(CmpExpr::Or(<>)),
+    CmpTerm
+}
+
+CmpTerm: Box<CmpExpr> = {
+    AlgExpr CmpOp AlgExpr => Box::new(CmpExpr::Op(<>)),
+    "!" "(" <CmpExpr> ")" => Box::new(CmpExpr::Neg(<>)),
+    "(" <expr: CmpExpr> ")" => expr,
+}
+
+CmpOp: CmpOp = {
+    "==" => CmpOp::Eq,
+    "!=" => CmpOp::Ne,
+    ">" => CmpOp::Gt,
+    ">=" => CmpOp::Ge,
+    "<" => CmpOp::Lt,
+    "<=" => CmpOp::Le,
+}
+
+BuiltinType: BuiltinType = {
+    "u8" => BuiltinType::U8,
+    "u16" => BuiltinType::U16,
+    "u32" => BuiltinType::U32, 
+    "u64" => BuiltinType::U64,
+    SliceNotation,
+    "true" => BuiltinType::True,
+    "false" => BuiltinType::False,
+}
+
+SliceNotation: BuiltinType = {
+    "&" "[" "u8" "]" => BuiltinType::ByteSlice
+}
+
+Num: u64 = {
+    r"[0-9]+" => u64::from_str(<>).unwrap()
+}
+
+IdentV: String = {
+    r"[a-z][a-z0-9_]*" => String::from_str(<>).unwrap()
+}
+
+IdentT: String = {
+    r"[A-Z][A-Za-z0-9_]*" => String::from_str(<>).unwrap()
+}
+
+RsExpr: String = {
+    <v: r#"rs"[^"]+""#> => String::from_str(&v[3..v.len()-1]).unwrap()
+}

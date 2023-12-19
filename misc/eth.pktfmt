@@ -1,5 +1,6 @@
 use xx::EtherType;
 use xx::MacAddr;
+
 %%
 
 packet Ether {

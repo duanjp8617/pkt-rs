@@ -1,0 +1,59 @@
+use crate::ast::*;
+
+grammar;
+
+Comma<T>: Vec<T> = { // (1)
+    <mut v:(<T> ",")*> <e:T?> => match e { // (2)
+        None => v,
+        Some(e) => {
+            v.push(e);
+            v
+        }
+    }
+};
+
+PacketDef: Definition = {
+    "packet" <idt: IdentT> "{" <list: AssignList> "}" => {
+        Definition {
+            t: DefType::Packet,
+            idt, 
+            list
+        }
+    }
+}
+
+AssignList = Comma<Assign>;
+
+Assign: Box<Assignment> = {
+    <idv: IdentV> "=" <value: Value> => Box::new(Assignment{idt, value})
+}
+
+Value: Box<Value> = {
+    <sv: SimpleVal> => Box::new(Value::SimpleVal(sv)),
+    <ls: AssigList> => Box::new(Value::List(ls)),
+    <ctor: Ctor> => Box::new(Value::Ctor(ctor))
+}
+
+Ctor: Box<Ctor> = {
+    <idt: IdentT> "{" <list: AssignList> "}" => Box::new(Ctor{idt, list})
+}
+
+SimpleVal: SimpleVal = {
+    <Num> => SimpleVal::Num(<>), 
+    <BuiltinType> => SimpleVal::BuiltinType(<>),
+    <IdentV> => SimpleVal::IdV(<>),
+    <IdentT> => SimpleVal::IdT(<>),
+    <RsExpr> => SimpleVal::RsExpr(<>),
+    <AlgExpr> => SimpleVal::AlgExpr(<>),
+    <CmpExpr> => SimpleVal::CmpExpr(<>),
+}
+
+BuiltinType: BuiltinType = {
+    "u8" => BuiltinType::U8,
+    "u16" => BuiltinType::U16,
+    "u32" => BuiltinType::U32, 
+    "u64" => BuiltinType::U64,
+    "&[u8]" => BuiltinType::ByteSlice,
+    "true" => BuiltinType::True,
+    "false" => BuiltinType::False,
+}
