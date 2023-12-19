@@ -1,11 +1,9 @@
-
 #[derive(Debug)]
 pub enum AlgExpr {
     Num(u64),
     IdentV(String),
     Op(Box<AlgExpr>, AlgOp, Box<AlgExpr>),
 }
-
 
 #[derive(Debug)]
 pub enum AlgOp {
@@ -15,7 +13,6 @@ pub enum AlgOp {
     Div,
 }
 
-
 #[derive(Debug)]
 pub enum CmpExpr {
     Op(Box<AlgExpr>, CmpOp, Box<AlgExpr>),
@@ -23,7 +20,6 @@ pub enum CmpExpr {
     And(Box<CmpExpr>, Box<CmpExpr>),
     Or(Box<CmpExpr>, Box<CmpExpr>),
 }
-
 
 #[derive(Debug)]
 pub enum CmpOp {
@@ -42,8 +38,7 @@ pub enum BuiltinType {
     U32,
     U64,
     ByteSlice,
-    True,
-    False,
+    Bool,
 }
 
 #[derive(Debug)]
@@ -55,30 +50,35 @@ pub enum Primitive {
     CmpExpr(Box<CmpExpr>),
 }
 
+#[derive(Debug)]
 pub enum Value {
     Primitive(Primitive),
     List(Vec<Box<Assignment>>),
     Ctor(Box<Ctor>),
 }
 
+#[derive(Debug)]
 pub struct Assignment {
-    idv: String,
-    value: Box<Value>,
+    pub identv: String,
+    pub value: Box<Value>,
 }
 
+#[derive(Debug)]
 pub struct Ctor {
-    idt: String,
-    list: Vec<Box<Assignment>>,
+    pub identt: String,
+    pub list: Vec<Box<Assignment>>,
 }
 
+#[derive(Debug)]
 pub enum DefType {
     Message,
     Packet,
     IterGroup,
 }
 
+#[derive(Debug)]
 pub struct Definition {
-    t: DefType,
-    idt: String,
-    list: Vec<Box<Assignment>>,
+    pub deft: DefType,
+    pub identt: String,
+    pub list: Vec<Box<Assignment>>,
 }

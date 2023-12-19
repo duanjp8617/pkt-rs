@@ -1,5 +1,4 @@
 mod ast_;
-mod ast1;
 
 mod ast;
 
@@ -71,5 +70,31 @@ fn simpleval_cmp() {
 #[test]
 fn simpleval_rsexpr() {
     let res = pktfmt::PrimitiveParser::new().parse(r#"rs"IpProtocol::UDP""#).unwrap();
+    println!("{:?}", res);
+}
+
+#[test]
+fn udp() {
+    let res = pktfmt::DefinitionParser::new().parse(r#"
+    packet Udp {
+        header = [
+            src_port = Field {bit = 16},
+            dst_port = Field {bit = 16},
+            length = Field {
+                bit = 16,
+                default = 8,
+                gen = false,
+            },
+            checksum = Field {bit = 16},
+        ],
+        with_payload = true,
+        packet_len = PacketLen {
+            expr = length,
+            mult = 1,
+            min = 8,
+            max = 65535,
+        }
+    }
+    "#).unwrap();
     println!("{:?}", res);
 }

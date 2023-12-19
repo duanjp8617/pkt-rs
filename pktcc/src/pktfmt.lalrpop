@@ -3,6 +3,56 @@ use crate::ast::*;
 
 grammar;
 
+pub Definition: Definition = {
+    "packet" <identt: IdentT> "{" <list: AssignList> "}" => {
+        Definition {
+            deft: DefType::Packet,
+            identt, 
+            list
+        }
+    },
+    "message" <identt: IdentT> "{" <list: AssignList> "}" => {
+        Definition {
+            deft: DefType::Message,
+            identt, 
+            list
+        }
+    },
+    "iter_group" <identt: IdentT> "{" <list: AssignList> "}" => {
+        Definition {
+            deft: DefType::IterGroup,
+            identt, 
+            list
+        }
+    },
+}
+
+AssignList: Vec<Box<Assignment>> = {
+    <mut v: (<Assignment> ",")*> <a: Assignment?> => {
+        match a {
+            None => v,
+            Some(a) => {
+                v.push(a);
+                v
+            }
+        }
+    }
+}
+
+Assignment: Box<Assignment> = {
+    <identv: IdentV> "=" <value: Value> => Box::new(Assignment{identv, value})
+}
+
+Value: Box<Value> = {
+    <sv: Primitive> => Box::new(Value::Primitive(sv)),
+    "[" <ls: AssignList> "]" => Box::new(Value::List(ls)),
+    <ctor: Ctor> => Box::new(Value::Ctor(ctor))
+}
+
+Ctor: Box<Ctor> = {
+    <identt: IdentT> "{" <list: AssignList> "}" => Box::new(Ctor{identt, list})
+}
+
 pub Primitive: Primitive = {
     <BuiltinType> => Primitive::BuiltinType(<>),
     <IdentT> => Primitive::IdentT(<>),
@@ -56,8 +106,7 @@ BuiltinType: BuiltinType = {
     "u32" => BuiltinType::U32, 
     "u64" => BuiltinType::U64,
     SliceNotation,
-    "true" => BuiltinType::True,
-    "false" => BuiltinType::False,
+    "bool" => BuiltinType::Bool,
 }
 
 SliceNotation: BuiltinType = {

@@ -16,7 +16,7 @@ packet Udp {
         expr = length,
         mult = 1,
         min = 8,
-        max = None,
+        max = 65535,
     }
 }
 
