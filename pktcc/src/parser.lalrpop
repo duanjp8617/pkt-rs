@@ -86,6 +86,7 @@ CmpExpr: Box<CmpExpr> = {
 }
 
 CmpTerm: Box<CmpExpr> = {
+    Bool => Box::new(CmpExpr::Bool(<>)),
     AlgExpr CmpOp AlgExpr => Box::new(CmpExpr::Op(<>)),
     "!" "(" <CmpExpr> ")" => Box::new(CmpExpr::Neg(<>)),
     "(" <expr: CmpExpr> ")" => expr,
@@ -107,6 +108,11 @@ BuiltinType: BuiltinType = {
     "u64" => BuiltinType::U64,
     SliceNotation,
     "bool" => BuiltinType::Bool,
+}
+
+Bool: bool = {
+    "true" => true,
+    "false" => false,
 }
 
 SliceNotation: BuiltinType = {

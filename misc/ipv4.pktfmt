@@ -39,8 +39,7 @@ packet Ipv4 {
     ],
     with_payload = true,
     header_len = HeaderLen {
-        expr = data_off, 
-        mult = 4, 
+        expr = data_off * 4, 
         min = 20,
         max = None,
     }

@@ -15,6 +15,7 @@ pub enum AlgOp {
 
 #[derive(Debug)]
 pub enum CmpExpr {
+    Bool(bool),
     Op(Box<AlgExpr>, CmpOp, Box<AlgExpr>),
     Neg(Box<CmpExpr>),
     And(Box<CmpExpr>, Box<CmpExpr>),
@@ -31,7 +32,7 @@ pub enum CmpOp {
     Ge,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum BuiltinType {
     U8,
     U16,
@@ -41,6 +42,23 @@ pub enum BuiltinType {
     Bool,
 }
 
+impl BuiltinType {
+    // given a valid bit size, convert it to a BuiltinType
+    pub fn infer_from_bit_size(bit_size: u64) -> Self {
+        if bit_size <= 8 {
+            Self::U8
+        } else if bit_size <= 16 {
+            Self::U16
+        } else if bit_size <= 32 {
+            Self::U32
+        } else if bit_size <= 64 {
+            Self::U64
+        } else {
+            Self::ByteSlice
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum Primitive {
     IdentT(String),
@@ -48,6 +66,28 @@ pub enum Primitive {
     RsExpr(String),
     AlgExpr(Box<AlgExpr>),
     CmpExpr(Box<CmpExpr>),
+}
+
+impl Primitive {
+    pub fn try_take_num(&self) -> Option<u64> {
+        match self {
+            Self::AlgExpr(ae) => match &**ae {
+                AlgExpr::Num(n) => Some(*n),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    pub fn try_take_bool_val(&self) -> Option<bool> {
+        match self {
+            Self::CmpExpr(ce) => match &**ce {
+                CmpExpr::Bool(b) => Some(*b),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug)]
