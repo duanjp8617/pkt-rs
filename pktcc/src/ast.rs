@@ -1,11 +1,11 @@
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum AlgExpr {
     Num(u64),
     IdentV(String),
     Op(Box<AlgExpr>, AlgOp, Box<AlgExpr>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum AlgOp {
     Add,
     Sub,
@@ -13,7 +13,7 @@ pub enum AlgOp {
     Div,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum CmpExpr {
     Bool(bool),
     Op(Box<AlgExpr>, CmpOp, Box<AlgExpr>),
@@ -22,7 +22,7 @@ pub enum CmpExpr {
     Or(Box<CmpExpr>, Box<CmpExpr>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum CmpOp {
     Eq,
     Ne,
@@ -40,23 +40,6 @@ pub enum BuiltinType {
     U64,
     ByteSlice,
     Bool,
-}
-
-impl BuiltinType {
-    // given a valid bit size, convert it to a BuiltinType
-    pub fn infer_from_bit_size(bit_size: u64) -> Self {
-        if bit_size <= 8 {
-            Self::U8
-        } else if bit_size <= 16 {
-            Self::U16
-        } else if bit_size <= 32 {
-            Self::U32
-        } else if bit_size <= 64 {
-            Self::U64
-        } else {
-            Self::ByteSlice
-        }
-    }
 }
 
 #[derive(Debug)]

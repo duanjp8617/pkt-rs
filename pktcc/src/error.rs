@@ -25,8 +25,9 @@ impl ParseError {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ErrorKind {
     CtorType,
-    AssignIdent,
-    AssignValue,
+    CtorAssignIdent,
+    CtorAssignValue,
+    Wtf,
 }
 
 impl std::error::Error for ParseError {}
