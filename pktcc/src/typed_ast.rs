@@ -3,6 +3,19 @@ use std::collections::{HashMap, HashSet};
 use crate::ast;
 use crate::error::{ErrorKind, ParseError};
 
+// TODO:
+// *. Improve error handling, the error will be classified according to the 
+// parsing stages, including:
+// 1. lalrpop error (the automatically generated lalrpop parser)
+// 2. error when converting the original ast to the typed ast
+// 3. error when checking the typed ast
+// 4. error when generating the source code
+// *. The format of the error message can be updated to:
+// xxx error: <reason of the error>(, <suggestions for changing the error>)?
+// error token:
+// <token string> 
+// *. (optional) update the lalrpop parser to record position of each generated token
+
 // parse a given value into a target type
 trait TargetParser {
     type Target;
