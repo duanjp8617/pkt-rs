@@ -11,7 +11,7 @@ packet Ipv6 {
             default = 0,
             gen = false
         },
-        next_header = Field{bit = 8, arg = IpProtocol, default = IpProtocol::UDP},
+        next_header = Field{bit = 8, arg = IpProtocol, default = "IpProtocol::UDP"},
         hop_limit = Field{bit = 8},
         src_addr = Field{bit = 128},
         dst_addr = Field{bit = 128},

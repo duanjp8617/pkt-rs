@@ -4,24 +4,24 @@ use crate::ast::*;
 grammar;
 
 pub Definition: Definition = {
-    "packet" <identt: IdentT> "{" <list: AssignList> "}" => {
+    "packet" <ident_type: IdentType> "{" <list: AssignList> "}" => {
         Definition {
-            deft: DefType::Packet,
-            identt, 
+            def_type: DefType::Packet,
+            ident_type, 
             list
         }
     },
-    "message" <identt: IdentT> "{" <list: AssignList> "}" => {
+    "message" <ident_type: IdentType> "{" <list: AssignList> "}" => {
         Definition {
-            deft: DefType::Message,
-            identt, 
+            def_type: DefType::Message,
+            ident_type, 
             list
         }
     },
-    "iter_group" <identt: IdentT> "{" <list: AssignList> "}" => {
+    "iter_group" <ident_type: IdentType> "{" <list: AssignList> "}" => {
         Definition {
-            deft: DefType::IterGroup,
-            identt, 
+            def_type: DefType::IterGroup,
+            ident_type, 
             list
         }
     },
@@ -40,22 +40,23 @@ AssignList: Vec<Box<Assignment>> = {
 }
 
 Assignment: Box<Assignment> = {
-    <identv: IdentV> "=" <value: Value> => Box::new(Assignment{identv, value})
+    <var_start: @L> <ident_var: IdentVar> <var_end: @R> "=" <value: Value> 
+                => Box::new(Assignment{ident_var_with_pos: (var_start, ident_var, var_end), value})
 }
 
 Value: Box<Value> = {
-    <sv: Primitive> => Box::new(Value::Primitive(sv)),
-    "[" <ls: AssignList> "]" => Box::new(Value::List(ls)),
-    <ctor: Ctor> => Box::new(Value::Ctor(ctor))
+    @L Primitive @R => Box::new(Value::Primitive(<>)),
+    <@L> "[" <AssignList> "]" <@R> => Box::new(Value::List(<>)),
+    @L Ctor @R => Box::new(Value::Ctor(<>))
 }
 
 Ctor: Box<Ctor> = {
-    <identt: IdentT> "{" <list: AssignList> "}" => Box::new(Ctor{identt, list})
+    <ident_type: IdentType> "{" <list: AssignList> "}" => Box::new(Ctor{ident_type, list})
 }
 
-pub Primitive: Primitive = {
+Primitive: Primitive = {
     <BuiltinType> => Primitive::BuiltinType(<>),
-    <IdentT> => Primitive::IdentT(<>),
+    <IdentType> => Primitive::IdentType(<>),
     <RsExpr> => Primitive::RsExpr(<>),
     <AlgExpr> => Primitive::AlgExpr(<>),
     <CmpExpr> => Primitive::CmpExpr(<>),
@@ -75,8 +76,8 @@ AlgFactor: Box<AlgExpr> = {
 
 AlgTerm: Box<AlgExpr> = {
     Num => Box::new(AlgExpr::Num(<>)),
-    IdentV => Box::new(AlgExpr::IdentV(<>)),
-    "(" <e: AlgExpr> ")" => e
+    IdentVar => Box::new(AlgExpr::IdentVar(<>)),
+    "(" <AlgExpr> ")" => <>
 }
 
 CmpExpr: Box<CmpExpr> = {
@@ -89,7 +90,7 @@ CmpTerm: Box<CmpExpr> = {
     Bool => Box::new(CmpExpr::Bool(<>)),
     AlgExpr CmpOp AlgExpr => Box::new(CmpExpr::Op(<>)),
     "!" "(" <CmpExpr> ")" => Box::new(CmpExpr::Neg(<>)),
-    "(" <expr: CmpExpr> ")" => expr,
+    "(" <CmpExpr> ")" => <>,
 }
 
 CmpOp: CmpOp = {
@@ -106,7 +107,7 @@ BuiltinType: BuiltinType = {
     "u16" => BuiltinType::U16,
     "u32" => BuiltinType::U32, 
     "u64" => BuiltinType::U64,
-    SliceNotation,
+    "&" "[" "u8" "]" => BuiltinType::ByteSlice,
     "bool" => BuiltinType::Bool,
 }
 
@@ -115,19 +116,15 @@ Bool: bool = {
     "false" => false,
 }
 
-SliceNotation: BuiltinType = {
-    "&" "[" "u8" "]" => BuiltinType::ByteSlice
-}
-
 Num: u64 = {
     r"[0-9]+" => u64::from_str(<>).unwrap()
 }
 
-IdentV: String = {
+IdentVar: String = {
     r"[a-z][a-z0-9_]*" => String::from_str(<>).unwrap()
 }
 
-IdentT: String = {
+IdentType: String = {
     r"[A-Z][A-Za-z0-9_]*" => String::from_str(<>).unwrap()
 }
 

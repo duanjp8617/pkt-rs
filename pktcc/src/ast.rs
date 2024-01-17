@@ -1,7 +1,7 @@
 #[derive(Debug, Clone)]
 pub enum AlgExpr {
     Num(u64),
-    IdentV(String),
+    IdentVar(String),
     Op(Box<AlgExpr>, AlgOp, Box<AlgExpr>),
 }
 
@@ -44,7 +44,7 @@ pub enum BuiltinType {
 
 #[derive(Debug)]
 pub enum Primitive {
-    IdentT(String),
+    IdentType(String),
     BuiltinType(BuiltinType),
     RsExpr(String),
     AlgExpr(Box<AlgExpr>),
@@ -75,20 +75,20 @@ impl Primitive {
 
 #[derive(Debug)]
 pub enum Value {
-    Primitive(Primitive),
-    List(Vec<Box<Assignment>>),
-    Ctor(Box<Ctor>),
+    Primitive(usize, Primitive, usize),
+    List(usize, Vec<Box<Assignment>>, usize),
+    Ctor(usize, Box<Ctor>, usize),
 }
 
 #[derive(Debug)]
 pub struct Assignment {
-    pub identv: String,
+    pub ident_var_with_pos: (usize, String, usize),
     pub value: Box<Value>,
 }
 
 #[derive(Debug)]
 pub struct Ctor {
-    pub identt: String,
+    pub ident_type: String,
     pub list: Vec<Box<Assignment>>,
 }
 
@@ -101,7 +101,7 @@ pub enum DefType {
 
 #[derive(Debug)]
 pub struct Definition {
-    pub deft: DefType,
-    pub identt: String,
+    pub def_type: DefType,
+    pub ident_type: String,
     pub list: Vec<Box<Assignment>>,
 }

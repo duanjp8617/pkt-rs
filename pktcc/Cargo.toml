@@ -19,3 +19,6 @@ lalrpop = "0.20"
 
 [dependencies]
 lalrpop-util = { version = "0.20", features = ["lexer", "unicode"] }
+quick-error = "2.0.1"
+codespan = "0.11.1"
+codespan-reporting = "0.11.1"

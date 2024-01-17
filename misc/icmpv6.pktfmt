@@ -1,4 +1,7 @@
 %%
+我打你妈的
+~~~~~~~~~
+%%
 
 packet Icmpv6 {
     header = [
@@ -77,5 +80,7 @@ message Icmpv6Echo {
     ],
     cond = (type == 128) || (type == 129)
 }
+
+%%
 
 %%
