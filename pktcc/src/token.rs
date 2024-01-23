@@ -4,6 +4,9 @@ quick_error! {
         InvalidToken(pos: usize) {
             display("invalid token at {}", pos)
         }
+        UnclosedCodeSegment(pos: usize) {
+            display("unclosed code segment at {}", pos)
+        }
     }
 }
 
@@ -39,6 +42,7 @@ pub enum Token<'input> {
     Gen,
 
     // VarField keyword
+    VarField,
     Len,
     ItemSize,
 
@@ -48,8 +52,7 @@ pub enum Token<'input> {
     Max,
 
     // Identifiers
-    NonCamelCaseIdent(&'input str),
-    CamelCaseIdent(&'input str),
+    Ident(&'input str),
 
     // Builtin Type
     BuiltinType(&'input str),
@@ -93,16 +96,8 @@ pub enum Token<'input> {
     // Numbers
     Num(&'input str),
 
-    // qouted string "RsType::new(1)"
-    QoutedString(&'input str),
-
-    // Prefix string
-    // xxxx %%
-    PrefixString(&'input str),
-
-    // Postfix string
-    // %% xxxx
-    PostfixString(&'input str),
+    // rust code enclosed by %%:  %%RsType::new(1)%%
+    Code(&'input str),
 
     // doc
     // /// doc string
@@ -128,6 +123,7 @@ const KEYWORDS: &[(&str, Token)] = &[
     ("arg", Token::Arg),
     ("default", Token::Default),
     ("gen", Token::Gen),
+    ("VarField", Token::VarField),
     ("len", Token::Len),
     ("item_size", Token::ItemSize),
     ("expr", Token::Expr),
@@ -135,7 +131,9 @@ const KEYWORDS: &[(&str, Token)] = &[
     ("max", Token::Max),
 ];
 
-const BUILTINS: &[&str] = &["u8", "u16", "u32", "u64", "bool", "true", "false"];
+const BUILTIN_TYPES: &[&str] = &["u8", "u16", "u32", "u64", "bool"];
+
+const BOOLEAN_VALUES: &[&str] = &["true", "false"];
 
 pub struct Tokenizer<'input> {
     text: &'input str,
@@ -187,30 +185,61 @@ impl<'input> Tokenizer<'input> {
         self.take_while(|c| !f(c))
     }
 
-    // consume a word from the stream, return true if succeed
-    fn consume_word(&mut self, word: &str) -> bool {
+    // match the stream agaist the input word, until the
+    // last character of the word is found
+    // return the byteoffset of the last character of a word
+    // this method does not consume the last character from the input stream
+    fn match_word(&mut self, word: &str) -> Option<usize> {
+        // make sure that the input word is not empty
+        assert!(word.len() > 0);
+
         let mut word_chars = word.chars().peekable();
+        let mut match_last = false;
         let f = |c: char| -> bool {
-            match word_chars.peek() {
-                Some(expected_c) => {
-                    if *expected_c == c {
-                        word_chars.next();
-                        true
-                    } else {
-                        false
+            let expected = word_chars.next().unwrap();
+
+            if expected != c {
+                return false;
+            } else {
+                match word_chars.peek() {
+                    Some(_) => {
+                        return true;
+                    }
+                    None => {
+                        match_last = true;
+                        return false;
                     }
                 }
-                None => false,
             }
         };
-
         self.take_while(f);
-        word_chars.peek().is_none()
+
+        if match_last {
+            self.peek().map(|(offset, _)| offset)
+        } else {
+            None
+        }
+    }
+
+    // search for the last character of a code segment
+    // it will make the stream stays on the closing '%' symbol
+    fn search_for_end_of_code_segment(&mut self) -> Option<usize> {
+        loop {
+            self.take_until(|c| c == '%')?;
+            match self.consume_and_peek() {
+                Some((idx, '%')) => {
+                    return Some(idx);
+                }
+                _ => {
+                    continue;
+                }
+            }
+        }
     }
 
     fn next_token(&mut self) -> Option<Result<Spanned<Token<'input>>, Error>> {
         loop {
-            match self.head {
+            match self.peek() {
                 Some((idx, '+')) => {
                     self.consume_and_peek();
                     return Some(Ok((idx, Token::Plus, idx + 1)));
@@ -305,18 +334,73 @@ impl<'input> Tokenizer<'input> {
                         self.consume_and_peek();
                         return Some(Ok((idx, Token::And, next_idx + 1)));
                     }
-                    _ => {
-                        if self.consume_word("[u8]") {
+                    _ => match self.match_word("[u8]") {
+                        Some(next_idx) => {
+                            self.consume_and_peek();
                             return Some(Ok((
                                 idx,
-                                Token::BuiltinType(&self.text[idx..idx + 5]),
-                                idx + 5,
+                                Token::BuiltinType(&self.text[idx..next_idx + 1]),
+                                next_idx + 1,
                             )));
-                        } else {
+                        }
+                        None => {
                             return Some(Err(Error::InvalidToken(idx)));
                         }
+                    },
+                },
+                Some((idx, '%')) => match self.consume_and_peek() {
+                    Some((_, '%')) => {
+                        return self
+                            .search_for_end_of_code_segment()
+                            .map(|next_idx| {
+                                self.consume_and_peek();
+                                Some(Ok((
+                                    idx,
+                                    Token::Code(&self.text[idx..next_idx + 1]),
+                                    next_idx + 1,
+                                )))
+                            })
+                            .unwrap_or(Some(Err(Error::UnclosedCodeSegment(idx))));
+                    }
+                    _ => {
+                        return Some(Err(Error::InvalidToken(idx)));
                     }
                 },
+                Some((idx, c)) if identifier_start(c) => {
+                    let next_idx = self
+                        .take_while(identifier_follow_up)
+                        .map(|(next_idx, _)| next_idx)
+                        .unwrap_or(self.text.len());
+
+                    let token_str = &self.text[idx..next_idx];
+                    let tok = KEYWORDS
+                        .iter()
+                        .find(|(keyword, _)| *keyword == token_str)
+                        .map(|(_, tok)| tok.clone())
+                        .or_else(|| {
+                            BUILTIN_TYPES
+                                .iter()
+                                .find(|keyword| **keyword == token_str)
+                                .map(|_| Token::BuiltinType(token_str))
+                        })
+                        .or_else(|| {
+                            BOOLEAN_VALUES
+                                .iter()
+                                .find(|keyword| **keyword == token_str)
+                                .map(|_| Token::BooleanValue(token_str))
+                        })
+                        .unwrap_or(Token::Ident(token_str));
+                    return Some(Ok((idx, tok, next_idx)));
+                }
+                Some((idx, c)) if num_start(c) => {
+                    let next_idx = self
+                        .take_while(identifier_follow_up)
+                        .map(|(next_idx, _)| next_idx)
+                        .unwrap_or(self.text.len());
+
+                    let token_str = &self.text[idx..next_idx];
+                    return Some(Ok((idx, Token::Num(token_str), next_idx)));
+                }
                 Some((_, c)) if c.is_whitespace() => {
                     self.take_while(|c| c.is_whitespace());
                     continue;
@@ -330,6 +414,18 @@ impl<'input> Tokenizer<'input> {
             }
         }
     }
+}
+
+fn identifier_start(c: char) -> bool {
+    ('a' <= c && c <= 'z') || ('A' <= c && c <= 'Z') || (c == '_')
+}
+
+fn identifier_follow_up(c: char) -> bool {
+    identifier_start(c) || num_start(c)
+}
+
+fn num_start(c: char) -> bool {
+    '0' <= c && c <= '9'
 }
 
 impl<'input> Iterator for Tokenizer<'input> {
@@ -460,37 +556,41 @@ mod test {
     }
 
     #[test]
-    fn test_consume_word1() {
+    fn match_word1() {
         let text = r#"&[u8]"#;
 
         let mut tokenizer = Tokenizer::new(text);
-        let res = tokenizer.consume_word("&[u8]");
+        let res = tokenizer.match_word("&[u8]");
 
-        assert_eq!(res, true);
-        assert_eq!(tokenizer.next(), None);
+        assert_eq!(res, Some(4));
+        assert_eq!(tokenizer.next(), Some(Ok((4, Token::RBracket, 5))));
     }
 
     #[test]
-    fn test_consume_word2() {
+    fn match_word2() {
         let text = r#"&[u8"#;
 
         let mut tokenizer = Tokenizer::new(text);
-        let res = tokenizer.consume_word("&[u8]");
+        let res = tokenizer.match_word("&[u8]");
 
-        assert_eq!(res, false);
+        assert_eq!(res, None);
         assert_eq!(tokenizer.next(), None);
     }
 
     #[test]
-    fn test_consume_word3() {
-        let text = r#"&[u8] +"#;
+    fn match_word3() {
+        let text = r#"+ &[u8]+"#;
 
         let mut tokenizer = Tokenizer::new(text);
-        let res = tokenizer.consume_word("&[u8]");
+        assert_eq!(tokenizer.next_token(), Some(Ok((0, Token::Plus, 1))));
+        assert_eq!(tokenizer.peek(), Some((1, ' ')));
+        assert_eq!(tokenizer.consume_and_peek(), Some((2, '&')));
 
-        assert_eq!(res, true);
-        assert_eq!(tokenizer.peek(), Some((5, ' ')));
-        assert_eq!(tokenizer.next(), Some(Ok((6, Token::Plus, 7))));
+        let res = tokenizer.match_word("&[u8]");
+        assert_eq!(res, Some(6));
+
+        assert_eq!(tokenizer.consume_and_peek(), Some((7, '+')));
+        assert_eq!(tokenizer.next(), Some(Ok((7, Token::Plus, 8))));
     }
 
     #[test]
@@ -498,10 +598,100 @@ mod test {
         test(
             r#"&&&[u8] &[u8]"#,
             vec![
-           (r#"~~           "#, Token::And),
-           (r#"  ~~~~~      "#, Token::BuiltinType("&[u8]")),
-           (r#"        ~~~~~"#, Token::BuiltinType("&[u8]")),
+                (r#"~~           "#, Token::And),
+                (r#"  ~~~~~      "#, Token::BuiltinType("&[u8]")),
+                (r#"        ~~~~~"#, Token::BuiltinType("&[u8]")),
             ],
         )
+    }
+
+    #[test]
+    fn search_for_end_of_code_segment1() {
+        let text = r#"%%Option%%"#;
+
+        let mut tokenizer = Tokenizer::new(text);
+        tokenizer.consume_and_peek();
+        tokenizer.consume_and_peek();
+
+        let res = tokenizer.search_for_end_of_code_segment();
+        assert_eq!(res, Some(9));
+    }
+
+    #[test]
+    fn search_for_end_of_code_segment2() {
+        let text = r#"%%Option%"#;
+
+        let mut tokenizer = Tokenizer::new(text);
+        tokenizer.consume_and_peek();
+        tokenizer.consume_and_peek();
+
+        let res = tokenizer.search_for_end_of_code_segment();
+        assert_eq!(res, None);
+    }
+
+    #[test]
+    fn code_segment_slice() {
+        test(
+            r#"&[u8], %%&[u8]%%"#,
+            vec![
+                ("~~~~~           ", Token::BuiltinType("&[u8]")),
+                ("     ~          ", Token::Comma),
+                ("       ~~~~~~~~~", Token::Code("%%&[u8]%%")),
+            ],
+        );
+    }
+
+    #[test]
+    fn key_word1() {
+        test(
+            r#"packet message iter_group"#,
+            vec![
+                ("~~~~~~                   ", Token::Packet),
+                ("       ~~~~~~~           ", Token::Message),
+                ("               ~~~~~~~~~~", Token::IterGroup),
+            ],
+        );
+    }
+
+    #[test]
+    fn key_word2() {
+        test(
+            r#"Field VarField item_size"#,
+            vec![
+                ("~~~~~                   ", Token::Field),
+                ("      ~~~~~~~~          ", Token::VarField),
+                ("               ~~~~~~~~~", Token::ItemSize),
+            ],
+        );
+    }
+
+    #[test]
+    fn key_word_builtin_type_builtin_value() {
+        test(
+            r#"cond true u8 u32 bool"#,
+            vec![
+             ("~~~~                 ", Token::Cond),
+             ("     ~~~~            ", Token::BooleanValue("true")),
+             ("          ~~         ", Token::BuiltinType("u8")),
+             ("             ~~~     ", Token::BuiltinType("u32")),
+             ("                 ~~~~", Token::BuiltinType("bool")),
+            ],
+        );
+    }
+
+    #[test]
+    fn test_goback() {
+        let s = "abcdefghijklmnopqrstuvwxyz";
+        let mut i = s.char_indices();
+        for _ in 0..10 {
+            i.next();
+        }
+
+        println!("{:?}", i.next());
+
+        let s_new = &s[10..];
+
+        let mut i_new = s_new.char_indices();
+        println!("{:?}", i_new.next());
     }
 }
