@@ -195,7 +195,7 @@ impl<'input> Tokenizer<'input> {
 
         let mut word_chars = word.chars().peekable();
         let mut match_last = false;
-        let f = |c: char| -> bool {
+        self.take_while(|c| {
             let expected = word_chars.next().unwrap();
 
             if expected != c {
@@ -211,8 +211,7 @@ impl<'input> Tokenizer<'input> {
                     }
                 }
             }
-        };
-        self.take_while(f);
+        });
 
         if match_last {
             self.peek().map(|(offset, _)| offset)
@@ -237,6 +236,48 @@ impl<'input> Tokenizer<'input> {
         }
     }
 
+    fn search_for_doc_line(&mut self) -> Option<usize> {
+        match self.match_word("///") {
+            Some(_) => {
+                let mut chars_clone = self.chars.clone().peekable();
+
+                let idx = self
+                    .take_until(|c| {
+                        if c == '\n' {
+                            true
+                        } else {
+                            let res = chars_clone.peek().map(|_| false).unwrap_or(true);
+                            chars_clone.next();
+                            res
+                        }
+                    })
+                    .unwrap()
+                    .0;
+
+                Some(idx)
+            }
+            None => None,
+        }
+    }
+
+    fn search_for_subsequent_docs(
+        &mut self,
+        ending_pos: &mut (Option<(usize, char)>, std::str::CharIndices<'input>),
+    ) {
+        loop {
+            match self.take_while(|c| c.is_whitespace()) {
+                Some((_, '/')) => match self.search_for_doc_line() {
+                    Some(_) => {
+                        ending_pos.0 = self.head;
+                        ending_pos.1 = self.chars.clone();
+                    }
+                    None => break,
+                },
+                _ => break,
+            }
+        }
+    }
+
     fn next_token(&mut self) -> Option<Result<Spanned<Token<'input>>, Error>> {
         loop {
             match self.peek() {
@@ -251,10 +292,6 @@ impl<'input> Tokenizer<'input> {
                 Some((idx, '*')) => {
                     self.consume_and_peek();
                     return Some(Ok((idx, Token::Mult, idx + 1)));
-                }
-                Some((idx, '/')) => {
-                    self.consume_and_peek();
-                    return Some(Ok((idx, Token::Div, idx + 1)));
                 }
                 Some((idx, '(')) => {
                     self.consume_and_peek();
@@ -328,6 +365,39 @@ impl<'input> Tokenizer<'input> {
                     _ => {
                         continue;
                     }
+                },
+                Some((idx, '/')) => match self.consume_and_peek() {
+                    Some((_, '/')) => match self.consume_and_peek() {
+                        Some((_, '/')) => match self.take_until(|c| c == '\n') {
+                            Some(_) => {
+                                let mut ending_pos = (self.head, self.chars.clone());
+                                self.search_for_subsequent_docs(&mut ending_pos);
+
+                                // do consume and peek manually
+                                let next_idx = ending_pos.0.unwrap().0;
+                                self.head = ending_pos.1.next();
+                                self.chars = ending_pos.1;
+
+                                return Some(Ok((
+                                    idx,
+                                    Token::Doc(&self.text[idx..next_idx + 1]),
+                                    next_idx + 1,
+                                )));
+                            }
+                            _ => {
+                                return Some(Ok((
+                                    idx,
+                                    Token::Doc(&self.text[idx..]),
+                                    self.text.len(),
+                                )))
+                            }
+                        },
+                        _ => {
+                            // single line comment can be analyzed from here
+                            return Some(Err(Error::InvalidToken(idx)));
+                        }
+                    },
+                    _ => return Some(Err(Error::InvalidToken(idx))),
                 },
                 Some((idx, '&')) => match self.consume_and_peek() {
                     Some((next_idx, '&')) => {
@@ -405,8 +475,7 @@ impl<'input> Tokenizer<'input> {
                     self.take_while(|c| c.is_whitespace());
                     continue;
                 }
-                Some((idx, c)) => {
-                    println!("{}, {}", idx, c);
+                Some((idx, _)) => {
                     return Some(Err(Error::InvalidToken(idx)));
                 }
 
@@ -670,28 +739,122 @@ mod test {
         test(
             r#"cond true u8 u32 bool"#,
             vec![
-             ("~~~~                 ", Token::Cond),
-             ("     ~~~~            ", Token::BooleanValue("true")),
-             ("          ~~         ", Token::BuiltinType("u8")),
-             ("             ~~~     ", Token::BuiltinType("u32")),
-             ("                 ~~~~", Token::BuiltinType("bool")),
+                ("~~~~                 ", Token::Cond),
+                ("     ~~~~            ", Token::BooleanValue("true")),
+                ("          ~~         ", Token::BuiltinType("u8")),
+                ("             ~~~     ", Token::BuiltinType("u32")),
+                ("                 ~~~~", Token::BuiltinType("bool")),
             ],
         );
     }
 
     #[test]
-    fn test_goback() {
-        let s = "abcdefghijklmnopqrstuvwxyz";
-        let mut i = s.char_indices();
-        for _ in 0..10 {
-            i.next();
+    fn num_true_false() {
+        test(
+            r#"5443 4543 00 099 true"#,
+            vec![
+                ("~~~~                 ", Token::Num("5443")),
+                ("     ~~~~            ", Token::Num("4543")),
+                ("          ~~         ", Token::Num("00")),
+                ("             ~~~     ", Token::Num("099")),
+                ("                 ~~~~", Token::BooleanValue("true")),
+            ],
+        );
+    }
+
+    #[test]
+    fn search_doc_line1() {
+        let doc_line = r#"///"#;
+
+        let mut t = Tokenizer::new(doc_line);
+        let res = t.search_for_doc_line();
+
+        assert_eq!(res, Some(2));
+    }
+
+    #[test]
+    fn search_doc_line2() {
+        let doc_line = r#"///abc"#;
+
+        let mut t = Tokenizer::new(doc_line);
+        let res = t.search_for_doc_line();
+
+        assert_eq!(res, Some(5));
+    }
+
+    #[test]
+    fn search_doc_line3() {
+        let doc_line = r#"///abc
+"#;
+
+        let mut t = Tokenizer::new(doc_line);
+        let res = t.search_for_doc_line();
+
+        assert_eq!(res, Some(6));
+        assert_eq!(t.consume_and_peek(), None);
+    }
+
+    #[test]
+    fn doc1() {
+        let doc_lines = r#"bbb///abc
+a/// wtf???
+"#;
+
+        let mut t = Tokenizer::new(doc_lines);
+
+        assert_eq!(t.next_token(), Some(Ok((0, Token::Ident("bbb"), 3))));
+        assert_eq!(t.next_token(), Some(Ok((3, Token::Doc("///abc\n"), 10))));
+        assert_eq!(t.next_token(), Some(Ok((10, Token::Ident("a"), 11))));
+        assert_eq!(
+            t.next_token(),
+            Some(Ok((11, Token::Doc("/// wtf???\n"), 22)))
+        );
+    }
+
+    #[test]
+    fn doc2() {
+        let doc_lines = r#"
+///abc
+/// ???
+/// wtf???"#;
+
+        let mut t = Tokenizer::new(doc_lines);
+        assert_eq!(
+            t.next_token(),
+            Some(Ok((1, Token::Doc("///abc\n/// ???\n/// wtf???"), 26)))
+        )
+    }
+
+    #[test]
+    fn test_whole_tokenizer() {
+        let s = r#"
+    packet Udp {
+        header = [
+            src_port = Field {bit = 16},
+            dst_port = Field {bit = 16},
+            length = Field {
+                bit = 16,
+                default = 8,
+                gen = false,
+            },
+            /// The checksum field of the UDP packet
+            /// It can be computed with ease
+            checksum = Field {bit = 16},
+        ],
+        with_payload = true,
+        packet_len = PacketLen {
+            expr = length,
+            min = 8,
+            max = 65535,
+        }
+    }"#;
+
+        let mut t = Tokenizer::new(s);
+
+        while let Some(res) = t.next_token() {
+            println!("{:?}", res);
         }
 
-        println!("{:?}", i.next());
-
-        let s_new = &s[10..];
-
-        let mut i_new = s_new.char_indices();
-        println!("{:?}", i_new.next());
+        assert_eq!(t.next_token(), None);
     }
 }
