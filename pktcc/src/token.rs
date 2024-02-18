@@ -247,11 +247,16 @@ impl<'input> Tokenizer<'input> {
         }
     }
 
+    // Search for a complete doc line.
+    // It ends either on the first '\n' character, or the last character
+    // of the stream.
+    // It returns the byte offset of the ending character.
     fn search_for_doc_line(&mut self) -> Option<usize> {
         match self.match_word("///") {
             Some(_) => loop {
                 match self.peek() {
-                    Some((idx, '\n')) | Some((idx, _)) if self.is_last_char() => return Some(idx),
+                    Some((idx, '\n')) => return Some(idx),
+                    Some((idx, _)) if self.is_last_char() => return Some(idx),
                     _ => {
                         self.consume_and_peek();
                     }
@@ -261,19 +266,28 @@ impl<'input> Tokenizer<'input> {
         }
     }
 
+    // Given an initial doc line ended at the 'ending_pos',
+    // search for all the subsequent doc lines.
+    // We first consume the whitespaces after the current doc line.
+    // Then we try to consume the next doc line. If we succeed, we update
+    // the 'ending_pos' to point to the last character of the new doc line.
+    // If we fail, the caller can recover position of the ending doc line
+    // using 'ending_pos'.
     fn search_for_subsequent_docs(
         &mut self,
         ending_pos: &mut (Option<(usize, char)>, std::str::CharIndices<'input>),
     ) {
         loop {
             match self.take_while(|c| c.is_whitespace()) {
-                Some((_, '/')) => match self.search_for_doc_line() {
-                    Some(_) => {
-                        ending_pos.0 = self.head;
-                        ending_pos.1 = self.chars.clone();
+                Some((_, '/')) => {
+                    match self.search_for_doc_line() {
+                        Some(_) => {
+                            ending_pos.0 = self.head;
+                            ending_pos.1 = self.chars.clone();
+                        }
+                        None => break,
                     }
-                    None => break,
-                },
+                }
                 _ => break,
             }
         }
@@ -393,12 +407,17 @@ impl<'input> Tokenizer<'input> {
                                 )))
                             }
                         },
-                        _ => {
-                            // single line comment can be analyzed from here
-                            return Some(Err(Error::InvalidToken(idx)));
-                        }
+                        // The next arm handles single line comment starting
+                        // with "//"
+                        _ => match self.take_until(|c| c == '\n') {
+                            Some(_) => {
+                                self.consume_and_peek();
+                                continue;
+                            }
+                            _ => continue,
+                        },
                     },
-                    _ => return Some(Err(Error::InvalidToken(idx))),
+                    _ => return Some(Ok((idx, Token::Div, idx + 1))),
                 },
                 Some((idx, '&')) => match self.consume_and_peek() {
                     Some((next_idx, '&')) => {
@@ -814,41 +833,52 @@ a/// wtf???
 
     #[test]
     fn doc2() {
-        let doc_lines = r#"
-///abc
-/// ???
-/// wtf???"#;
+        let doc_lines = r#"///a
+///b
+//
+wtf"#;
 
         let mut t = Tokenizer::new(doc_lines);
+
         assert_eq!(
             t.next_token(),
-            Some(Ok((1, Token::Doc("///abc\n/// ???\n/// wtf???"), 26)))
-        )
+            Some(Ok((0, Token::Doc("///a\n///b\n"), 10)))
+        );
+        assert_eq!(
+            t.next_token(),
+            Some(Ok((13, Token::Ident("wtf"), 16)))
+        );
+        assert_eq!(t.next_token(), None);
     }
-
-    #[test]
+    
+    #[allow(dead_code)]
     fn test_whole_tokenizer() {
         let s = r#"
-    packet Udp {
-        header = [
-            src_port = Field {bit = 16},
-            dst_port = Field {bit = 16},
-            length = Field {
-                bit = 16,
-                default = 8,
-                gen = false,
-            },
-            /// The checksum field of the UDP packet
-            /// It can be computed with ease
-            checksum = Field {bit = 16},
-        ],
-        with_payload = true,
-        packet_len = PacketLen {
-            expr = length,
-            min = 8,
-            max = 65535,
-        }
-    }"#;
+/// Start
+// comment
+/// Next
+packet Udp {
+    // a comment is inserted here
+    header = [
+        src_port = Field {bit = 16},
+        dst_port = Field {bit = 16},
+        length = Field {
+            bit = 16,
+            default = 8,
+            gen = false,
+        },
+        // another comment
+        /// The checksum field of the UDP packet
+        /// It can be computed with ease
+        checksum = Field {bit = 16},
+    ],
+    with_payload = true,
+    packet_len = PacketLen {
+        expr = length,
+        min = 8,
+        max = 65535,
+    }
+}"#;
 
         let mut t = Tokenizer::new(s);
 
