@@ -151,13 +151,12 @@ impl<'input> Tokenizer<'input> {
         Self { text, chars, head }
     }
 
-    // peek the stream head
+    // Peek the stream head.
     fn peek(&self) -> Option<(usize, char)> {
         self.head
     }
 
-    // consume the current stream head,
-    // and return the next stream head
+    // Consume the current stream head, and return the next stream head.
     fn consume_and_peek(&mut self) -> Option<(usize, char)> {
         self.head = self.chars.next();
         self.head
@@ -185,10 +184,21 @@ impl<'input> Tokenizer<'input> {
         self.take_while(|c| !f(c))
     }
 
-    // match the stream agaist the input word, until the
-    // last character of the word is found
-    // return the byteoffset of the last character of a word
-    // this method does not consume the last character from the input stream
+    // Check whether the current stream head is the last
+    // character of the stream.
+    fn is_last_char(&self) -> bool {
+        self.head
+            .map(|_| {
+                let next_opt = self.chars.clone().next();
+                next_opt.map(|_| false).unwrap_or(true)
+            })
+            .unwrap_or(false)
+    }
+
+    // Match the stream agaist the input word, until the
+    // last character of the word is found.
+    // Return the byteoffset of the last character of a word.
+    // This method does not consume the last character from the input stream.
     fn match_word(&mut self, word: &str) -> Option<usize> {
         // make sure that the input word is not empty
         assert!(word.len() > 0);
@@ -220,8 +230,9 @@ impl<'input> Tokenizer<'input> {
         }
     }
 
-    // search for the last character of a code segment
-    // it will make the stream stays on the closing '%' symbol
+    // Search for the last character of a code segment.
+    // A code segment looks like "%%<code...>%%".
+    // It will make the stream stay on the closing '%' symbol.
     fn search_for_end_of_code_segment(&mut self) -> Option<usize> {
         loop {
             self.take_until(|c| c == '%')?;
@@ -238,24 +249,14 @@ impl<'input> Tokenizer<'input> {
 
     fn search_for_doc_line(&mut self) -> Option<usize> {
         match self.match_word("///") {
-            Some(_) => {
-                let mut chars_clone = self.chars.clone().peekable();
-
-                let idx = self
-                    .take_until(|c| {
-                        if c == '\n' {
-                            true
-                        } else {
-                            let res = chars_clone.peek().map(|_| false).unwrap_or(true);
-                            chars_clone.next();
-                            res
-                        }
-                    })
-                    .unwrap()
-                    .0;
-
-                Some(idx)
-            }
+            Some(_) => loop {
+                match self.peek() {
+                    Some((idx, '\n')) | Some((idx, _)) if self.is_last_char() => return Some(idx),
+                    _ => {
+                        self.consume_and_peek();
+                    }
+                }
+            },
             None => None,
         }
     }
@@ -851,7 +852,7 @@ a/// wtf???
 
         let mut t = Tokenizer::new(s);
 
-        while let Some(res) = t.next_token() {
+        while let Some(Ok(res)) = t.next_token() {
             println!("{:?}", res);
         }
 
