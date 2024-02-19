@@ -6,6 +6,7 @@ mod ast;
 mod error;
 mod file_text;
 mod token;
+mod ast_new;
 
 use lalrpop_util::lalrpop_mod;
 lalrpop_mod!(pub parser);
