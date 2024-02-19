@@ -1,133 +1,75 @@
 use std::str::FromStr;
-use crate::ast::*;
 
-grammar;
+use lalrpop_util::ParseError;
 
-pub Definition: Definition = {
-    "packet" <ident_type: IdentType> "{" <list: AssignList> "}" => {
-        Definition {
-            def_type: DefType::Packet,
-            ident_type, 
-            list
-        }
-    },
-    "message" <ident_type: IdentType> "{" <list: AssignList> "}" => {
-        Definition {
-            def_type: DefType::Message,
-            ident_type, 
-            list
-        }
-    },
-    "iter_group" <ident_type: IdentType> "{" <list: AssignList> "}" => {
-        Definition {
-            def_type: DefType::IterGroup,
-            ident_type, 
-            list
-        }
-    },
+use crate::ast::{Error as AstError, BuiltinTypes, Arg, DefaultVal, Field};
+use crate::file_text::FileText;
+use crate::utils::{Spanned, Error};
+use crate::token::Token;
+
+grammar<'input>(
+    input: &'input FileText
+);
+
+pub Num: u64 = {
+    "num" => u64::from_str(<>).unwrap()
 }
 
-AssignList: Vec<Box<Assignment>> = {
-    <mut v: (<Assignment> ",")*> <a: Assignment?> => {
-        match a {
-            None => v,
-            Some(a) => {
-                v.push(a);
-                v
-            }
-        }
+extern {
+    type Location = usize;
+    type Error = Error;
+
+    enum Token<'input> {
+        "packet" => Token::Packet,
+        "message" => Token::Message,
+        "iter_group" => Token::IterGroup,
+        "header" => Token::Header,
+        "var_header" => Token::VarHeader,
+        "with_payload" => Token::WithPayload,
+        "header_len" => Token::HeaderLen,
+        "payload_len" => Token::PayloadLen,
+        "packet_len" => Token::PacketLen,
+        "cond" => Token::Cond,
+        "messages" => Token::Messages,
+        "Field" => Token::Field,
+        "bit" => Token::Bit,
+        "repr" => Token::Repr,
+        "arg" => Token::Arg,
+        "default" => Token::Default,
+        "gen" => Token::Gen,
+        "VarField" => Token::VarField,
+        "len" => Token::Len,
+        "item_size" => Token::ItemSize,
+        "expr" => Token::Expr,
+        "min" => Token::Min,
+        "max" => Token::Max,
+        "ident" => Token::Ident(<&'input str>),
+        "builtin type" => Token::BuiltinType(<&'input str>),
+        "bool value" => Token::BooleanValue(<&'input str>),
+        "==" => Token::Eq,
+        "!=" => Token::Neq,
+        ">" => Token::Gt,
+        ">=" => Token::Ge,
+        "<" => Token::Lt,
+        "<=" => Token::Le,
+        "!" => Token::Not,
+        "&&" => Token::And,
+        "||" => Token::Or,
+        "+" => Token::Plus,
+        "-" => Token::Minus,
+        "*" => Token::Mult,
+        "/" => Token::Div,
+        "(" => Token::LParen,
+        ")" => Token::RParen,
+        "{" => Token::LBrace,
+        "}" => Token::RBrace,
+        "[" => Token::LBracket,
+        "]" => Token::RBracket,
+        "," => Token::Comma,
+        "=" => Token::Assign,
+        "num" => Token::Num(<&'input str>),
+        "code" => Token::Code(<&'input str>),
+        "doc"=> Token::Doc(<&'input str>),
     }
 }
 
-Assignment: Box<Assignment> = {
-    <var_start: @L> <ident_var: IdentVar> <var_end: @R> "=" <value: Value> 
-                => Box::new(Assignment{ident_var_with_pos: (var_start, ident_var, var_end), value})
-}
-
-Value: Box<Value> = {
-    @L Primitive @R => Box::new(Value::Primitive(<>)),
-    <@L> "[" <AssignList> "]" <@R> => Box::new(Value::List(<>)),
-    @L Ctor @R => Box::new(Value::Ctor(<>))
-}
-
-Ctor: Box<Ctor> = {
-    <ident_type: IdentType> "{" <list: AssignList> "}" => Box::new(Ctor{ident_type, list})
-}
-
-Primitive: Primitive = {
-    <BuiltinType> => Primitive::BuiltinType(<>),
-    <IdentType> => Primitive::IdentType(<>),
-    <RsExpr> => Primitive::RsExpr(<>),
-    <AlgExpr> => Primitive::AlgExpr(<>),
-    <CmpExpr> => Primitive::CmpExpr(<>),
-}
-
-AlgExpr: Box<AlgExpr> = {
-    <l: AlgExpr> "+" <r: AlgFactor> => Box::new(AlgExpr::Op(l, AlgOp::Add, r)),
-    <l: AlgExpr> "-" <r: AlgFactor> => Box::new(AlgExpr::Op(l, AlgOp::Sub, r)),
-    AlgFactor
-}
-
-AlgFactor: Box<AlgExpr> = {
-    <l: AlgFactor> "*" <r: AlgTerm> => Box::new(AlgExpr::Op(l, AlgOp::Mul, r)),
-    <l: AlgFactor> "/" <r: AlgTerm> => Box::new(AlgExpr::Op(l, AlgOp::Div, r)),
-    AlgTerm
-}
-
-AlgTerm: Box<AlgExpr> = {
-    Num => Box::new(AlgExpr::Num(<>)),
-    IdentVar => Box::new(AlgExpr::IdentVar(<>)),
-    "(" <AlgExpr> ")" => <>
-}
-
-CmpExpr: Box<CmpExpr> = {
-    <CmpExpr> "&&" <CmpTerm> => Box::new(CmpExpr::And(<>)),
-    <CmpExpr> "||" <CmpTerm> => Box::new(CmpExpr::Or(<>)),
-    CmpTerm
-}
-
-CmpTerm: Box<CmpExpr> = {
-    Bool => Box::new(CmpExpr::Bool(<>)),
-    AlgExpr CmpOp AlgExpr => Box::new(CmpExpr::Op(<>)),
-    "!" "(" <CmpExpr> ")" => Box::new(CmpExpr::Neg(<>)),
-    "(" <CmpExpr> ")" => <>,
-}
-
-CmpOp: CmpOp = {
-    "==" => CmpOp::Eq,
-    "!=" => CmpOp::Ne,
-    ">" => CmpOp::Gt,
-    ">=" => CmpOp::Ge,
-    "<" => CmpOp::Lt,
-    "<=" => CmpOp::Le,
-}
-
-BuiltinType: BuiltinType = {
-    "u8" => BuiltinType::U8,
-    "u16" => BuiltinType::U16,
-    "u32" => BuiltinType::U32, 
-    "u64" => BuiltinType::U64,
-    "&" "[" "u8" "]" => BuiltinType::ByteSlice,
-    "bool" => BuiltinType::Bool,
-}
-
-Bool: bool = {
-    "true" => true,
-    "false" => false,
-}
-
-Num: u64 = {
-    r"[0-9]+" => u64::from_str(<>).unwrap()
-}
-
-IdentVar: String = {
-    r"[a-z][a-z0-9_]*" => String::from_str(<>).unwrap()
-}
-
-IdentType: String = {
-    r"[A-Z][A-Za-z0-9_]*" => String::from_str(<>).unwrap()
-}
-
-RsExpr: String = {
-    <v: r#"rs"[^"]+""#> => String::from_str(&v[3..v.len()-1]).unwrap()
-}

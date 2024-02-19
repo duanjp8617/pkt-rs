@@ -2,11 +2,10 @@
 extern crate quick_error;
 
 mod ast;
-// mod typed_ast;
 mod error;
 mod file_text;
 mod token;
-mod ast_new;
+mod utils;
 
 use lalrpop_util::lalrpop_mod;
 lalrpop_mod!(pub parser);

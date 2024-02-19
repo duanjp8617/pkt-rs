@@ -1,16 +1,35 @@
-quick_error! {
-    #[derive(Debug, PartialEq, Eq)]
-    pub enum Error {
-        InvalidToken(pos: usize) {
-            display("invalid token at {}", pos)
-        }
-        UnclosedCodeSegment(pos: usize) {
-            display("unclosed code segment at {}", pos)
+use crate::utils::Spanned;
+
+// The error type for the tokenizer is taken from lalrpop.
+// The error type needs to remember the starting position of the erroneous token
+// as well as the error code to facilitate error reporting. 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Error {
+    pub location: usize,
+    pub code: ErrorCode,
+}
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.code {
+            ErrorCode::InvalidToken => write!(fmt, "invalid token"),
+            ErrorCode::UnclosedCodeSegment => write!(fmt, "uncolosed code segment"),
         }
     }
 }
 
-pub type Spanned<T> = (usize, T, usize);
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ErrorCode {
+    InvalidToken,
+    UnclosedCodeSegment,
+}
+
+fn error<T>(c: ErrorCode, l: usize) -> Result<T, Error> {
+    Err(Error {
+        location: l,
+        code: c,
+    })
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Token<'input> {
@@ -279,15 +298,13 @@ impl<'input> Tokenizer<'input> {
     ) {
         loop {
             match self.take_while(|c| c.is_whitespace()) {
-                Some((_, '/')) => {
-                    match self.search_for_doc_line() {
-                        Some(_) => {
-                            ending_pos.0 = self.head;
-                            ending_pos.1 = self.chars.clone();
-                        }
-                        None => break,
+                Some((_, '/')) => match self.search_for_doc_line() {
+                    Some(_) => {
+                        ending_pos.0 = self.head;
+                        ending_pos.1 = self.chars.clone();
                     }
-                }
+                    None => break,
+                },
                 _ => break,
             }
         }
@@ -434,7 +451,7 @@ impl<'input> Tokenizer<'input> {
                             )));
                         }
                         None => {
-                            return Some(Err(Error::InvalidToken(idx)));
+                            return Some(error(ErrorCode::InvalidToken, idx));
                         }
                     },
                 },
@@ -450,10 +467,10 @@ impl<'input> Tokenizer<'input> {
                                     next_idx + 1,
                                 )))
                             })
-                            .unwrap_or(Some(Err(Error::UnclosedCodeSegment(idx))));
+                            .unwrap_or(Some(error(ErrorCode::UnclosedCodeSegment, idx)));
                     }
                     _ => {
-                        return Some(Err(Error::InvalidToken(idx)));
+                        return Some(error(ErrorCode::InvalidToken, idx));
                     }
                 },
                 Some((idx, c)) if identifier_start(c) => {
@@ -496,7 +513,7 @@ impl<'input> Tokenizer<'input> {
                     continue;
                 }
                 Some((idx, _)) => {
-                    return Some(Err(Error::InvalidToken(idx)));
+                    return Some(error(ErrorCode::InvalidToken, idx));
                 }
 
                 None => return None,
@@ -844,13 +861,10 @@ wtf"#;
             t.next_token(),
             Some(Ok((0, Token::Doc("///a\n///b\n"), 10)))
         );
-        assert_eq!(
-            t.next_token(),
-            Some(Ok((13, Token::Ident("wtf"), 16)))
-        );
+        assert_eq!(t.next_token(), Some(Ok((13, Token::Ident("wtf"), 16))));
         assert_eq!(t.next_token(), None);
     }
-    
+
     #[allow(dead_code)]
     fn test_whole_tokenizer() {
         let s = r#"
