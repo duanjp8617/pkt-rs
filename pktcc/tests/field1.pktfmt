@@ -1,0 +1,6 @@
+Field {
+    bit = 15,
+    repr = u8,
+    arg = u16,
+    default = 0,
+}

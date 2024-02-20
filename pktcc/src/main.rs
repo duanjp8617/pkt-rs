@@ -9,7 +9,6 @@ mod error;
 mod file_text;
 mod token;
 
-
 use lalrpop_util::lalrpop_mod;
 lalrpop_mod!(pub parser);
 
@@ -17,11 +16,20 @@ use file_text::FileText;
 use std::io;
 
 fn main() {
-    let f = FileText::new("/home/djp/test.txt").unwrap();
+    let f = FileText::new("/home/djp/pkt-rs/pktcc/tests/field1.pktfmt").unwrap();
+    let tokenizer = token::Tokenizer::new(f.text());
 
-    let mut stdout = io::stdout();
+    let parse_res = parser::FieldParser::new().parse(
+        &f,
+        tokenizer
+            .into_iter()
+            .map(|tk_res| tk_res.map_err(|err| utils::Error::Token(err))),
+    );
 
-    f.render_code_block(3, 10, &mut stdout).unwrap();
+    match parse_res {
+        Ok(field) => println!("{:?}", field),
+        Err(err) => utils::render_error(&f, err),
+    }
 }
 
 // #[test]

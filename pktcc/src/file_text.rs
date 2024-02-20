@@ -100,7 +100,7 @@ impl FileText {
 
         write!(
             out,
-            "error at {} {}:{}",
+            "at {} {}:{}",
             self.path.to_str().unwrap(),
             start_line_idx + 1,
             start - self.lines[start_line_idx].0 + 1

@@ -2,7 +2,7 @@ use crate::utils::Spanned;
 
 // The error type for the tokenizer is taken from lalrpop.
 // The error type needs to remember the starting position of the erroneous token
-// as well as the error code to facilitate error reporting. 
+// as well as the error code to facilitate error reporting.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Error {
     pub location: usize,
@@ -122,6 +122,15 @@ pub enum Token<'input> {
     // /// doc string
     // /// doc string
     Doc(&'input str),
+}
+
+// lalrpop ParseError only implements std::fmt::Display if
+// L, T and E all implement std::fmt::Display.
+// So it's better to implement Display for the Token.
+impl<'input> std::fmt::Display for Token<'input> {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(fmt, "{:?}", self)
+    }
 }
 
 const KEYWORDS: &[(&str, Token)] = &[
@@ -310,7 +319,7 @@ impl<'input> Tokenizer<'input> {
         }
     }
 
-    fn next_token(&mut self) -> Option<Result<Spanned<Token<'input>>, Error>> {
+    fn next_token(&mut self) -> Option<Result<(usize, Token<'input>, usize), Error>> {
         loop {
             match self.peek() {
                 Some((idx, '+')) => {
@@ -535,7 +544,7 @@ fn num_start(c: char) -> bool {
 }
 
 impl<'input> Iterator for Tokenizer<'input> {
-    type Item = Result<Spanned<Token<'input>>, Error>;
+    type Item = Result<(usize, Token<'input>, usize), Error>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.next_token()
