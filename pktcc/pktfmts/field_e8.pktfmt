@@ -1,0 +1,7 @@
+// error: default should be a number
+Field {
+    bit = 5, 
+    repr = u8,
+    arg = u8,
+    default = true,
+}

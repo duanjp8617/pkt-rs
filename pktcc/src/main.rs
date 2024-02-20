@@ -12,7 +12,9 @@ use lalrpop_util::lalrpop_mod;
 lalrpop_mod!(pub parser);
 
 use file_text::FileText;
-use std::io;
+
+#[cfg(test)]
+mod parser_test;
 
 fn main() {
     let f = FileText::new("/home/djp/pkt-rs/pktcc/tests/field1.pktfmt").unwrap();

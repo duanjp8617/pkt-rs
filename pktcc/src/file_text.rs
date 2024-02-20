@@ -1,6 +1,6 @@
 use std::fs::File;
 use std::io::{Read, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 quick_error! {
     #[derive(Debug)]
@@ -28,14 +28,14 @@ impl FileText {
     ///
     /// This is similar  to the FileText implementation in lalrpop,
     /// except that it does not accept files containing multi-byte characters.
-    pub fn new(p: &str) -> Result<Self, Error> {
-        let mut f = File::open(p)?;
+    pub fn new<P: AsRef<Path>>(p: P) -> Result<Self, Error> {
+        let mut f = File::open(p.as_ref())?;
         let mut text = String::new();
         f.read_to_string(&mut text)?;
         let lines = Self::analyze_lines(&text)?;
 
         Ok(Self {
-            path: PathBuf::from(p),
+            path: p.as_ref().to_path_buf(),
             text,
             lines,
         })

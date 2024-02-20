@@ -7,6 +7,35 @@ quick_error! {
     }
 }
 
+const ERR_REASON_FIELD1: &str = r#"invalid repr
+If repr is defined, it must satisfy one of the following conditions:
+1. The defined repr is the same as the repr inferred from the bit.
+2. The defined repr is a byte slice, and bit % 8 == 0"#;
+
+const ERR_REASON_FIELD2: &str = r#"invalid arg
+If arg is defined, it must satisfy one of the following conditions:
+1. The defined arg is the same as the current repr (either defined or inferred).
+2. The defined arg is bool, and the bit size is 1.
+3. The defined arg is a standard Rust type wrapped by %% as code segment."#;
+
+const ERR_REASON_FIELD3: &str = r#"missing default
+The arg (either defined or inferred) is a Rust code segment, and the default must be 
+provided as a Rust code segment."#;
+
+const ERR_REASON_FIELD4: &str = r#"invalid default 
+If arg is a builtin type and default is defined, the default must satisfy one of the 
+following conditions: 
+1. The arg is bool and the default is a boolean value.
+2. The arg is a byte slice and the default is a code segment
+3. The arg is u8/u16/u32/u64 and the default is a number."#;
+
+const ERR_REASON_FIELD5: &str = r#"invalid default
+If arg is a code segment, then the default must be a code segment as well."#;
+
+const ERR_REASON_FIELD6: &str = r#"invalid bit size
+the following expression should not hold: 
+bit == 0 || (bit > 64 && bit % 8 != 0)"#;
+
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum BuiltinTypes {
     U8,
@@ -86,7 +115,7 @@ impl Field {
             // OK: use &[u8] to override the inferred repr
             Ok(*defined_repr)
         } else {
-            return_err!(Error, InvalidField, "invalid repr")
+            return_err!(Error, InvalidField, ERR_REASON_FIELD1)
         }
     }
 
@@ -101,7 +130,7 @@ impl Field {
                     // Ok: defined arg is bool while bit size is 1
                     Ok(Arg::BuiltinTypes(*defined_arg))
                 } else {
-                    return_err!(Error, InvalidField, "invalid arg")
+                    return_err!(Error, InvalidField, ERR_REASON_FIELD2)
                 }
             }
             // Ok: defined arg is code
@@ -110,7 +139,7 @@ impl Field {
     }
 
     // Infer default from bit and arg
-    fn infer_default_val(bit: u64, arg: &Arg) -> Result<DefaultVal, Error> {
+    fn infer_default_val(arg: &Arg) -> Result<DefaultVal, Error> {
         match arg {
             Arg::BuiltinTypes(bt) => {
                 match bt {
@@ -125,7 +154,7 @@ impl Field {
                     _ => Ok(DefaultVal::Num(u64::default())),
                 }
             }
-            Arg::Code(_) => return_err!(Error, InvalidField, "missing default"),
+            Arg::Code(_) => return_err!(Error, InvalidField, ERR_REASON_FIELD3),
         }
     }
 
@@ -149,12 +178,12 @@ impl Field {
                 {
                     Ok(defined_default.clone())
                 }
-                _ => return_err!(Error, InvalidField, "invalid default"),
+                _ => return_err!(Error, InvalidField, ERR_REASON_FIELD4),
             },
             Arg::Code(_) => match defined_default {
                 // Ok: defined default and arg are both code
                 DefaultVal::Code(_) => Ok(defined_default.clone()),
-                _ => return_err!(Error, InvalidField, "invalid default"),
+                _ => return_err!(Error, InvalidField, ERR_REASON_FIELD5),
             },
         }
     }
@@ -167,7 +196,7 @@ impl Field {
         gen: Option<bool>,
     ) -> Result<Self, Error> {
         if bit == 0 || (bit > 64 && bit % 8 != 0) {
-            return_err!(Error, InvalidField, "invalid bit value")
+            return_err!(Error, InvalidField, ERR_REASON_FIELD6)
         }
 
         let repr = match repr {
@@ -182,7 +211,7 @@ impl Field {
 
         let default = match default {
             Some(defined_default) => Self::check_defined_default_val(&arg, &defined_default)?,
-            None => Self::infer_default_val(bit, &arg)?,
+            None => Self::infer_default_val(&arg)?,
         };
 
         let gen = gen.unwrap_or(true);

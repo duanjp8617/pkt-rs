@@ -1,0 +1,7 @@
+// error: bit size is incorrect
+Field {
+    bit = 0, 
+    repr = u8,
+    arg = %%Ipv4Addr%%,
+    default = 0,
+}

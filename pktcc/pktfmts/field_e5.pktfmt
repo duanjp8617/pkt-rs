@@ -1,0 +1,6 @@
+// error: default must be defined as a code segment
+Field {
+    bit = 2, 
+    repr = u8,
+    arg = %%Ipv4Addr%%,
+}

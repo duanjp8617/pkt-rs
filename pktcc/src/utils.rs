@@ -9,6 +9,7 @@ use crate::token::Error as TokenError;
 // of the contained item
 pub struct Spanned<T> {
     item: T,
+    // span is a non-inclusive range
     span: (usize, usize),
 }
 
