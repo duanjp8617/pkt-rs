@@ -1,7 +1,5 @@
 /// Some of the key utilities that are compulsory for a lalrpop-parser
-use std::io::{Read, Write};
-
-use lalrpop_util::ParseError;
+use std::io::Write;
 
 use crate::ast::Error as AstError;
 use crate::file_text::FileText;
@@ -26,36 +24,50 @@ quick_error! {
         Ast{err: AstError, span: (usize, usize)} {
             display("{}", err)
         }
+        Lalrpop(err_str: String) {
+            display("{}", err_str)
+        }
     }
 }
 
-pub fn render_error<L, T>(file_text: &FileText, error: ParseError<L, T, Error>)
-where
-    L: std::fmt::Display,
-    T: std::fmt::Display,
-{
-    let mut std_err = std::io::stderr();
-    match error {
-        ParseError::User { error } => match error {
-            Error::Token(ref err) => {
-                file_text
-                    .render_code_block(err.location, err.location, &mut std_err)
-                    .unwrap();
-                write!(std_err, "{}", err).unwrap();
-            }
-            Error::Ast { ref err, ref span } => {
-                file_text
-                    .render_code_block(span.0, span.1 - 1, &mut std_err)
-                    .unwrap();
+// let parse_res = parse_with_error!(parser::FieldParser, tokenizer, );
+// A macro that drives the parser
+macro_rules! parse_with_error {
+    ($parser: ty, $tokenizer: expr, $($parser_args: expr),*) => {
+        <$parser>::new()
+        .parse(
+            $($parser_args),*,
+            $tokenizer
+                .into_iter()
+                .map(|tk_res| tk_res.map_err(|err| crate::utils::Error::Token(err))),
+        )
+        .map_err(|err| match err {
+            ::lalrpop_util::ParseError::User { error } => error,
+            _ => crate::utils::Error::Lalrpop(format!("{}", err)),
+        })
+    }
+}
 
-                write!(std_err, "{}", err).unwrap();
-            }
-        },
-        _ => {
-            write!(std_err, "{}", error).unwrap();
+pub fn render_error(file_text: &FileText, error: Error, out: &mut dyn Write) {
+    match error {
+        Error::Token(ref err) => {
+            file_text
+                .render_code_block(err.location, err.location, out)
+                .unwrap();
+            write!(out, "{}", err).unwrap();
+        }
+        Error::Ast { ref err, ref span } => {
+            file_text
+                .render_code_block(span.0, span.1 - 1, out)
+                .unwrap();
+
+            write!(out, "{}", err).unwrap();
+        }
+        Error::Lalrpop(err) => {
+            write!(out, "{}", err).unwrap();
         }
     }
-    writeln!(std_err, "").unwrap();
+    writeln!(out, "").unwrap();
 }
 
 // A quick way to return an error defined by quick_err macro

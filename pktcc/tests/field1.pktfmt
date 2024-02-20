@@ -1,6 +1,6 @@
 Field {
-    bit = 15,
-    repr = u8,
+    bit = 8, 
+    repr = u16,
     arg = u16,
     default = 0,
 }

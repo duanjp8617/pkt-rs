@@ -69,7 +69,7 @@ extern {
     }
 }
 
-Num: u64 = {
+pub Num: u64 = {
     "num" => u64::from_str(<>).unwrap()
 }
 
