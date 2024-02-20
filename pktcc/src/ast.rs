@@ -1,5 +1,3 @@
-use crate::utils::Spanned;
-
 quick_error! {
     #[derive(Debug, PartialEq, Eq, Hash, Clone)]
     pub enum Error {
@@ -17,6 +15,20 @@ pub enum BuiltinTypes {
     U64,
     ByteSlice,
     Bool,
+}
+
+impl From<&str> for BuiltinTypes {
+    fn from(value: &str) -> Self {
+        match value {
+            "u8" => Self::U8,
+            "u16" => Self::U16,
+            "u32" => Self::U32,
+            "u64" => Self::U64,
+            "&[u8]" => Self::ByteSlice,
+            "bool" => Self::Bool,
+            _ => panic!(),
+        }
+    }
 }
 
 #[derive(Clone, Eq, PartialEq, Debug)]
@@ -44,7 +56,7 @@ pub struct Field {
 
 impl Field {
     // Infer repr from bit if repf is not defined
-    pub fn infer_repr(bit: u64) -> BuiltinTypes {
+    fn infer_repr(bit: u64) -> BuiltinTypes {
         // Makesure that bit is positive
         assert!(bit > 0);
 
@@ -64,10 +76,7 @@ impl Field {
     }
 
     // Check whether the defined repr complies with the bit
-    pub fn check_defined_repr(
-        bit: u64,
-        defined_repr: &BuiltinTypes,
-    ) -> Result<BuiltinTypes, Error> {
+    fn check_defined_repr(bit: u64, defined_repr: &BuiltinTypes) -> Result<BuiltinTypes, Error> {
         let inferred = Self::infer_repr(bit);
 
         if inferred == *defined_repr {
@@ -77,16 +86,12 @@ impl Field {
             // OK: use &[u8] to override the inferred repr
             Ok(*defined_repr)
         } else {
-            Err(Error::InvalidField("invalid repr"))
+            return_err!(Error, InvalidField, "invalid repr")
         }
     }
 
     // Check whether the defined arg complies with both bit and repr
-    pub fn check_defined_arg(
-        bit: u64,
-        repr: &BuiltinTypes,
-        defined_arg: &Arg,
-    ) -> Result<Arg, Error> {
+    fn check_defined_arg(bit: u64, repr: &BuiltinTypes, defined_arg: &Arg) -> Result<Arg, Error> {
         match defined_arg {
             Arg::BuiltinTypes(defined_arg) => {
                 if *defined_arg == *repr {
@@ -96,7 +101,7 @@ impl Field {
                     // Ok: defined arg is bool while bit size is 1
                     Ok(Arg::BuiltinTypes(*defined_arg))
                 } else {
-                    Err(Error::InvalidField("invalid arg"))
+                    return_err!(Error, InvalidField, "invalid arg")
                 }
             }
             // Ok: defined arg is code
@@ -105,7 +110,7 @@ impl Field {
     }
 
     // Infer default from bit and arg
-    pub fn infer_default_val(bit: u64, arg: &Arg) -> Result<DefaultVal, Error> {
+    fn infer_default_val(bit: u64, arg: &Arg) -> Result<DefaultVal, Error> {
         match arg {
             Arg::BuiltinTypes(bt) => {
                 match bt {
@@ -120,11 +125,11 @@ impl Field {
                     _ => Ok(DefaultVal::Num(u64::default())),
                 }
             }
-            Arg::Code(_) => Err(Error::InvalidField("missing default")),
+            Arg::Code(_) => return_err!(Error, InvalidField, "missing default"),
         }
     }
 
-    pub fn check_defined_default_val(
+    fn check_defined_default_val(
         arg: &Arg,
         defined_default: &DefaultVal,
     ) -> Result<DefaultVal, Error> {
@@ -144,14 +149,51 @@ impl Field {
                 {
                     Ok(defined_default.clone())
                 }
-                _ => Err(Error::InvalidField("invalid default")),
+                _ => return_err!(Error, InvalidField, "invalid default"),
             },
             Arg::Code(_) => match defined_default {
                 // Ok: defined default and arg are both code
                 DefaultVal::Code(_) => Ok(defined_default.clone()),
-                _ => Err(Error::InvalidField("missing default")),
+                _ => return_err!(Error, InvalidField, "invalid default"),
             },
         }
+    }
+
+    pub fn new(
+        bit: u64,
+        repr: Option<BuiltinTypes>,
+        arg: Option<Arg>,
+        default: Option<DefaultVal>,
+        gen: Option<bool>,
+    ) -> Result<Self, Error> {
+        if bit == 0 || (bit > 64 && bit % 8 != 0) {
+            return_err!(Error, InvalidField, "invalid bit value")
+        }
+
+        let repr = match repr {
+            Some(defined_repr) => Self::check_defined_repr(bit, &defined_repr)?,
+            None => Self::infer_repr(bit),
+        };
+
+        let arg = match arg {
+            Some(defined_arg) => Self::check_defined_arg(bit, &repr, &defined_arg)?,
+            None => Arg::BuiltinTypes(repr),
+        };
+
+        let default = match default {
+            Some(defined_default) => Self::check_defined_default_val(&arg, &defined_default)?,
+            None => Self::infer_default_val(bit, &arg)?,
+        };
+
+        let gen = gen.unwrap_or(true);
+
+        Ok(Field {
+            bit,
+            repr,
+            arg,
+            default,
+            gen,
+        })
     }
 }
 

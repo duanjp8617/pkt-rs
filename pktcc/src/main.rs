@@ -1,11 +1,14 @@
 #[macro_use]
 extern crate quick_error;
 
+#[macro_use]
+mod utils;
+
 mod ast;
 mod error;
 mod file_text;
 mod token;
-mod utils;
+
 
 use lalrpop_util::lalrpop_mod;
 lalrpop_mod!(pub parser);

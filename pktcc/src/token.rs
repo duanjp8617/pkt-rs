@@ -866,6 +866,7 @@ wtf"#;
     }
 
     #[allow(dead_code)]
+    #[test]
     fn test_whole_tokenizer() {
         let s = r#"
 /// Start

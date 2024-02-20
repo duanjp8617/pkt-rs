@@ -24,3 +24,10 @@ quick_error! {
         }
     }
 }
+
+// A quick way to return an error defined by quick_err macro
+macro_rules! return_err {
+    ($err_ty: ty, $arm: ident, $($args: expr),+) => {
+        return Err(<$err_ty>::$arm($($args),+))
+    }
+}

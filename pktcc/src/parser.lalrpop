@@ -2,7 +2,7 @@ use std::str::FromStr;
 
 use lalrpop_util::ParseError;
 
-use crate::ast::{Error as AstError, BuiltinTypes, Arg, DefaultVal, Field};
+use crate::ast::{BuiltinTypes, Arg, DefaultVal, Field};
 use crate::file_text::FileText;
 use crate::utils::{Spanned, Error};
 use crate::token::Token;
@@ -10,10 +10,6 @@ use crate::token::Token;
 grammar<'input>(
     input: &'input FileText
 );
-
-pub Num: u64 = {
-    "num" => u64::from_str(<>).unwrap()
-}
 
 extern {
     type Location = usize;
@@ -73,3 +69,47 @@ extern {
     }
 }
 
+Num: u64 = {
+    "num" => u64::from_str(<>).unwrap()
+}
+
+Bool: bool = {
+    "bool value" => {
+        match <> {
+            "true" => true,
+            "false" => false,
+            _ => panic!()
+        }
+    }
+}
+
+BuiltinTypes: BuiltinTypes = {
+    "builtin type" => <>.into()
+}
+
+Arg: Arg = {
+    BuiltinTypes => Arg::BuiltinTypes(<>),
+    "code" => Arg::Code(<>.to_string())
+}
+
+DefaultVal: DefaultVal = {
+    Num => DefaultVal::Num(<>),
+    Bool => DefaultVal::Bool(<>),
+    "code" => DefaultVal::Code(<>.to_string())
+}
+
+pub Field: Field = {
+    <l: @L> "Field" "{"
+        "bit" "=" <bit: Num> 
+        <repr: ("," "repr" "=" <BuiltinTypes>)?>
+        <arg: ("," "arg" "=" <Arg>)?>
+        <default: ("," "default" "=" <DefaultVal>)?>
+        <gen: ("," "gen" "=" <Bool>)?>
+        ","?
+    "}" <r: @R> =>? {
+        Field::new(bit, repr, arg, default, gen).map_err(|err| {
+            let error = Error::Ast {err, span: (l, r)};
+            ParseError::User{ error }
+        })
+    }
+}
