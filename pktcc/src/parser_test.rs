@@ -316,3 +316,30 @@ bit == 0 || (bit > 64 && bit % 8 != 0)
 
     assert_eq!(std::str::from_utf8(&out[..]).unwrap(), err_reason);
 }
+
+#[test]
+fn wtf() {
+    let fname_ut = "header.pktfmt";
+
+    let mut work_dir = std::env::current_dir().unwrap();
+    work_dir.push("pktfmts");
+    work_dir.push(fname_ut);
+
+    let fut = FileText::new(work_dir.as_path()).unwrap();
+    let tokenizer = token::Tokenizer::new(fut.text());
+    let parse_res = parse_with_error!(parser::HeaderParser, tokenizer, &fut);
+
+    match parse_res {
+        Ok(header) => println!("{:?}", header),
+        Err(err) => {
+            let mut out: Vec<u8> = Vec::new();
+            utils::render_error(&fut, err, &mut out);
+            println!("{}", std::str::from_utf8(&out[..]).unwrap());
+        }
+    }
+
+    // let mut out: Vec<u8> = Vec::new();
+    // utils::render_error(&fut, parse_res.unwrap_err(), &mut out);
+
+    // assert_eq!(std::str::from_utf8(&out[..]).unwrap(), err_reason);
+}

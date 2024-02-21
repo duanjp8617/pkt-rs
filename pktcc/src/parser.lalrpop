@@ -2,7 +2,7 @@ use std::str::FromStr;
 
 use lalrpop_util::ParseError;
 
-use crate::ast::{BuiltinTypes, Arg, DefaultVal, Field};
+use crate::ast::{BuiltinTypes, Arg, DefaultVal, Field, check_header_list};
 use crate::file_text::FileText;
 use crate::utils::{Spanned, Error};
 use crate::token::Token;
@@ -69,6 +69,14 @@ extern {
     }
 }
 
+// A macro for generating list stored in Vec.
+// Taken from lalrpop's parser.
+// Note: a lalrpop macro must end with ;.
+// An Option<T> can be turned into an iterator Iterator<item = T>.
+List<E>: Vec<E> = 
+    <v0: (<E> ",")*> <e: E?> => 
+        v0.into_iter().chain(e).collect();
+
 pub Num: u64 = {
     "num" => u64::from_str(<>).unwrap()
 }
@@ -109,6 +117,23 @@ pub Field: Field = {
     "}" <r: @R> =>? {
         Field::new(bit, repr, arg, default, gen).map_err(|err| {
             let error = Error::Ast {err, span: (l, r)};
+            ParseError::User{ error }
+        })
+    }
+}
+
+NamedField: (Spanned<String>, Field) = {
+    <l: @L> <field_name: "ident"> <r: @R> "=" <field: Field> => {
+        (Spanned{item: field_name.to_string(), span: (l, r)}, field)
+    }
+}
+
+pub Header: Vec<(String, Field)> = {
+    <l: @L> "header" <r: @R> "=" "["
+        <header_list: List<NamedField>>
+    "]" =>? {
+        check_header_list(header_list, (l, r)).map_err(|(err, span)|{
+            let error = Error::Ast{err, span};
             ParseError::User{ error }
         })
     }

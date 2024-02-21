@@ -1,0 +1,11 @@
+// error: default should be a number
+header = [
+        src_port = Field {bit = 16},
+        dst_port = Field {bit = 16},
+        length = Field {
+            bit = 16,
+            default = 8,
+            gen = false,
+        },
+        checksum = Field {bit = 16},
+    ]

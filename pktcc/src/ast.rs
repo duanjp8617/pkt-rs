@@ -1,8 +1,15 @@
+use std::collections::HashSet;
+
+use crate::utils::Spanned;
+
 quick_error! {
     #[derive(Debug, PartialEq, Eq, Hash, Clone)]
     pub enum Error {
         InvalidField(reason: &'static str) {
             display("invalid Field definition: {}", reason)
+        }
+        InvalidHeader(reason: &'static str) {
+            display("invalid header list: {}", reason)
         }
     }
 }
@@ -35,6 +42,12 @@ If arg is a code segment, then the default must be a code segment as well."#;
 const ERR_REASON_FIELD6: &str = r#"invalid bit size
 the following expression should not hold: 
 bit == 0 || (bit > 64 && bit % 8 != 0)"#;
+
+const ERR_REASON_HEADER1: &str = r#"duplicated field name
+Each field name defined in the header should be unique."#;
+
+const ERR_REASON_HEADER2: &str = r#"not aligned to byte boundary
+The total bit size of the header fields should be dividable by 8."#;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum BuiltinTypes {
@@ -223,6 +236,36 @@ impl Field {
             default,
             gen,
         })
+    }
+}
+
+// Given a preparsed header list, check its correctness
+// and return a correct header list
+pub fn check_header_list(
+    hl_pos: Vec<(Spanned<String>, Field)>,
+    header_pos: (usize, usize),
+) -> Result<Vec<(String, Field)>, (Error, (usize, usize))> {
+    // First we perform dedup the header field names.
+    let mut dedup = HashSet::new();
+    let mut total_bits = 0;
+    let v = hl_pos
+        .into_iter()
+        .map(|(sp_str, field)| {
+            if !dedup.insert(sp_str.item.clone()) {
+                Err((Error::InvalidHeader(ERR_REASON_HEADER1), sp_str.span))
+            } else {
+                total_bits += field.bit;
+                Ok((sp_str.item, field))
+            }
+        })
+        .collect::<Result<Vec<_>, (Error, (usize, usize))>>()?;
+
+    // Next, we check whether the total bit size of the header
+    // aligns to the byte boundary
+    if total_bits % 8 != 0 {
+        Err((Error::InvalidHeader(ERR_REASON_HEADER2), header_pos))
+    } else {
+        Ok(v)
     }
 }
 

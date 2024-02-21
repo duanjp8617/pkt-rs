@@ -8,9 +8,9 @@ use crate::token::Error as TokenError;
 // A special wrapper type for that records the location
 // of the contained item
 pub struct Spanned<T> {
-    item: T,
+    pub item: T,
     // span is a non-inclusive range
-    span: (usize, usize),
+    pub span: (usize, usize),
 }
 
 // A public error type, that is used by both the
