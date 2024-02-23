@@ -1,8 +1,9 @@
 use std::str::FromStr;
+use std::collections::HashMap;
 
 use lalrpop_util::ParseError;
 
-use crate::ast::{BuiltinTypes, Arg, DefaultVal, Field, check_header_list};
+use crate::ast::{BuiltinTypes, Arg, DefaultVal, Field, BitPos, check_header_list};
 use crate::file_text::FileText;
 use crate::utils::{Spanned, Error};
 use crate::token::Token;
@@ -128,7 +129,7 @@ NamedField: (Spanned<String>, Field) = {
     }
 }
 
-pub Header: Vec<(String, Field)> = {
+pub Header: (Vec<(String, Field)>, HashMap<String, (BitPos, BitPos)>) = {
     <l: @L> "header" <r: @R> "=" "["
         <header_list: List<NamedField>>
     "]" =>? {

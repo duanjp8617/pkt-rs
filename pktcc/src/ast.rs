@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::HashMap;
 
 use crate::utils::Spanned;
 
@@ -48,6 +48,10 @@ Each field name defined in the header should be unique."#;
 
 const ERR_REASON_HEADER2: &str = r#"not aligned to byte boundary
 The total bit size of the header fields should be dividable by 8."#;
+
+const ERR_REASON_HEADER3: &str = r#"not aligned to byte boundary
+If the header field contains multiple bytes, then one of the two ends 
+must be aligned to the byte boudaries."#;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum BuiltinTypes {
@@ -239,33 +243,75 @@ impl Field {
     }
 }
 
+// BitPos records the starting and ending position of a header field.
+// An example of the header field position:
+// byte position:  0               1
+// bit position:   0 1 2 3 4 5 6 7 0 1 2  3  4  5  6  7
+// global bit pos: 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15
+//                 ^                 ^
+//           start BitPos       end BitPos
+// Note: two BitPos can form a range, indicating the starting position
+// and ending position of the header field.
+// This range is includsive by default.
+#[derive(Clone, Copy, Eq, PartialEq, Debug)]
+pub struct BitPos {
+    pub byte_pos: u64,
+    pub bit_pos: u64,
+}
+
+impl BitPos {
+    // Calculate the BitPos from the global bit pos
+    fn new(global_bit_pos: u64) -> Self {
+        Self {
+            byte_pos: global_bit_pos / 8,
+            bit_pos: global_bit_pos % 8,
+        }
+    }
+}
+
 // Given a preparsed header list, check its correctness
 // and return a correct header list
 pub fn check_header_list(
     hl_pos: Vec<(Spanned<String>, Field)>,
     header_pos: (usize, usize),
-) -> Result<Vec<(String, Field)>, (Error, (usize, usize))> {
-    // First we perform dedup the header field names.
-    let mut dedup = HashSet::new();
-    let mut total_bits = 0;
+) -> Result<(Vec<(String, Field)>, HashMap<String, (BitPos, BitPos)>), (Error, (usize, usize))> {
+    let mut field_pos: HashMap<String, (BitPos, BitPos)> = HashMap::new();
+    let mut global_bit_pos = 0;
     let v = hl_pos
         .into_iter()
         .map(|(sp_str, field)| {
-            if !dedup.insert(sp_str.item.clone()) {
+            if field_pos.get(&sp_str.item).is_some() {
+                // First, we dedup the header field names.
                 Err((Error::InvalidHeader(ERR_REASON_HEADER1), sp_str.span))
             } else {
-                total_bits += field.bit;
-                Ok((sp_str.item, field))
+                // Next, we check whether the bit size of the field
+                // is correctly aligned.
+                let start = BitPos::new(global_bit_pos);
+                // inclusive range, so we need to -1 here
+                let end = BitPos::new(global_bit_pos + field.bit - 1);
+
+                if start.byte_pos != end.byte_pos && (start.bit_pos != 0 && end.bit_pos != 7) {
+                    // If the header field contains multiple bytes, then one
+                    // of two ends must be aligned to the byte boudary.
+                    // In this branch, neither of the two ends are aligned to the byte boundary,
+                    // we report an error.
+                    Err((Error::InvalidHeader(ERR_REASON_HEADER3), sp_str.span))
+                } else {
+                    // move the global_bit_pos past the current header
+                    global_bit_pos += field.bit;
+                    field_pos.insert(sp_str.item.clone(), (start, end));
+                    Ok((sp_str.item, field))
+                }
             }
         })
         .collect::<Result<Vec<_>, (Error, (usize, usize))>>()?;
 
     // Next, we check whether the total bit size of the header
     // aligns to the byte boundary
-    if total_bits % 8 != 0 {
+    if global_bit_pos % 8 != 0 {
         Err((Error::InvalidHeader(ERR_REASON_HEADER2), header_pos))
     } else {
-        Ok(v)
+        Ok((v, field_pos))
     }
 }
 

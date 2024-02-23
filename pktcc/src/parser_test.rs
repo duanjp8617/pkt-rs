@@ -330,7 +330,10 @@ fn wtf() {
     let parse_res = parse_with_error!(parser::HeaderParser, tokenizer, &fut);
 
     match parse_res {
-        Ok(header) => println!("{:?}", header),
+        Ok((header, field_pos)) => {
+            println!("{:?}", header);
+            println!("{:?}", field_pos);
+        }
         Err(err) => {
             let mut out: Vec<u8> = Vec::new();
             utils::render_error(&fut, err, &mut out);
