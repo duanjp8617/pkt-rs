@@ -1,5 +1,16 @@
 use crate::*;
 
+// Test the parse error against an error string.
+macro_rules! parse_error_test {
+    (   
+        $program: expr,
+        $err_msg: expr, 
+        
+    ) => {
+        
+    };
+}
+
 #[test]
 fn field_e1() {
     let fname_ut = "field_e1.pktfmt";

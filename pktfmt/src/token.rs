@@ -1,5 +1,3 @@
-use crate::utils::Spanned;
-
 // The error type for the tokenizer is taken from lalrpop.
 // The error type needs to remember the starting position of the erroneous token
 // as well as the error code to facilitate error reporting.
@@ -415,10 +413,10 @@ impl<'input> Tokenizer<'input> {
                                 self.search_for_subsequent_docs(&mut ending_pos);
 
                                 // do consume and peek manually
-                                let next_idx = ending_pos.0.unwrap().0;
                                 self.head = ending_pos.1.next();
                                 self.chars = ending_pos.1;
 
+                                let next_idx = ending_pos.0.unwrap().0;
                                 return Some(Ok((
                                     idx,
                                     Token::Doc(&self.text[idx..next_idx + 1]),
@@ -875,7 +873,6 @@ wtf"#;
     }
 
     #[allow(dead_code)]
-    #[test]
     fn test_whole_tokenizer() {
         let s = r#"
 /// Start

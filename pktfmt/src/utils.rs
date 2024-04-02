@@ -13,9 +13,15 @@ pub struct Spanned<T> {
     pub span: (usize, usize),
 }
 
-// A public error type, that is used by both the
-// tokenizer and the parser.
 quick_error! {
+    /// A toplevel error type.
+    ///
+    /// This error type wraps all the errors exposed by various parsing stages.
+    /// It is also the argument to the `E` type parameter in `lalrpop_util::ParseError`.
+    ///
+    /// During parsing, all the errors generated will first be converted to the toplevel
+    /// `Error` type, and then parsed to the lalrpop parser as the an argument of the
+    /// `lalrpop_util::ParseError::User { error }`.
     #[derive(Debug, Eq, PartialEq, Clone)]
     pub enum Error {
         Token(err: TokenError) {
@@ -31,8 +37,9 @@ quick_error! {
     }
 }
 
-// let parse_res = parse_with_error!(parser::FieldParser, tokenizer, );
-// A macro that drives the parser
+#[macro_export]
+// A macro that drives the parser.
+// The returned error is converted into the toplevel error type.
 macro_rules! parse_with_error {
     ($parser: ty, $tokenizer: expr, $($parser_args: expr),*) => {
         <$parser>::new()

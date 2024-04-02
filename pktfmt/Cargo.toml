@@ -1,5 +1,5 @@
 [package]
-name = "pktcc"
+name = "pktfmt"
 description = "a source-to-source compiler for network protocols"
 keywords = ["network-packet", "packet-parser", "network-protocols"]
 categories = ["network-programming"]
@@ -22,3 +22,7 @@ lalrpop-util = { version = "0.20", features = ["lexer", "unicode"] }
 quick-error = "2.0.1"
 codespan = "0.11.1"
 codespan-reporting = "0.11.1"
+
+[[bin]]
+name = "pktfmt_cc"
+path = "bin/pktfmt_cc.rs"

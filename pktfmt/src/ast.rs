@@ -15,7 +15,7 @@ quick_error! {
 }
 
 const ERR_REASON_FIELD1: &str = r#"invalid repr
-If repr is defined, it must satisfy one of the following conditions:
+If repr is defined, it must satisfy the following conditions:
 1. The defined repr is the same as the repr inferred from the bit.
 2. The defined repr is a byte slice, and bit % 8 == 0"#;
 
