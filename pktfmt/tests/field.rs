@@ -1,5 +1,8 @@
 use pktfmt::*;
 
+#[macro_use]
+mod common;
+
 #[test]
 fn field_e1() {
     let fname_ut = "field_e1.pktfmt";
@@ -16,16 +19,5 @@ If repr is defined, it must satisfy one of the following conditions:
 2. The defined repr is a byte slice, and bit % 8 == 0
 "#;
 
-    let mut work_dir = std::env::current_dir().unwrap();
-    work_dir.push("pktfmts");
-    work_dir.push(fname_ut);
-
-    let fut = file_text::FileText::new(work_dir.as_path()).unwrap();
-    let tokenizer = token::Tokenizer::new(fut.text());
-    let parse_res = parse_with_error!(parser::FieldParser, tokenizer, &fut);
-
-    let mut out: Vec<u8> = Vec::new();
-    utils::render_error(&fut, parse_res.unwrap_err(), &mut out);
-
-    assert_eq!(std::str::from_utf8(&out[..]).unwrap(), err_reason);
+    parse_error_test!(fname_ut, err_reason, pktfmt::parser::FieldParser);
 }
