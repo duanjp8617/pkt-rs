@@ -56,22 +56,44 @@ macro_rules! parse_with_error {
     }
 }
 
+/// Render the error message in the `out` writer.
+/// The detailed position of the `error` is rendered through the `file_text`.
+///
+/// We first print a summary of the error.
+/// Then we render the code block that generate the error.
+/// We finalize the printing with the detailed explanation.
 pub fn render_error(file_text: &FileText, error: Error, out: &mut dyn Write) {
     match error {
         Error::Token(ref err) => {
+            writeln!(out, "error: token error").unwrap();
+            writeln!(out, "").unwrap();
+
             file_text
                 .render_code_block(err.location, err.location, out)
                 .unwrap();
+            writeln!(out, "").unwrap();
+
             write!(out, "{}", err).unwrap();
         }
         Error::Ast { ref err, ref span } => {
+            write!(out, "error: ").unwrap();
+            match err {
+                AstError::InvalidField(_) => writeln!(out, "invalid Field definition").unwrap(),
+                AstError::InvalidHeader(_) => writeln!(out, "invalid Header definition").unwrap(),
+            };
+            writeln!(out, "").unwrap();
+
             file_text
                 .render_code_block(span.0, span.1 - 1, out)
                 .unwrap();
+            writeln!(out, "").unwrap();
 
             write!(out, "{}", err).unwrap();
         }
         Error::Lalrpop(err) => {
+            writeln!(out, "error: lalrpop error").unwrap();
+            writeln!(out, "").unwrap();
+
             write!(out, "{}", err).unwrap();
         }
     }

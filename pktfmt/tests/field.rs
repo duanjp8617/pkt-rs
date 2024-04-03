@@ -19,5 +19,5 @@ If repr is defined, it must satisfy one of the following conditions:
 2. The defined repr is a byte slice, and bit % 8 == 0
 "#;
 
-    parse_error_test!(fname_ut, err_reason, pktfmt::parser::FieldParser);
+    print_parse_error!(fname_ut, err_reason, pktfmt::parser::FieldParser);
 }
