@@ -160,11 +160,15 @@ impl FileText {
         Ok(())
     }
 
+    // Render at most 6 lines.
+    // If start - end > 5, only the first 3 lines and the last 3 lines
+    // will be rendered, the lines in the middle will be omitted.
     fn highlight_block(&self, start: usize, end: usize, out: &mut dyn Write) -> Result<(), Error> {
         let start_lidx = self.line_idx(start);
         let end_lidx = self.line_idx(end);
         let end_line_num = (end_lidx).to_string();
 
+        // Print the starting symbols.
         keep_write(
             ' ',
             end_line_num.len() + 3 + start - self.lines[start_lidx].0,
@@ -173,7 +177,8 @@ impl FileText {
         keep_write('~', self.lines[start_lidx].1 - start, out)?;
         writeln!(out, "")?;
 
-        for line_idx in start_lidx..end_lidx + 1 {
+        // A helper to render a line.
+        let print_line = |line_idx: usize, out: &mut dyn Write| -> Result<(), Error> {
             let curr_line_num = (line_idx + 1).to_string();
             keep_write(' ', end_line_num.len() - curr_line_num.len(), out)?;
             writeln!(
@@ -182,8 +187,33 @@ impl FileText {
                 curr_line_num,
                 &self.text[self.lines[line_idx].0..self.lines[line_idx].1]
             )?;
+
+            Ok(())
+        };
+
+        if end_lidx - start_lidx > 5 {
+            // Render the first 3 lines.
+            let _ = (start_lidx..start_lidx + 3)
+                .into_iter()
+                .map(|line_idx| print_line(line_idx, out))
+                .collect::<Result<Vec<_>, Error>>()?;
+
+            writeln!(out, "......",)?;
+
+            // Render the last 3 lines.
+            let _ = (end_lidx - 2..end_lidx + 1)
+                .into_iter()
+                .map(|line_idx| print_line(line_idx, out))
+                .collect::<Result<Vec<_>, Error>>()?;
+        } else {
+            // Render all the lines
+            let _ = (start_lidx..end_lidx + 1)
+                .into_iter()
+                .map(|line_idx| print_line(line_idx, out))
+                .collect::<Result<Vec<_>, Error>>()?;
         }
 
+        // Print the ending symbols.
         keep_write(' ', end_line_num.len() + 3, out)?;
         keep_write('^', end - self.lines[end_lidx].0 + 1, out)?;
         writeln!(out, "")?;
