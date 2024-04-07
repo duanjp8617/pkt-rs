@@ -269,8 +269,11 @@ impl BitPos {
     }
 }
 
-// Given a preparsed header list, check its correctness
-// and return a correct header list
+/// Given a preparsed header list, check its correctness
+/// and return a correct header list
+///
+/// `hl_pos`: the parsed header list
+/// `header_pos`: the location of the header list in the original file
 pub fn check_header_list(
     hl_pos: Vec<(Spanned<String>, Field)>,
     header_pos: (usize, usize),
@@ -315,48 +318,34 @@ pub fn check_header_list(
     }
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
-pub enum BinaryOp {
-    Plus,
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum AlgOp {
+    Add,
     Sub,
-    Mult,
+    Mul,
     Div,
-    Eq,
-    Neq,
-    Gt,
-    Ge,
-    Lt,
-    Le,
-    And,
-    Or,
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
-pub enum UnaryOp {
-    Not,
-}
-
-#[derive(Eq, PartialEq, Debug, Clone, Copy)]
-pub enum Literal {
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum AlgExpr {
     Num(u64),
-    Bool(bool),
+    Ident(String),
+    Binary(Box<AlgExpr>, AlgOp, Box<AlgExpr>),
 }
 
-#[derive(Eq, PartialEq, Debug)]
-pub enum Expr<'ast> {
-    // Number or boolean value
-    Literal(Literal),
-    // identifier
-    Ident(String),
-    // Binary operator expression
-    Binary {
-        lhs: &'ast mut Expr<'ast>,
-        op: BinaryOp,
-        rhs: &'ast mut Expr<'ast>,
-    },
-    // Unary operator expression
-    Unary {
-        op: UnaryOp,
-        rhs: &'ast mut Expr<'ast>,
-    },
+#[derive(Debug, Clone)]
+pub struct LengthInfo {
+    pub expr: Box<AlgExpr>,
+    pub min: u64,
+    pub max: Option<u64>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Packet {
+    pub name: String,
+    pub field_list: Vec<(String, Field)>,
+    pub field_pos_map: HashMap<String, (BitPos, BitPos)>,
+    pub header_len_option_name: Option<(LengthInfo, String)>,
+    pub payload_len: Option<LengthInfo>,
+    pub packet_len: Option<LengthInfo>,
 }

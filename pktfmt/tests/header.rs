@@ -5,9 +5,9 @@ mod common;
 
 #[test]
 fn print_header() {
-   let file = "header.pktfmt";
+    let file = "wtf.pktfmt";
 
-    let res = parse_for_result!(file, pktfmt::parser::HeaderParser);
+    let res = parse_for_result!(file, pktfmt::parser::LengthBaseParser);
 
     println!("{:?}", res.unwrap());
 }

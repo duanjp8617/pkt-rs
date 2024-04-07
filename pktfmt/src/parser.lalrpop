@@ -3,7 +3,7 @@ use std::collections::HashMap;
 
 use lalrpop_util::ParseError;
 
-use crate::ast::{BuiltinTypes, Arg, DefaultVal, Field, BitPos, check_header_list};
+use crate::ast::*;
 use crate::file_text::FileText;
 use crate::utils::{Spanned, Error};
 use crate::token::Token;
@@ -34,12 +34,10 @@ extern {
         "arg" => Token::Arg,
         "default" => Token::Default,
         "gen" => Token::Gen,
-        "VarField" => Token::VarField,
-        "len" => Token::Len,
-        "item_size" => Token::ItemSize,
         "expr" => Token::Expr,
         "min" => Token::Min,
         "max" => Token::Max,
+        "option_name" => Token::OptionName,
         "ident" => Token::Ident(<&'input str>),
         "builtin type" => Token::BuiltinType(<&'input str>),
         "bool value" => Token::BooleanValue(<&'input str>),
@@ -130,12 +128,65 @@ NamedField: (Spanned<String>, Field) = {
 }
 
 pub Header: (Vec<(String, Field)>, HashMap<String, (BitPos, BitPos)>) = {
-    <l: @L> "header" <r: @R> "=" "["
+    <l: @L> "header" "=" "["
         <header_list: List<NamedField>>
-    "]" =>? {
+    "]" <r: @R> =>? {
         check_header_list(header_list, (l, r)).map_err(|(err, span)|{
             let error = Error::Ast{err, span};
             ParseError::User{ error }
         })
     }
 }
+
+AddExpr: Box<AlgExpr> = {
+    <lexpr: AddExpr> "+" <rexpr: MultExpr> => 
+        Box::new(AlgExpr::Binary(lexpr, AlgOp::Add, rexpr)),
+    <lexpr: AddExpr> "-" <rexpr: MultExpr> => 
+        Box::new(AlgExpr::Binary(lexpr, AlgOp::Sub, rexpr)),
+    MultExpr => <>
+}
+
+MultExpr: Box<AlgExpr> = {
+    <lexpr: MultExpr> "*" <rexpr: AlgBaseExpr> => 
+        Box::new(AlgExpr::Binary(lexpr, AlgOp::Mul, rexpr)),
+    <lexpr: MultExpr> "/" <rexpr: AlgBaseExpr> => 
+        Box::new(AlgExpr::Binary(lexpr, AlgOp::Div, rexpr)),
+    AlgBaseExpr => <>
+}
+
+AlgBaseExpr: Box<AlgExpr> = {
+    "num" => Box::new(AlgExpr::Num(u64::from_str(<>).unwrap())),
+    "ident" => Box::new(AlgExpr::Ident(String::from_str(<>).unwrap())),
+    "(" <AddExpr> ")" => <>
+}
+
+AlgExpr: Box<AlgExpr> = {
+    AddExpr => <>
+}
+
+LengthBase: (Box<AlgExpr>, u64, Option<u64>) = {
+    "expr" "=" <expr: AlgExpr> "," 
+    "min" "=" <min: "num"> 
+    <max: ("," "max" "=" <"num">)?> => 
+        (expr, u64::from_str(min).unwrap(), max.map(|s| u64::from_str(s).unwrap()))
+}
+
+HeaderLenOption: (LengthInfo, String) = {
+    <length_base: LengthBase> 
+    <option_name: (","  "option_name" "=" <"ident">)?>
+    ","? => {
+        let (expr, min, max) = length_base;
+        match option_name {
+            Some(str) => (LengthInfo {expr, min, max}, String::from_str(str).unwrap()),
+            _ => (LengthInfo {expr, min, max}, String::from_str("option").unwrap())
+        }
+    }
+}
+
+// pub Packet: Packet = {
+//     "packet" <name: "ident"> "{"
+//         "header" "=" "["
+//         "]"
+//
+//    "}"
+// }

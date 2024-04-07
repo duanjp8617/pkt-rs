@@ -58,15 +58,13 @@ pub enum Token<'input> {
     Default,
     Gen,
 
-    // VarField keyword
-    VarField,
-    Len,
-    ItemSize,
-
     // HeaderField keyworld
     Expr,
     Min,
     Max,
+
+    // Variable Field keyword
+    OptionName,
 
     // Identifiers
     Ident(&'input str),
@@ -149,12 +147,10 @@ const KEYWORDS: &[(&str, Token)] = &[
     ("arg", Token::Arg),
     ("default", Token::Default),
     ("gen", Token::Gen),
-    ("VarField", Token::VarField),
-    ("len", Token::Len),
-    ("item_size", Token::ItemSize),
     ("expr", Token::Expr),
     ("min", Token::Min),
     ("max", Token::Max),
+    ("option_name", Token::OptionName),
 ];
 
 const BUILTIN_TYPES: &[&str] = &["u8", "u16", "u32", "u64", "bool"];
@@ -769,11 +765,12 @@ mod test {
     #[test]
     fn key_word2() {
         test(
-            r#"Field VarField item_size"#,
+            r#"expr min max option_name"#,
             vec![
-                ("~~~~~                   ", Token::Field),
-                ("      ~~~~~~~~          ", Token::VarField),
-                ("               ~~~~~~~~~", Token::ItemSize),
+                ("~~~~                    ", Token::Expr),
+                ("     ~~~                ", Token::Min),
+                ("         ~~~            ", Token::Max),
+                ("             ~~~~~~~~~~~", Token::OptionName),
             ],
         );
     }
