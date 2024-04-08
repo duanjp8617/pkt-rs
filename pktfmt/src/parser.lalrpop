@@ -21,11 +21,12 @@ extern {
         "message" => Token::Message,
         "iter_group" => Token::IterGroup,
         "header" => Token::Header,
-        "var_header" => Token::VarHeader,
-        "with_payload" => Token::WithPayload,
-        "header_len" => Token::HeaderLen,
-        "payload_len" => Token::PayloadLen,
-        "packet_len" => Token::PacketLen,
+        "header_len" => Token::HeaderLenIdent,
+        "HeaderLen" => Token::HeaderLen,
+        "payload_len" => Token::PayloadLenIdent,
+        "PayloadLen" => Token::PayloadLen,
+        "packet_len" => Token::PacketLenIdent,
+        "PacketLen" => Token::PacketLen,
         "cond" => Token::Cond,
         "messages" => Token::Messages,
         "Field" => Token::Field,
@@ -173,7 +174,7 @@ LengthBase: (Box<AlgExpr>, u64, Option<u64>) = {
 }
 
 HeaderLenOption: (LengthInfo, String, (usize, usize)) = {
-    <l: @L> "header_len" "=" "{"
+    <l: @L> "header_len" "="  "HeaderLen" "{"
         "option_name" "=" <option_name: "ident">
         <length_base: ("," <LengthBase>)>
     "}" <r: @R> => {
@@ -183,7 +184,7 @@ HeaderLenOption: (LengthInfo, String, (usize, usize)) = {
 }
 
 PayloadLen: (LengthInfo, (usize, usize)) = {
-    <l: @L> "payload_len" "=" "{"
+    <l: @L> "payload_len" "=" "PayloadLen" "{"
         <length_base: LengthBase>
     "}" <r: @R> => {
         let (expr, min, max) = length_base;
@@ -192,7 +193,7 @@ PayloadLen: (LengthInfo, (usize, usize)) = {
 }
 
 PacketLen: (LengthInfo, (usize, usize)) = {
-    <l: @L> "packet_len" "=" "{"
+    <l: @L> "packet_len" "=" "PacketLen" "{"
         <length_base: LengthBase>
     "}" <r: @R> => {
         let (expr, min, max) = length_base;

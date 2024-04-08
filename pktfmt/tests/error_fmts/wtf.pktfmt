@@ -27,7 +27,7 @@ header = [
         checksum = Field {bit = 16},
         urgent_pointer = Field {bit = 16},
     ],
-    header_len = {
+    header_len = HeaderLen {
         option_name = options,
         expr = data_off * 4,
         min = 20,

@@ -38,10 +38,11 @@ pub enum Token<'input> {
 
     // packet keyword
     Header,
-    VarHeader,
-    WithPayload,
+    HeaderLenIdent,
     HeaderLen,
+    PayloadLenIdent,
     PayloadLen,
+    PacketLenIdent,
     PacketLen,
 
     // message keyword
@@ -134,11 +135,12 @@ const KEYWORDS: &[(&str, Token)] = &[
     ("message", Token::Message),
     ("iter_group", Token::IterGroup),
     ("header", Token::Header),
-    ("var_header", Token::VarHeader),
-    ("with_payload", Token::WithPayload),
-    ("header_len", Token::HeaderLen),
-    ("payload_len", Token::PayloadLen),
-    ("packet_len", Token::PacketLen),
+    ("header_len", Token::HeaderLenIdent),
+    ("HeaderLen", Token::HeaderLen),
+    ("payload_len", Token::PayloadLenIdent),
+    ("PayloadLen", Token::PayloadLen),
+    ("packet_len", Token::PacketLenIdent),
+    ("PacketLen", Token::PacketLen),
     ("cond", Token::Cond),
     ("messages", Token::Messages),
     ("Field", Token::Field),
