@@ -349,3 +349,25 @@ pub struct Packet {
     pub payload_len: Option<LengthInfo>,
     pub packet_len: Option<LengthInfo>,
 }
+
+impl Packet {
+    /// We should perform checks to ensure that the length fields
+    /// are correctly defined, but for now, we ignore it.
+    pub fn new(
+        name: String,
+        field_list: Vec<(String, Field)>,
+        field_pos_map: HashMap<String, (BitPos, BitPos)>,
+        header_len_with_pos: Option<(LengthInfo, String, (usize, usize))>,
+        payload_len_with_pos: Option<(LengthInfo, (usize, usize))>,
+        packet_len_with_pos: Option<(LengthInfo, (usize, usize))>,
+    ) -> Result<Self, (Error, (usize, usize))> {
+        Ok(Self {
+            name,
+            field_list,
+            field_pos_map,
+            header_len_option_name: header_len_with_pos.map(|t| (t.0, t.1)),
+            payload_len: payload_len_with_pos.map(|t| t.0),
+            packet_len: packet_len_with_pos.map(|t| t.0),
+        })
+    }
+}

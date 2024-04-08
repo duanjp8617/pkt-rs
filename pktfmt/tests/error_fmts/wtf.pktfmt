@@ -1,2 +1,35 @@
-expr = 4 * offset,
-min = 20,
+packet Tcp {
+header = [
+        src_port = Field {
+            bit = 16,
+            repr = u16,
+            arg = u16,
+            default = 0,
+        },
+        dst_port = Field {bit = 16},
+        seq_num = Field {bit = 32},
+        ack_num = Field {bit = 32},
+        data_off = Field {
+            bit = 4, 
+            default = 5, 
+            gen = false,
+        },
+        reserved = Field { bit = 4 },
+        cwr = Field {bit = 1, arg = bool, default = false},
+        ece = Field {bit = 1, arg = bool, default = false},
+        urg = Field {bit = 1, arg = bool, default = false},
+        ack = Field {bit = 1, arg = bool, default = false},
+        psh = Field {bit = 1, arg = bool, default = false},
+        rst = Field {bit = 1, arg = bool, default = false},
+        syn = Field {bit = 1, arg = bool, default = false},
+        fin = Field {bit = 1, arg = bool, default = false},
+        window_size = Field {bit=16},
+        checksum = Field {bit = 16},
+        urgent_pointer = Field {bit = 16},
+    ],
+    header_len = {
+        option_name = options,
+        expr = data_off * 4,
+        min = 20,
+    }
+}

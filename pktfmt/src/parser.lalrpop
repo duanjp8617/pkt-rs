@@ -167,26 +167,57 @@ AlgExpr: Box<AlgExpr> = {
 LengthBase: (Box<AlgExpr>, u64, Option<u64>) = {
     "expr" "=" <expr: AlgExpr> "," 
     "min" "=" <min: "num"> 
-    <max: ("," "max" "=" <"num">)?> => 
+    <max: ("," "max" "=" <"num">)?> 
+    ","? => 
         (expr, u64::from_str(min).unwrap(), max.map(|s| u64::from_str(s).unwrap()))
 }
 
-HeaderLenOption: (LengthInfo, String) = {
-    <length_base: LengthBase> 
-    <option_name: (","  "option_name" "=" <"ident">)?>
-    ","? => {
+HeaderLenOption: (LengthInfo, String, (usize, usize)) = {
+    <l: @L> "header_len" "=" "{"
+        "option_name" "=" <option_name: "ident">
+        <length_base: ("," <LengthBase>)>
+    "}" <r: @R> => {
         let (expr, min, max) = length_base;
-        match option_name {
-            Some(str) => (LengthInfo {expr, min, max}, String::from_str(str).unwrap()),
-            _ => (LengthInfo {expr, min, max}, String::from_str("option").unwrap())
-        }
+        (LengthInfo {expr, min, max}, String::from_str(option_name).unwrap(), (l, r))
     }
 }
 
-// pub Packet: Packet = {
-//     "packet" <name: "ident"> "{"
-//         "header" "=" "["
-//         "]"
-//
-//    "}"
-// }
+PayloadLen: (LengthInfo, (usize, usize)) = {
+    <l: @L> "payload_len" "=" "{"
+        <length_base: LengthBase>
+    "}" <r: @R> => {
+        let (expr, min, max) = length_base;
+        (LengthInfo {expr, min, max}, (l, r))
+    }
+}
+
+PacketLen: (LengthInfo, (usize, usize)) = {
+    <l: @L> "packet_len" "=" "{"
+        <length_base: LengthBase>
+    "}" <r: @R> => {
+        let (expr, min, max) = length_base;
+        (LengthInfo {expr, min, max}, (l, r))
+    }
+}
+
+pub Packet: Packet = {
+    "packet" <name: "ident"> "{"
+        <header: Header>
+        <header_len: ("," <HeaderLenOption>)?>
+        <payload_len: ("," <PayloadLen>)?>
+        <packet_len: ("," <PacketLen>)?>
+        ","?
+    "}" =>? {
+        let (field_list, field_pos_map) = header;
+        Packet::new(
+            String::from_str(name).unwrap(), 
+            field_list, 
+            field_pos_map, 
+            header_len, 
+            payload_len, 
+            packet_len).map_err(|(err, span)| {            
+            let error = Error::Ast{err, span};
+            ParseError::User{ error }
+        })
+    }
+}

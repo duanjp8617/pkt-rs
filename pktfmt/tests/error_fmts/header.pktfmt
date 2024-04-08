@@ -11,7 +11,7 @@ header = [
         ack_num = Field {bit = 32},
         data_off = Field {
             bit = 4, 
-            default = 20, 
+            default = 5, 
             gen = false,
         },
         reserved = Field { bit = 4 },
