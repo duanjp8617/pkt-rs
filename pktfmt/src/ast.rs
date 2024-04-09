@@ -268,8 +268,15 @@ impl BitPos {
         }
     }
 
+    // Calculate the corresponding global bit pos
     pub(crate) fn to_global_pos(&self) -> u64 {
         self.byte_pos * 8 + self.bit_pos
+    }
+
+    // Calculate the next BitPos that is `len` bits away
+    // from the current BitPos
+    pub(crate) fn next_pos(&self, len: u64) -> Self {
+        Self::new(self.to_global_pos() + len - 1)
     }
 }
 
@@ -281,12 +288,13 @@ impl BitPos {
 pub fn check_header_list(
     hl_pos: Vec<(Spanned<String>, Field)>,
     header_pos: (usize, usize),
-) -> Result<(Vec<(String, Field)>, HashMap<String, (BitPos, BitPos)>), (Error, (usize, usize))> {
-    let mut field_pos: HashMap<String, (BitPos, BitPos)> = HashMap::new();
+) -> Result<(Vec<(String, Field)>, HashMap<String, (BitPos, usize)>), (Error, (usize, usize))> {
+    let mut field_pos = HashMap::new();
     let mut global_bit_pos = 0;
     let v = hl_pos
         .into_iter()
-        .map(|(sp_str, field)| {
+        .enumerate()
+        .map(|(field_idx, (sp_str, field))| {
             if field_pos.get(&sp_str.item).is_some() {
                 // First, we dedup the header field names.
                 Err((Error::InvalidHeader(ERR_REASON_HEADER1), sp_str.span))
@@ -294,8 +302,7 @@ pub fn check_header_list(
                 // Next, we check whether the bit size of the field
                 // is correctly aligned.
                 let start = BitPos::new(global_bit_pos);
-                // inclusive range, so we need to -1 here
-                let end = BitPos::new(global_bit_pos + field.bit - 1);
+                let end = start.next_pos(field.bit);
 
                 if field.bit > 8 && start.bit_pos != 0 && end.bit_pos != 7 {
                     // If the header field contains multiple bytes, then one
@@ -307,7 +314,7 @@ pub fn check_header_list(
                 else {
                     // move the global_bit_pos past the current header
                     global_bit_pos += field.bit;
-                    field_pos.insert(sp_str.item.clone(), (start, end));
+                    field_pos.insert(sp_str.item.clone(), (start, field_idx));
                     Ok((sp_str.item, field))
                 }
             }
@@ -349,7 +356,7 @@ pub struct LengthInfo {
 pub struct Packet {
     pub name: String,
     pub field_list: Vec<(String, Field)>,
-    pub field_pos_map: HashMap<String, (BitPos, BitPos)>,
+    pub field_pos_map: HashMap<String, (BitPos, usize)>,
     pub header_len_option_name: Option<(LengthInfo, String)>,
     pub payload_len: Option<LengthInfo>,
     pub packet_len: Option<LengthInfo>,
@@ -361,7 +368,7 @@ impl Packet {
     pub fn new(
         name: String,
         field_list: Vec<(String, Field)>,
-        field_pos_map: HashMap<String, (BitPos, BitPos)>,
+        field_pos_map: HashMap<String, (BitPos, usize)>,
         header_len_with_pos: Option<(LengthInfo, String, (usize, usize))>,
         payload_len_with_pos: Option<(LengthInfo, (usize, usize))>,
         packet_len_with_pos: Option<(LengthInfo, (usize, usize))>,

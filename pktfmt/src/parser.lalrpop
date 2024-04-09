@@ -128,7 +128,7 @@ NamedField: (Spanned<String>, Field) = {
     }
 }
 
-pub Header: (Vec<(String, Field)>, HashMap<String, (BitPos, BitPos)>) = {
+pub Header: (Vec<(String, Field)>, HashMap<String, (BitPos, usize)>) = {
     <l: @L> "header" "=" "["
         <header_list: List<NamedField>>
     "]" <r: @R> =>? {
