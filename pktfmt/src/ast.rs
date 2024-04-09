@@ -93,11 +93,11 @@ pub enum DefaultVal {
 
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub struct Field {
-    bit: u64,
-    repr: BuiltinTypes,
-    arg: Arg,
-    default: DefaultVal,
-    gen: bool,
+    pub bit: u64,
+    pub repr: BuiltinTypes,
+    pub arg: Arg,
+    pub default: DefaultVal,
+    pub gen: bool,
 }
 
 impl Field {
@@ -128,7 +128,7 @@ impl Field {
         if inferred == *defined_repr {
             // OK: defined repr is the same as the inferred repr
             Ok(*defined_repr)
-        } else if *defined_repr == BuiltinTypes::ByteSlice && bit % 8 == 0 {
+        } else if *defined_repr == BuiltinTypes::ByteSlice && bit > 8 && bit % 8 == 0 {
             // OK: use &[u8] to override the inferred repr
             Ok(*defined_repr)
         } else {
@@ -261,11 +261,15 @@ pub struct BitPos {
 
 impl BitPos {
     // Calculate the BitPos from the global bit pos
-    fn new(global_bit_pos: u64) -> Self {
+    pub(crate) fn new(global_bit_pos: u64) -> Self {
         Self {
             byte_pos: global_bit_pos / 8,
             bit_pos: global_bit_pos % 8,
         }
+    }
+
+    pub(crate) fn to_global_pos(&self) -> u64 {
+        self.byte_pos * 8 + self.bit_pos
     }
 }
 
@@ -293,13 +297,14 @@ pub fn check_header_list(
                 // inclusive range, so we need to -1 here
                 let end = BitPos::new(global_bit_pos + field.bit - 1);
 
-                if start.byte_pos != end.byte_pos && (start.bit_pos != 0 && end.bit_pos != 7) {
+                if field.bit > 8 && start.bit_pos != 0 && end.bit_pos != 7 {
                     // If the header field contains multiple bytes, then one
                     // of two ends must be aligned to the byte boudary.
                     // In this branch, neither of the two ends are aligned to the byte boundary,
                     // we report an error.
                     Err((Error::InvalidHeader(ERR_REASON_HEADER3), sp_str.span))
-                } else {
+                } 
+                else {
                     // move the global_bit_pos past the current header
                     global_bit_pos += field.bit;
                     field_pos.insert(sp_str.item.clone(), (start, end));
