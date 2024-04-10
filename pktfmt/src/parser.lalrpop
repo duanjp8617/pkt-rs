@@ -8,9 +8,7 @@ use crate::file_text::FileText;
 use crate::utils::{Spanned, Error};
 use crate::token::Token;
 
-grammar<'input>(
-    input: &'input FileText
-);
+grammar<'input>;
 
 extern {
     type Location = usize;

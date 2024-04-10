@@ -15,7 +15,7 @@ macro_rules! test_parse_error {
 
             let file_text = ::pktfmt::file_text::FileText::new(program_path.as_path()).unwrap();
             let tokenizer = ::pktfmt::token::Tokenizer::new(file_text.text());
-            let parse_res = ::pktfmt::parse_with_error!($parser, tokenizer, &file_text);
+            let parse_res = ::pktfmt::parse_with_error!($parser, tokenizer);
 
             let mut out: Vec<u8> = ::std::vec::Vec::new();
             ::pktfmt::utils::render_error(&file_text, parse_res.unwrap_err(), &mut out);
@@ -41,7 +41,7 @@ macro_rules! print_parse_error {
 
             let file_text = ::pktfmt::file_text::FileText::new(program_path.as_path()).unwrap();
             let tokenizer = ::pktfmt::token::Tokenizer::new(file_text.text());
-            let parse_res = ::pktfmt::parse_with_error!($parser, tokenizer, &file_text);
+            let parse_res = ::pktfmt::parse_with_error!($parser, tokenizer);
 
             let mut out: Vec<u8> = ::std::vec::Vec::new();
             ::pktfmt::utils::render_error(&file_text, parse_res.unwrap_err(), &mut out);
@@ -66,7 +66,7 @@ macro_rules! parse_for_result {
 
             let file_text = ::pktfmt::file_text::FileText::new(program_path.as_path()).unwrap();
             let tokenizer = ::pktfmt::token::Tokenizer::new(file_text.text());
-            let parse_res = ::pktfmt::parse_with_error!($parser, tokenizer, &file_text);
+            let parse_res = ::pktfmt::parse_with_error!($parser, tokenizer);
 
             parse_res
         }

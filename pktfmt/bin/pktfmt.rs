@@ -5,7 +5,7 @@ fn main() {
 
     let tokenizer = token::Tokenizer::new(f.text());
 
-    let parse_res = parse_with_error!(parser::FieldParser, tokenizer, &f);
+    let parse_res = parse_with_error!(parser::FieldParser, tokenizer);
 
     let mut out = std::io::stderr();
     match parse_res {

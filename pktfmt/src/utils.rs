@@ -41,10 +41,10 @@ quick_error! {
 // A macro that drives the parser.
 // The returned error is converted into the toplevel error type.
 macro_rules! parse_with_error {
-    ($parser: ty, $tokenizer: expr, $($parser_args: expr),*) => {
+    ($parser: ty, $tokenizer: expr $(, $parser_args: expr)*) => {
         <$parser>::new()
         .parse(
-            $($parser_args),*,
+            $($parser_args),*
             $tokenizer
                 .into_iter()
                 .map(|tk_res| tk_res.map_err(|err| crate::utils::Error::Token(err))),

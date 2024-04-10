@@ -60,7 +60,6 @@ fn bit_mask(mut low: u64, high: u64, t: BuiltinTypes) -> String {
     format!("{:#x}", res) + &s
 }
 
-#[inline]
 fn read_repr_8b(field: &Field, start: BitPos, target_slice: &str, mut output: &mut dyn Write) {
     assert!(field.bit <= 8 && field.repr == BuiltinTypes::U8);
 
@@ -87,10 +86,10 @@ fn read_repr_8b(field: &Field, start: BitPos, target_slice: &str, mut output: &m
                 "({}[{}]<<{})|({}[{}]>>{})",
                 target_slice,
                 start.byte_pos,
-                end.bit_pos + 1,
+                field.bit - (8 - start.bit_pos),
                 target_slice,
                 end.byte_pos,
-                9 - start.bit_pos + end.bit_pos
+                7 - end.bit_pos
             )
             .unwrap();
         };
@@ -110,8 +109,53 @@ fn read_repr_8b(field: &Field, start: BitPos, target_slice: &str, mut output: &m
     }
 }
 
+fn read_repr_16b(field: &Field, start: BitPos, target_slice: &str, mut output: &mut dyn Write) {
+    assert!(field.bit <= 16 && field.bit > 8);
+    if field.repr == BuiltinTypes::ByteSlice {
+        write!(
+            output,
+            "&{}[{}..{}]",
+            target_slice,
+            start.byte_pos,
+            start.byte_pos + 2
+        )
+        .unwrap();
+    } else {
+        if start.bit_pos == 0 && field.bit < 16 {
+            let mut bw = BracketWriter::new(&mut output);
+            write!(
+                bw.get_writer(),
+                "NetworkEndian::read_u16(&{}[{}..{}])>>{}",
+                target_slice,
+                start.byte_pos,
+                start.byte_pos + 2,
+                16 - field.bit
+            )
+            .unwrap();
+        } else {
+            write!(
+                output,
+                "NetworkEndian::read_u16(&{}[{}..{}])",
+                target_slice,
+                start.byte_pos,
+                start.byte_pos + 2
+            )
+            .unwrap();
+        }
+
+        if field.bit < 16 {
+            write!(output, "&{}", bit_mask(0, field.bit - 1, BuiltinTypes::U16)).unwrap();
+        }
+    }
+}
+
 #[cfg(test)]
 mod codegen_tests {
+    use crate::{
+        parser,
+        token::{self, Tokenizer},
+    };
+
     use super::*;
 
     #[test]
@@ -169,6 +213,131 @@ mod codegen_tests {
         assert_eq!(
             s,
             format!("{:#x}", u64::from_str_radix(&s[2..], 16).unwrap())
+        );
+    }
+
+    macro_rules! do_test_read_repr {
+        ($test_fn: ident, $target_slice: expr, $program: expr, $bit_pos: expr, $expected: expr) => {
+            let tokenizer = Tokenizer::new($program);
+            let field = parse_with_error!(crate::parser::FieldParser, tokenizer).unwrap();
+            let mut buf: Vec<u8> = ::std::vec::Vec::new();
+            $test_fn(&field, $bit_pos, $target_slice, &mut buf);
+            assert_eq!($expected, std::str::from_utf8(&buf[..]).unwrap());
+        };
+    }
+
+    macro_rules! print_read_repr {
+        ($test_fn: ident, $target_slice: expr, $program: expr, $bit_pos: expr, $expected: expr) => {
+            let tokenizer = Tokenizer::new($program);
+            let field = parse_with_error!(crate::parser::FieldParser, tokenizer).unwrap();
+            let mut buf: Vec<u8> = ::std::vec::Vec::new();
+            $test_fn(&field, $bit_pos, $target_slice, &mut buf);
+            println!("{}", std::str::from_utf8(&buf[..]).unwrap())
+        };
+    }
+
+    #[test]
+    fn test_read_repr_8b() {
+        do_test_read_repr!(
+            read_repr_8b,
+            "self.buf.as_ref()",
+            "Field {bit  = 5}",
+            BitPos {
+                byte_pos: 0,
+                bit_pos: 1,
+            },
+            "(self.buf.as_ref()[0]>>2)&0x1f"
+        );
+
+        do_test_read_repr!(
+            read_repr_8b,
+            "self.buf.as_ref()",
+            "Field {bit  = 5}",
+            BitPos {
+                byte_pos: 0,
+                bit_pos: 3,
+            },
+            "self.buf.as_ref()[0]&0x1f"
+        );
+
+        do_test_read_repr!(
+            read_repr_8b,
+            "self.buf.as_ref()",
+            "Field {bit  = 8}",
+            BitPos {
+                byte_pos: 0,
+                bit_pos: 0,
+            },
+            "self.buf.as_ref()[0]"
+        );
+
+        do_test_read_repr!(
+            read_repr_8b,
+            "self.buf.as_ref()",
+            "Field {bit  = 3}",
+            BitPos {
+                byte_pos: 0,
+                bit_pos: 6,
+            },
+            "((self.buf.as_ref()[0]<<1)|(self.buf.as_ref()[1]>>7))&0x7"
+        );
+
+        do_test_read_repr!(
+            read_repr_8b,
+            "self.buf.as_ref()",
+            "Field {bit  = 8}",
+            BitPos {
+                byte_pos: 0,
+                bit_pos: 6,
+            },
+            "(self.buf.as_ref()[0]<<6)|(self.buf.as_ref()[1]>>2)"
+        );
+    }
+
+    #[test]
+    fn test_read_repr_16b() {
+        do_test_read_repr!(
+            read_repr_16b,
+            "self.buf.as_ref()",
+            "Field {bit  = 9}",
+            BitPos {
+                byte_pos: 0,
+                bit_pos: 0,
+            },
+            "(NetworkEndian::read_u16(&self.buf.as_ref()[0..2])>>7)&0x1ff"
+        );
+
+        do_test_read_repr!(
+            read_repr_16b,
+            "self.buf.as_ref()",
+            "Field {bit  = 14}",
+            BitPos {
+                byte_pos: 0,
+                bit_pos: 2,
+            },
+            "NetworkEndian::read_u16(&self.buf.as_ref()[0..2])&0x3fff"
+        );
+
+        do_test_read_repr!(
+            read_repr_16b,
+            "self.buf.as_ref()",
+            "Field {bit  = 16}",
+            BitPos {
+                byte_pos: 0,
+                bit_pos: 0,
+            },
+            "NetworkEndian::read_u16(&self.buf.as_ref()[0..2])"
+        );
+
+        do_test_read_repr!(
+            read_repr_16b,
+            "self.buf.as_ref()",
+            "Field {bit  = 16, repr = &[u8]}",
+            BitPos {
+                byte_pos: 0,
+                bit_pos: 0,
+            },
+            "&self.buf.as_ref()[0..2]"
         );
     }
 }
