@@ -102,7 +102,7 @@ pub struct Field {
 
 impl Field {
     // Infer repr from bit if repf is not defined
-    fn infer_repr(bit: u64) -> BuiltinTypes {
+    pub(crate) fn infer_repr(bit: u64) -> BuiltinTypes {
         // Makesure that bit is positive
         assert!(bit > 0);
 

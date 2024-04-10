@@ -4,14 +4,27 @@ use std::path::{Path, PathBuf};
 
 use crate::ast::*;
 
-struct BracketWriter<T: Write> {
-    writer: T,
+// A helper that converts length in bit to length in bytes
+fn byte_len(bit_len: u64) -> u64 {
+    if bit_len % 8 == 0 {
+        bit_len / 8
+    } else {
+        bit_len / 8 + 1
+    }
 }
 
-impl<T: Write> BracketWriter<T> {
-    fn new(mut writer: T) -> Self {
-        write!(writer, "(").unwrap();
-        BracketWriter { writer }
+struct HeadTailWriter<T: Write> {
+    writer: T,
+    tail: String,
+}
+
+impl<T: Write> HeadTailWriter<T> {
+    fn new(mut writer: T, head: &str, tail: &str) -> Self {
+        write!(writer, "{}", head).unwrap();
+        HeadTailWriter {
+            writer,
+            tail: tail.to_string(),
+        }
     }
 
     fn get_writer(&mut self) -> &mut T {
@@ -19,24 +32,29 @@ impl<T: Write> BracketWriter<T> {
     }
 }
 
-impl<T: Write> Drop for BracketWriter<T> {
+impl<T: Write> Drop for HeadTailWriter<T> {
     fn drop(&mut self) {
-        write!(&mut self.writer, ")").unwrap();
+        write!(&mut self.writer, "{}", self.tail).unwrap();
     }
 }
 
-fn bit_mask(mut low: u64, high: u64, t: BuiltinTypes) -> String {
-    assert!(low <= high);
-    match t {
-        BuiltinTypes::U8 => assert!(high < 8),
-        BuiltinTypes::U16 => assert!(high < 16),
-        BuiltinTypes::U32 => assert!(high < 32),
-        BuiltinTypes::U64 => assert!(high < 64),
+fn network_endian_writer<T: Write>(writer: T, bit_len: u64) -> HeadTailWriter<T> {
+    match byte_len(bit_len) {
+        2 => HeadTailWriter::new(writer, "NetworkEndian::read_u16(", ")"),
+        3 => HeadTailWriter::new(writer, "NetworkEndian::read_u24(", ")"),
+        4 => HeadTailWriter::new(writer, "NetworkEndian::read_u32(", ")"),
+        5 => HeadTailWriter::new(writer, "NetworkEndian::read_uint(", ", 5)"),
+        6 => HeadTailWriter::new(writer, "NetworkEndian::read_uint(", ", 6)"),
+        7 => HeadTailWriter::new(writer, "NetworkEndian::read_uint(", ", 7)"),
+        8 => HeadTailWriter::new(writer, "NetworkEndian::read_u64(", ")"),
         _ => panic!(),
     }
+}
+
+fn bit_mask(mut low: u64, high: u64) -> String {
+    assert!(low <= high && high < 64);
 
     let mut s = String::new();
-
     (0..low / 4).for_each(|_| {
         s.push('0');
     });
@@ -67,7 +85,7 @@ fn read_repr_8b(field: &Field, start: BitPos, target_slice: &str, mut output: &m
     if start.byte_pos == end.byte_pos {
         if end.bit_pos < 7 {
             // add shift operation
-            let mut bw = BracketWriter::new(&mut output);
+            let mut bw = HeadTailWriter::new(&mut output, "(", ")");
             write!(
                 bw.get_writer(),
                 "{}[{}]>>{}",
@@ -96,7 +114,7 @@ fn read_repr_8b(field: &Field, start: BitPos, target_slice: &str, mut output: &m
 
         if field.bit < 8 {
             // add shift operation
-            let mut bw = BracketWriter::new(&mut output);
+            let mut bw = HeadTailWriter::new(&mut output, "(", ")");
             do_write(start, end, target_slice, bw.get_writer());
         } else {
             do_write(start, end, target_slice, output);
@@ -105,46 +123,50 @@ fn read_repr_8b(field: &Field, start: BitPos, target_slice: &str, mut output: &m
 
     if field.bit < 8 {
         // add or
-        write!(output, "&{}", bit_mask(0, field.bit - 1, BuiltinTypes::U8)).unwrap();
+        write!(output, "&{}", bit_mask(0, field.bit - 1)).unwrap();
     }
 }
 
-fn read_repr_16b(field: &Field, start: BitPos, target_slice: &str, mut output: &mut dyn Write) {
-    assert!(field.bit <= 16 && field.bit > 8);
+fn read_repr_other(field: &Field, start: BitPos, target_slice: &str, mut output: &mut dyn Write) {
+    assert!(field.bit > 8);
     if field.repr == BuiltinTypes::ByteSlice {
         write!(
             output,
             "&{}[{}..{}]",
             target_slice,
             start.byte_pos,
-            start.byte_pos + 2
+            start.byte_pos + byte_len(field.bit)
         )
         .unwrap();
     } else {
-        if start.bit_pos == 0 && field.bit < 16 {
-            let mut bw = BracketWriter::new(&mut output);
-            write!(
-                bw.get_writer(),
-                "NetworkEndian::read_u16(&{}[{}..{}])>>{}",
-                target_slice,
-                start.byte_pos,
-                start.byte_pos + 2,
-                16 - field.bit
-            )
-            .unwrap();
+        if start.bit_pos == 0 && field.bit % 8 != 0 {
+            let mut bw = HeadTailWriter::new(&mut output, "(", ")");
+            {
+                let mut new = network_endian_writer(bw.get_writer(), field.bit);
+                write!(
+                    new.get_writer(),
+                    "&{}[{}..{}]",
+                    target_slice,
+                    start.byte_pos,
+                    start.byte_pos + byte_len(field.bit)
+                )
+                .unwrap();
+            }
+            write!(bw.get_writer(), ">>{}", 8 * byte_len(field.bit) - field.bit).unwrap();
         } else {
+            let mut new = network_endian_writer(&mut output, field.bit);
             write!(
-                output,
-                "NetworkEndian::read_u16(&{}[{}..{}])",
+                new.get_writer(),
+                "&{}[{}..{}]",
                 target_slice,
                 start.byte_pos,
-                start.byte_pos + 2
+                start.byte_pos + byte_len(field.bit)
             )
             .unwrap();
         }
 
-        if field.bit < 16 {
-            write!(output, "&{}", bit_mask(0, field.bit - 1, BuiltinTypes::U16)).unwrap();
+        if field.bit % 8 != 0 {
+            write!(output, "&{}", bit_mask(0, field.bit - 1)).unwrap();
         }
     }
 }
@@ -163,14 +185,14 @@ mod codegen_tests {
         let mut s: Vec<u8> = ::std::vec::Vec::new();
 
         {
-            let mut writer = BracketWriter::new(&mut s);
+            let mut writer = HeadTailWriter::new(&mut s, "(", ")");
             write!(writer.get_writer(), "{}", 222).unwrap();
         }
 
         write!(&mut s, "{}", 555).unwrap();
 
         {
-            let mut writer = BracketWriter::new(&mut s);
+            let mut writer = HeadTailWriter::new(&mut s, "(", ")");
             write!(writer.get_writer(), "{}", 777).unwrap();
         }
 
@@ -179,37 +201,37 @@ mod codegen_tests {
 
     #[test]
     fn test_bit_mask() {
-        let s = bit_mask(14, 33, BuiltinTypes::U64);
+        let s = bit_mask(14, 33);
         assert_eq!(
             s,
             format!("{:#x}", u64::from_str_radix(&s[2..], 16).unwrap())
         );
 
-        let s = bit_mask(7, 22, BuiltinTypes::U64);
+        let s = bit_mask(7, 22);
         assert_eq!(
             s,
             format!("{:#x}", u64::from_str_radix(&s[2..], 16).unwrap())
         );
 
-        let s = bit_mask(55, 55, BuiltinTypes::U64);
+        let s = bit_mask(55, 55);
         assert_eq!(
             s,
             format!("{:#x}", u64::from_str_radix(&s[2..], 16).unwrap())
         );
 
-        let s = bit_mask(55, 63, BuiltinTypes::U64);
+        let s = bit_mask(55, 63);
         assert_eq!(
             s,
             format!("{:#x}", u64::from_str_radix(&s[2..], 16).unwrap())
         );
 
-        let s = bit_mask(44, 45, BuiltinTypes::U64);
+        let s = bit_mask(44, 45);
         assert_eq!(
             s,
             format!("{:#x}", u64::from_str_radix(&s[2..], 16).unwrap())
         );
 
-        let s = bit_mask(0, 63, BuiltinTypes::U64);
+        let s = bit_mask(0, 63);
         assert_eq!(
             s,
             format!("{:#x}", u64::from_str_radix(&s[2..], 16).unwrap())
@@ -297,7 +319,7 @@ mod codegen_tests {
     #[test]
     fn test_read_repr_16b() {
         do_test_read_repr!(
-            read_repr_16b,
+            read_repr_other,
             "self.buf.as_ref()",
             "Field {bit  = 9}",
             BitPos {
@@ -308,7 +330,7 @@ mod codegen_tests {
         );
 
         do_test_read_repr!(
-            read_repr_16b,
+            read_repr_other,
             "self.buf.as_ref()",
             "Field {bit  = 14}",
             BitPos {
@@ -319,7 +341,7 @@ mod codegen_tests {
         );
 
         do_test_read_repr!(
-            read_repr_16b,
+            read_repr_other,
             "self.buf.as_ref()",
             "Field {bit  = 16}",
             BitPos {
@@ -330,7 +352,7 @@ mod codegen_tests {
         );
 
         do_test_read_repr!(
-            read_repr_16b,
+            read_repr_other,
             "self.buf.as_ref()",
             "Field {bit  = 16, repr = &[u8]}",
             BitPos {
