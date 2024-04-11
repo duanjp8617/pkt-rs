@@ -98,7 +98,7 @@ fn read_repr_8b(field: &Field, start: BitPos, target_slice: &str, mut output: &m
             write!(output, "{}[{}]", target_slice, start.byte_pos).unwrap();
         }
     } else {
-        let do_write = |start: BitPos, end: BitPos, target_slice: &str, output: &mut dyn Write| {
+        let do_write = |output: &mut dyn Write| {
             write!(
                 output,
                 "({}[{}]<<{})|({}[{}]>>{})",
@@ -115,9 +115,9 @@ fn read_repr_8b(field: &Field, start: BitPos, target_slice: &str, mut output: &m
         if field.bit < 8 {
             // add shift operation
             let mut bw = HeadTailWriter::new(&mut output, "(", ")");
-            do_write(start, end, target_slice, bw.get_writer());
+            do_write(bw.get_writer());
         } else {
-            do_write(start, end, target_slice, output);
+            do_write(output);
         }
     }
 
@@ -128,7 +128,8 @@ fn read_repr_8b(field: &Field, start: BitPos, target_slice: &str, mut output: &m
 }
 
 fn read_repr_other(field: &Field, start: BitPos, target_slice: &str, mut output: &mut dyn Write) {
-    assert!(field.bit > 8);
+    assert!(field.bit > 8 && (start.bit_pos == 0 || start.next_pos(field.bit).bit_pos == 7));
+
     if field.repr == BuiltinTypes::ByteSlice {
         write!(
             output,
@@ -167,6 +168,41 @@ fn read_repr_other(field: &Field, start: BitPos, target_slice: &str, mut output:
 
         if field.bit % 8 != 0 {
             write!(output, "&{}", bit_mask(0, field.bit - 1)).unwrap();
+        }
+    }
+}
+
+fn read_repr(field: &Field, start: BitPos, target_slice: &str, output: &mut dyn Write) {
+    if field.bit <= 8 {
+        read_repr_8b(field, start, target_slice, output);
+    } else {
+        read_repr_other(field, start, target_slice, output);
+    }
+}
+
+fn read_as_arg(field: &Field, start: BitPos, target_slice: &str, mut output: &mut dyn Write) {
+    match &field.arg {
+        Arg::Code(_) => {
+            // arg is code
+            let mut into_writer = HeadTailWriter::new(&mut output, "(", ").into()");
+            read_repr(field, start, target_slice, into_writer.get_writer());
+        }
+        Arg::BuiltinTypes(defined_arg) => {
+            if *defined_arg == field.repr {
+                // arg is the same as the repr
+                read_repr(field, start, target_slice, output);
+            } else {
+                // arg is bool, field.bit == 1
+                // A fast path method for accessing bool
+                write!(
+                    output,
+                    "{}[{}]&{} != 0",
+                    target_slice,
+                    start.byte_pos,
+                    bit_mask(7 - start.bit_pos, 7 - start.bit_pos)
+                )
+                .unwrap();
+            }
         }
     }
 }
@@ -238,7 +274,7 @@ mod codegen_tests {
         );
     }
 
-    macro_rules! do_test_read_repr {
+    macro_rules! do_test_read {
         ($test_fn: ident, $target_slice: expr, $program: expr, $bit_pos: expr, $expected: expr) => {
             let tokenizer = Tokenizer::new($program);
             let field = parse_with_error!(crate::parser::FieldParser, tokenizer).unwrap();
@@ -248,7 +284,7 @@ mod codegen_tests {
         };
     }
 
-    macro_rules! print_read_repr {
+    macro_rules! print_read {
         ($test_fn: ident, $target_slice: expr, $program: expr, $bit_pos: expr, $expected: expr) => {
             let tokenizer = Tokenizer::new($program);
             let field = parse_with_error!(crate::parser::FieldParser, tokenizer).unwrap();
@@ -260,7 +296,7 @@ mod codegen_tests {
 
     #[test]
     fn test_read_repr_8b() {
-        do_test_read_repr!(
+        do_test_read!(
             read_repr_8b,
             "self.buf.as_ref()",
             "Field {bit  = 5}",
@@ -271,7 +307,7 @@ mod codegen_tests {
             "(self.buf.as_ref()[0]>>2)&0x1f"
         );
 
-        do_test_read_repr!(
+        do_test_read!(
             read_repr_8b,
             "self.buf.as_ref()",
             "Field {bit  = 5}",
@@ -282,7 +318,7 @@ mod codegen_tests {
             "self.buf.as_ref()[0]&0x1f"
         );
 
-        do_test_read_repr!(
+        do_test_read!(
             read_repr_8b,
             "self.buf.as_ref()",
             "Field {bit  = 8}",
@@ -293,7 +329,7 @@ mod codegen_tests {
             "self.buf.as_ref()[0]"
         );
 
-        do_test_read_repr!(
+        do_test_read!(
             read_repr_8b,
             "self.buf.as_ref()",
             "Field {bit  = 3}",
@@ -304,7 +340,7 @@ mod codegen_tests {
             "((self.buf.as_ref()[0]<<1)|(self.buf.as_ref()[1]>>7))&0x7"
         );
 
-        do_test_read_repr!(
+        do_test_read!(
             read_repr_8b,
             "self.buf.as_ref()",
             "Field {bit  = 8}",
@@ -317,8 +353,8 @@ mod codegen_tests {
     }
 
     #[test]
-    fn test_read_repr_16b() {
-        do_test_read_repr!(
+    fn test_read_repr_other() {
+        do_test_read!(
             read_repr_other,
             "self.buf.as_ref()",
             "Field {bit  = 9}",
@@ -329,7 +365,7 @@ mod codegen_tests {
             "(NetworkEndian::read_u16(&self.buf.as_ref()[0..2])>>7)&0x1ff"
         );
 
-        do_test_read_repr!(
+        do_test_read!(
             read_repr_other,
             "self.buf.as_ref()",
             "Field {bit  = 14}",
@@ -340,7 +376,7 @@ mod codegen_tests {
             "NetworkEndian::read_u16(&self.buf.as_ref()[0..2])&0x3fff"
         );
 
-        do_test_read_repr!(
+        do_test_read!(
             read_repr_other,
             "self.buf.as_ref()",
             "Field {bit  = 16}",
@@ -351,7 +387,7 @@ mod codegen_tests {
             "NetworkEndian::read_u16(&self.buf.as_ref()[0..2])"
         );
 
-        do_test_read_repr!(
+        do_test_read!(
             read_repr_other,
             "self.buf.as_ref()",
             "Field {bit  = 16, repr = &[u8]}",
@@ -360,6 +396,108 @@ mod codegen_tests {
                 bit_pos: 0,
             },
             "&self.buf.as_ref()[0..2]"
+        );
+
+        do_test_read!(
+            read_repr_other,
+            "self.buf.as_ref()",
+            "Field {bit  = 22}",
+            BitPos {
+                byte_pos: 4,
+                bit_pos: 2,
+            },
+            "NetworkEndian::read_u24(&self.buf.as_ref()[4..7])&0x3fffff"
+        );
+
+        do_test_read!(
+            read_repr_other,
+            "self.buf.as_ref()",
+            "Field {bit  = 29}",
+            BitPos {
+                byte_pos: 3,
+                bit_pos: 0,
+            },
+            "(NetworkEndian::read_u32(&self.buf.as_ref()[3..7])>>3)&0x1fffffff"
+        );
+
+        do_test_read!(
+            read_repr_other,
+            "self.buf.as_ref()",
+            "Field {bit  = 35}",
+            BitPos {
+                byte_pos: 3,
+                bit_pos: 0,
+            },
+            "(NetworkEndian::read_uint(&self.buf.as_ref()[3..8], 5)>>5)&0x7ffffffff"
+        );
+
+        do_test_read!(
+            read_repr_other,
+            "self.buf.as_ref()",
+            "Field {bit  = 46}",
+            BitPos {
+                byte_pos: 3,
+                bit_pos: 2,
+            },
+            "NetworkEndian::read_uint(&self.buf.as_ref()[3..9], 6)&0x3fffffffffff"
+        );
+
+        do_test_read!(
+            read_repr_other,
+            "self.buf.as_ref()",
+            "Field {bit  = 55}",
+            BitPos {
+                byte_pos: 3,
+                bit_pos: 0,
+            },
+            "(NetworkEndian::read_uint(&self.buf.as_ref()[3..10], 7)>>1)&0x7fffffffffffff"
+        );
+
+        do_test_read!(
+            read_repr_other,
+            "self.buf.as_ref()",
+            "Field {bit  = 60}",
+            BitPos {
+                byte_pos: 3,
+                bit_pos: 4,
+            },
+            "NetworkEndian::read_u64(&self.buf.as_ref()[3..11])&0xfffffffffffffff"
+        );
+
+        do_test_read!(
+            read_repr_other,
+            "self.buf.as_ref()",
+            "Field {bit  = 128}",
+            BitPos {
+                byte_pos: 3,
+                bit_pos: 0,
+            },
+            "&self.buf.as_ref()[3..19]"
+        );
+    }
+
+    #[test]
+    fn test_read_arg() {
+        do_test_read!(
+            read_as_arg,
+            "self.buf.as_ref()",
+            "Field {bit  = 32, repr = &[u8], arg = %%Ipv4Addr%%, default=%%Ipv4Addr::default()%%}",
+            BitPos {
+                byte_pos: 3,
+                bit_pos: 0,
+            },
+            "(&self.buf.as_ref()[3..7]).into()"
+        );
+
+        do_test_read!(
+            read_as_arg,
+            "self.buf.as_ref()",
+            "Field {bit = 1, arg = bool, default = false}",
+            BitPos {
+                byte_pos: 13,
+                bit_pos: 0,
+            },
+            "self.buf.as_ref()[13]&0x80 != 0"
         );
     }
 }

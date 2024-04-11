@@ -214,7 +214,8 @@ pub Packet: Packet = {
             field_pos_map, 
             header_len, 
             payload_len, 
-            packet_len).map_err(|(err, span)| {            
+            packet_len
+        ).map_err(|(err, span)| {            
             let error = Error::Ast{err, span};
             ParseError::User{ error }
         })
