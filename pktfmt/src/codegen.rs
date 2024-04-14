@@ -207,6 +207,127 @@ fn read_as_arg(field: &Field, start: BitPos, target_slice: &str, mut output: &mu
     }
 }
 
+fn field_get_method(
+    name: &str,
+    field: &Field,
+    start: BitPos,
+    target_slice: &str,
+    mut output: &mut dyn Write,
+) {
+    writeln!(output, "#[inline]").unwrap();
+
+    let mut func_def = if field.gen {
+        "pub fn ".to_string()
+    } else {
+        "fn ".to_string()
+    };
+    func_def += &format!("{}(&self)->{}{{\n", name, field.arg.to_string());
+
+    let mut func_def_writer = HeadTailWriter::new(&mut output, &func_def, "\n}\n");
+    read_as_arg(field, start, target_slice, func_def_writer.get_writer());
+}
+
+pub fn header_field_get_method(name: &str, field: &Field, start: BitPos, output: &mut dyn Write) {
+    field_get_method(name, field, start, "self.buf.as_ref()", output)
+}
+
+pub fn packet_field_get_method(name: &str, field: &Field, start: BitPos, output: &mut dyn Write) {
+    field_get_method(name, field, start, "self.buf.chunk()", output)
+}
+
+// We can not handle cross byte here
+fn write_target<'field, 'output>(
+    field: &'field Field,
+    start: BitPos,
+    target_slice: &str,
+    output: &'output mut dyn Write,
+) -> HeadTailWriter<&'output mut dyn Write> {
+    // we first check some assertions, they are only
+    // added here to help me reason about the algorithm
+    match field.repr {
+        BuiltinTypes::ByteSlice => {
+            assert!(field.bit % 8 == 0 && field.bit > 8);
+
+            HeadTailWriter::new(
+                output,
+                &format!(
+                    "(&mut {}[{}..{}]).copy_from_slice(",
+                    target_slice,
+                    start.byte_pos,
+                    start.byte_pos + byte_len(field.bit)
+                ),
+                ");",
+            )
+        }
+        // we do not handle the cross byte u8
+        BuiltinTypes::U8 => {
+            assert!(start.byte_pos == start.next_pos(field.bit).byte_pos);
+            HeadTailWriter::new(
+                output,
+                &format!("{}[{}]=", target_slice, start.byte_pos),
+                ";",
+            )
+        }
+        BuiltinTypes::U16 | BuiltinTypes::U32 | BuiltinTypes::U64 => {
+            assert!(start.bit_pos == 0 || start.next_pos(field.bit).bit_pos == 7);
+            match byte_len(field.bit) {
+                2 => HeadTailWriter::new(
+                    output,
+                    &format!(
+                        "NetworkEndian::write_u16(&mut {}[{}..{}],",
+                        target_slice,
+                        start.byte_pos,
+                        start.byte_pos + 2
+                    ),
+                    ");",
+                ),
+                3 => HeadTailWriter::new(
+                    output,
+                    &format!(
+                        "NetworkEndian::write_u24(&mut {}[{}..{}],",
+                        target_slice,
+                        start.byte_pos,
+                        start.byte_pos + 3
+                    ),
+                    ");",
+                ),
+                4 => HeadTailWriter::new(
+                    output,
+                    &format!(
+                        "NetworkEndian::write_u32(&mut {}[{}..{}],",
+                        target_slice,
+                        start.byte_pos,
+                        start.byte_pos + 4
+                    ),
+                    ");",
+                ),
+                5 | 6 | 7 => HeadTailWriter::new(
+                    output,
+                    &format!(
+                        "NetworkEndian::write_uint(&mut {}[{}..{}],",
+                        target_slice,
+                        start.byte_pos,
+                        start.byte_pos + byte_len(field.bit),
+                    ),
+                    &format!(",{});", byte_len(field.bit)),
+                ),
+                8 => HeadTailWriter::new(
+                    output,
+                    &format!(
+                        "NetworkEndian::write_u64(&mut {}[{}..{}],",
+                        target_slice,
+                        start.byte_pos,
+                        start.byte_pos + 8
+                    ),
+                    ");",
+                ),
+                _ => panic!(),
+            }
+        }
+        _ => panic!(),
+    }
+}
+
 #[cfg(test)]
 mod codegen_tests {
     use crate::{

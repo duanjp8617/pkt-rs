@@ -63,6 +63,19 @@ pub enum BuiltinTypes {
     Bool,
 }
 
+impl BuiltinTypes {
+    pub fn to_string(&self) -> String {
+        match self {
+            BuiltinTypes::U8 => "u8".to_string(),
+            BuiltinTypes::U16 => "u16".to_string(),
+            BuiltinTypes::U32 => "u32".to_string(),
+            BuiltinTypes::U64 => "u64".to_string(),
+            BuiltinTypes::ByteSlice => "&[u8]".to_string(),
+            BuiltinTypes::Bool => "bool".to_string(),
+        }
+    }
+}
+
 impl From<&str> for BuiltinTypes {
     fn from(value: &str) -> Self {
         match value {
@@ -81,6 +94,15 @@ impl From<&str> for BuiltinTypes {
 pub enum Arg {
     BuiltinTypes(BuiltinTypes),
     Code(String),
+}
+
+impl Arg {
+    pub fn to_string(&self) -> String {
+        match self {
+            Arg::BuiltinTypes(bt) => bt.to_string(),
+            Arg::Code(code_str) => code_str.to_string(),
+        }
+    }
 }
 
 #[derive(Clone, Eq, PartialEq, Debug)]
@@ -310,8 +332,7 @@ pub fn check_header_list(
                     // In this branch, neither of the two ends are aligned to the byte boundary,
                     // we report an error.
                     Err((Error::InvalidHeader(ERR_REASON_HEADER3), sp_str.span))
-                } 
-                else {
+                } else {
                     // move the global_bit_pos past the current header
                     global_bit_pos += field.bit;
                     field_pos.insert(sp_str.item.clone(), (start, field_idx));
