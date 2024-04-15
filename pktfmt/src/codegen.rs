@@ -137,6 +137,30 @@ fn zeros_mask(mut low: u64, high: u64) -> String {
     s
 }
 
+fn to_rust_type(repr: BuiltinTypes, rust_type_code: &str) -> String {
+    match repr {
+        BuiltinTypes::U8 | BuiltinTypes::U16 | BuiltinTypes::U32 | BuiltinTypes::U64 => {
+            format!("{}::from_{}", rust_type_code, repr.to_string())
+        }
+        BuiltinTypes::ByteSlice => {
+            format!("{}::from_byte_slice", rust_type_code)
+        }
+        _ => panic!(),
+    }
+}
+
+fn rust_var_as_repr(var_name: &str, repr: BuiltinTypes) -> String {
+    match repr {
+        BuiltinTypes::U8 | BuiltinTypes::U16 | BuiltinTypes::U32 | BuiltinTypes::U64 => {
+            format!("{}.as_{}()", var_name, repr.to_string())
+        }
+        BuiltinTypes::ByteSlice => {
+            format!("{}.as_byte_slice()", var_name)
+        }
+        _ => panic!(),
+    }
+}
+
 fn read_field(field: &Field, start: BitPos, target_slice: &str, mut output: &mut dyn Write) {
     match field.repr {
         BuiltinTypes::ByteSlice => {
@@ -254,9 +278,13 @@ fn read_repr(field: &Field, start: BitPos, target_slice: &str, output: &mut dyn 
 
 fn read_as_arg(field: &Field, start: BitPos, target_slice: &str, mut output: &mut dyn Write) {
     match &field.arg {
-        Arg::Code(_) => {
+        Arg::Code(code) => {
             // arg is code
-            let mut into_writer = HeadTailWriter::new(&mut output, "(", ").into()");
+            let mut into_writer = HeadTailWriter::new(
+                &mut output,
+                &format!("{}(", to_rust_type(field.repr, code)),
+                ")",
+            );
             read_repr(field, start, target_slice, into_writer.get_writer());
         }
         Arg::BuiltinTypes(defined_arg) => {
@@ -513,6 +541,106 @@ fn write_repr(
     } else {
         write_field(field, start, target_slice, &write_value, output);
     }
+}
+
+fn write_as_arg(
+    field: &Field,
+    start: BitPos,
+    target_slice: &str,
+    write_value: &str,
+    output: &mut dyn Write,
+) {
+    match &field.arg {
+        Arg::BuiltinTypes(defined_arg) if *defined_arg != field.repr => {
+            write!(output, "if {} {{\n", write_value).unwrap();
+            write!(
+                output,
+                "{}[{}]={}[{}]|{}\n",
+                target_slice,
+                start.byte_pos,
+                target_slice,
+                start.byte_pos,
+                ones_mask(7 - start.bit_pos, 7 - start.bit_pos)
+            )
+            .unwrap();
+            write!(output, "}}\nelse {{\n").unwrap();
+            write!(
+                output,
+                "{}[{}]={}[{}]&{}\n",
+                target_slice,
+                start.byte_pos,
+                target_slice,
+                start.byte_pos,
+                zeros_mask(7 - start.bit_pos, 7 - start.bit_pos)
+            )
+            .unwrap();
+            write!(output, "}}").unwrap();
+        }
+        _ => {
+            match &field.arg {
+                Arg::Code(_) => {
+                    write!(
+                        output,
+                        "let {} = {};\n",
+                        write_value,
+                        rust_var_as_repr(write_value, field.repr)
+                    )
+                    .unwrap();
+                }
+                _ => {}
+            };
+            if field.bit % 8 != 0 {
+                write!(
+                    output,
+                    "assert!({} <= {});\n",
+                    write_value,
+                    ones_mask(0, field.bit - 1)
+                )
+                .unwrap();
+            }
+            write_repr(field, start, target_slice, write_value, output);
+        }
+    }
+}
+
+fn field_set_method(
+    name: &str,
+    field: &Field,
+    start: BitPos,
+    target_slice: &str,
+    write_value: &str,
+    mut output: &mut dyn Write,
+) {
+    writeln!(output, "#[inline]").unwrap();
+
+    let mut func_def = if field.gen {
+        "pub fn ".to_string()
+    } else {
+        "fn ".to_string()
+    };
+    func_def += &format!(
+        "set_{}(&mut self, {}:{}){{\n",
+        name,
+        write_value,
+        field.arg.to_string()
+    );
+
+    let mut func_def_writer = HeadTailWriter::new(&mut output, &func_def, "\n}\n");
+    write_as_arg(
+        field,
+        start,
+        target_slice,
+        write_value,
+        func_def_writer.get_writer(),
+    );
+}
+
+pub fn header_field_set_method(name: &str, field: &Field, start: BitPos, output: &mut dyn Write) {
+    field_set_method(name, field, start, "self.buf.as_mut()", "value", output)
+}
+
+pub fn packet_field_set_method(name: &str, field: &Field, start: BitPos, output: &mut dyn Write) {
+    field_set_method(name, field, start, "self.buf.chunk_mut()", "value", output)
 }
 
 #[cfg(test)]
@@ -775,7 +903,7 @@ mod codegen_tests {
         do_test_field_codegen!(
             "Field {bit  = 32, repr = &[u8], arg = %%Ipv4Addr%%, default=%%Ipv4Addr::default()%%}",
             read_as_arg,
-            "(&self.buf.as_ref()[3..7]).into()",
+            "Ipv4Addr::from_byte_slice(&self.buf.as_ref()[3..7])",
             BitPos {
                 byte_pos: 3,
                 bit_pos: 0,
@@ -991,6 +1119,53 @@ NetworkEndian::write_u64(&mut self.buf.as_mut()[3..11],rest_of_field|value);",
             "Field {bit  = 128}",
             write_repr,
             "(&mut self.buf.as_mut()[3..19]).copy_from_slice(value);",
+            BitPos {
+                byte_pos: 3,
+                bit_pos: 0,
+            },
+            "self.buf.as_mut()",
+            "value"
+        );
+    }
+
+    #[test]
+    fn test_write_arg() {
+        do_test_field_codegen!(
+            "Field {bit  = 32, repr = &[u8], arg = %%Ipv4Addr%%, default=%%Ipv4Addr::default()%%}",
+            write_as_arg,
+            "let value = value.as_byte_slice();
+(&mut self.buf.as_mut()[3..7]).copy_from_slice(value);",
+            BitPos {
+                byte_pos: 3,
+                bit_pos: 0,
+            },
+            "self.buf.as_mut()",
+            "value"
+        );
+
+        do_test_field_codegen!(
+            "Field {bit = 1, arg = bool, default = false}",
+            write_as_arg,
+            "if value {
+self.buf.as_mut()[13]=self.buf.as_mut()[13]|0x80
+}
+else {
+self.buf.as_mut()[13]=self.buf.as_mut()[13]&0x7f
+}",
+            BitPos {
+                byte_pos: 13,
+                bit_pos: 0,
+            },
+            "self.buf.as_mut()",
+            "value"
+        );
+
+        do_test_field_codegen!(
+            "Field {bit  = 35}",
+            write_as_arg,
+            "assert!(value <= 0x7ffffffff);
+let rest_of_field=(self.buf.as_mut()[7]&0x1f) as u64;
+NetworkEndian::write_uint(&mut self.buf.as_mut()[3..8],rest_of_field|(value<<5),5);",
             BitPos {
                 byte_pos: 3,
                 bit_pos: 0,

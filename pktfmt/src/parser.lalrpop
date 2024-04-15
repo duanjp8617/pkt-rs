@@ -95,7 +95,7 @@ BuiltinTypes: BuiltinTypes = {
 
 Arg: Arg = {
     BuiltinTypes => Arg::BuiltinTypes(<>),
-    "code" => Arg::Code(<>.to_string())
+    <s: "code"> => Arg::Code((&s[2..(s.len()-2)]).to_string())
 }
 
 DefaultVal: DefaultVal = {
