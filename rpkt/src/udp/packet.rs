@@ -291,4 +291,24 @@ mod tests {
         let udppkt = UdpPacket::parse(ippkt.payload()).unwrap();
         assert_eq!(udppkt.source_port(), 1024);
     }
+
+    #[test]
+    fn fuck() {
+        use byteorder::{ByteOrder, NetworkEndian};
+        struct Fuck<T: AsMut<[u8]>> {
+            buf: T,
+        }
+
+        impl<T: AsMut<[u8]>> Fuck<T> {
+            fn set(&mut self, value: u16) {
+                let sth = NetworkEndian::read_u16(&self.buf.as_mut()[0..2]) & 0x007;
+                NetworkEndian::write_u16(&mut self.buf.as_mut()[0..2], sth | (value << 7));
+            }
+
+            fn set1(&mut self, value: u8) {
+                self.buf.as_mut()[0] = (self.buf.as_mut()[0] & 0xfc) | (value >> 1);
+                self.buf.as_mut()[1] = (self.buf.as_mut()[1] & 0x7f) | (value << 7);
+            }
+        }
+    }
 }
