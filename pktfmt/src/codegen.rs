@@ -161,156 +161,155 @@ fn rust_var_as_repr(var_name: &str, repr: BuiltinTypes) -> String {
     }
 }
 
-fn read_field(field: &Field, start: BitPos, target_slice: &str, mut output: &mut dyn Write) {
-    let end = start.next_pos(field.bit);
-    match field.repr {
-        BuiltinTypes::ByteSlice => {
-            write!(
-                output,
-                "&{}[{}..{}]",
-                target_slice,
-                start.byte_pos,
-                start.byte_pos + byte_len(field.bit)
-            )
-            .unwrap();
-        }
-        BuiltinTypes::U8 => {
-            assert!(start.byte_pos == end.byte_pos);
+pub struct FieldGetMethod<'a> {
+    pub field: &'a Field,
+    pub start: BitPos,
+}
 
-            let read_byte = format!("{}[{}]", target_slice, start.byte_pos);
-
-            if end.bit_pos < 7 && start.bit_pos > 0 {
-                // right shift followed by bitwise and
+impl<'a> FieldGetMethod<'a> {
+    fn read_field(&self, target_slice: &str, mut output: &mut dyn Write) {
+        let end = self.start.next_pos(self.field.bit);
+        match self.field.repr {
+            BuiltinTypes::ByteSlice => {
                 write!(
                     output,
-                    "({}>>{})&{}",
-                    read_byte,
-                    7 - end.bit_pos,
-                    ones_mask(0, field.bit - 1)
-                )
-                .unwrap();
-            } else if end.bit_pos < 7 {
-                // right shift only
-                write!(output, "{}>>{}", read_byte, 7 - end.bit_pos).unwrap();
-            } else if start.bit_pos > 0 {
-                // bitwise and only
-                write!(output, "{}&{}", read_byte, ones_mask(0, field.bit - 1)).unwrap();
-            } else {
-                // field.bit % 8 == 0, do nothing
-                write!(output, "{}", read_byte).unwrap();
-            }
-        }
-        BuiltinTypes::U16 | BuiltinTypes::U32 | BuiltinTypes::U64 => {
-            {
-                let mut new = network_endian_read(&mut output, field.bit);
-                write!(
-                    new.get_writer(),
                     "&{}[{}..{}]",
                     target_slice,
-                    start.byte_pos,
-                    start.byte_pos + byte_len(field.bit)
+                    self.start.byte_pos,
+                    self.start.byte_pos + byte_len(self.field.bit)
                 )
                 .unwrap();
             }
+            BuiltinTypes::U8 => {
+                assert!(self.start.byte_pos == end.byte_pos);
 
-            if end.bit_pos < 7 {
-                write!(output, ">>{}", 7 - end.bit_pos).unwrap();
-            } else if start.bit_pos > 0 {
-                write!(output, "&{}", ones_mask(0, field.bit - 1)).unwrap();
-            } else {
-                // field.bit % 8 == 0, do nothing
+                let read_byte = format!("{}[{}]", target_slice, self.start.byte_pos);
+
+                if end.bit_pos < 7 && self.start.bit_pos > 0 {
+                    // right shift followed by bitwise and
+                    write!(
+                        output,
+                        "({}>>{})&{}",
+                        read_byte,
+                        7 - end.bit_pos,
+                        ones_mask(0, self.field.bit - 1)
+                    )
+                    .unwrap();
+                } else if end.bit_pos < 7 {
+                    // right shift only
+                    write!(output, "{}>>{}", read_byte, 7 - end.bit_pos).unwrap();
+                } else if self.start.bit_pos > 0 {
+                    // bitwise and only
+                    write!(output, "{}&{}", read_byte, ones_mask(0, self.field.bit - 1)).unwrap();
+                } else {
+                    // field.bit % 8 == 0, do nothing
+                    write!(output, "{}", read_byte).unwrap();
+                }
+            }
+            BuiltinTypes::U16 | BuiltinTypes::U32 | BuiltinTypes::U64 => {
+                {
+                    let mut new = network_endian_read(&mut output, self.field.bit);
+                    write!(
+                        new.get_writer(),
+                        "&{}[{}..{}]",
+                        target_slice,
+                        self.start.byte_pos,
+                        self.start.byte_pos + byte_len(self.field.bit)
+                    )
+                    .unwrap();
+                }
+
+                if end.bit_pos < 7 {
+                    write!(output, ">>{}", 7 - end.bit_pos).unwrap();
+                } else if self.start.bit_pos > 0 {
+                    write!(output, "&{}", ones_mask(0, self.field.bit - 1)).unwrap();
+                } else {
+                    // field.bit % 8 == 0, do nothing
+                }
+            }
+            _ => panic!(),
+        }
+    }
+
+    fn read_field_cross_byte(&self, target_slice: &str, output: &mut dyn Write) {
+        let end = self.start.next_pos(self.field.bit);
+
+        let read_result = format!(
+            "({}[{}]<<{})|({}[{}]>>{})",
+            target_slice,
+            self.start.byte_pos,
+            self.field.bit - (8 - self.start.bit_pos),
+            target_slice,
+            end.byte_pos,
+            7 - end.bit_pos
+        );
+
+        if self.field.bit < 8 {
+            write!(
+                output,
+                "({})&{}",
+                read_result,
+                ones_mask(0, self.field.bit - 1)
+            )
+            .unwrap();
+        } else {
+            write!(output, "{}", read_result).unwrap();
+        }
+    }
+
+    fn read_repr(&self, target_slice: &str, output: &mut dyn Write) {
+        let end = self.start.next_pos(self.field.bit);
+        if self.field.bit <= 8 && self.start.byte_pos != end.byte_pos {
+            self.read_field_cross_byte(target_slice, output);
+        } else {
+            self.read_field(target_slice, output);
+        }
+    }
+
+    fn read_as_arg(&self, target_slice: &str, mut output: &mut dyn Write) {
+        match &self.field.arg {
+            Arg::Code(code) => {
+                // arg is code
+                let mut into_writer = HeadTailWriter::new(
+                    &mut output,
+                    &format!("{}(", to_rust_type(self.field.repr, code)),
+                    ")",
+                );
+                self.read_repr(target_slice, into_writer.get_writer());
+            }
+            Arg::BuiltinTypes(defined_arg) => {
+                if *defined_arg == self.field.repr {
+                    // arg is the same as the repr
+                    self.read_repr(target_slice, output);
+                } else {
+                    // arg is bool, field.bit == 1
+                    // A fast path method for accessing bool
+                    write!(
+                        output,
+                        "{}[{}]&{} != 0",
+                        target_slice,
+                        self.start.byte_pos,
+                        ones_mask(7 - self.start.bit_pos, 7 - self.start.bit_pos)
+                    )
+                    .unwrap();
+                }
             }
         }
-        _ => panic!(),
     }
-}
 
-fn read_field_cross_byte(field: &Field, start: BitPos, target_slice: &str, output: &mut dyn Write) {
-    let end = start.next_pos(field.bit);
+    pub fn code_gen(&self, field_name: &str, target_slice: &str, mut output: &mut dyn Write) {
+        writeln!(output, "#[inline]").unwrap();
 
-    let read_result = format!(
-        "({}[{}]<<{})|({}[{}]>>{})",
-        target_slice,
-        start.byte_pos,
-        field.bit - (8 - start.bit_pos),
-        target_slice,
-        end.byte_pos,
-        7 - end.bit_pos
-    );
+        let mut func_def = if self.field.gen {
+            "pub fn ".to_string()
+        } else {
+            "fn ".to_string()
+        };
+        func_def += &format!("{}(&self)->{}{{\n", field_name, self.field.arg.to_string());
 
-    if field.bit < 8 {
-        write!(output, "({})&{}", read_result, ones_mask(0, field.bit - 1)).unwrap();
-    } else {
-        write!(output, "{}", read_result).unwrap();
+        let mut func_def_writer = HeadTailWriter::new(&mut output, &func_def, "\n}\n");
+        self.read_as_arg(target_slice, func_def_writer.get_writer());
     }
-}
-
-fn read_repr(field: &Field, start: BitPos, target_slice: &str, output: &mut dyn Write) {
-    let end = start.next_pos(field.bit);
-    if field.bit <= 8 && start.byte_pos != end.byte_pos {
-        read_field_cross_byte(field, start, target_slice, output);
-    } else {
-        read_field(field, start, target_slice, output);
-    }
-}
-
-fn read_as_arg(field: &Field, start: BitPos, target_slice: &str, mut output: &mut dyn Write) {
-    match &field.arg {
-        Arg::Code(code) => {
-            // arg is code
-            let mut into_writer = HeadTailWriter::new(
-                &mut output,
-                &format!("{}(", to_rust_type(field.repr, code)),
-                ")",
-            );
-            read_repr(field, start, target_slice, into_writer.get_writer());
-        }
-        Arg::BuiltinTypes(defined_arg) => {
-            if *defined_arg == field.repr {
-                // arg is the same as the repr
-                read_repr(field, start, target_slice, output);
-            } else {
-                // arg is bool, field.bit == 1
-                // A fast path method for accessing bool
-                write!(
-                    output,
-                    "{}[{}]&{} != 0",
-                    target_slice,
-                    start.byte_pos,
-                    ones_mask(7 - start.bit_pos, 7 - start.bit_pos)
-                )
-                .unwrap();
-            }
-        }
-    }
-}
-
-fn field_get_method(
-    name: &str,
-    field: &Field,
-    start: BitPos,
-    target_slice: &str,
-    mut output: &mut dyn Write,
-) {
-    writeln!(output, "#[inline]").unwrap();
-
-    let mut func_def = if field.gen {
-        "pub fn ".to_string()
-    } else {
-        "fn ".to_string()
-    };
-    func_def += &format!("{}(&self)->{}{{\n", name, field.arg.to_string());
-
-    let mut func_def_writer = HeadTailWriter::new(&mut output, &func_def, "\n}\n");
-    read_as_arg(field, start, target_slice, func_def_writer.get_writer());
-}
-
-pub fn header_field_get_method(name: &str, field: &Field, start: BitPos, output: &mut dyn Write) {
-    field_get_method(name, field, start, "self.buf.as_ref()", output)
-}
-
-pub fn packet_field_get_method(name: &str, field: &Field, start: BitPos, output: &mut dyn Write) {
-    field_get_method(name, field, start, "self.buf.chunk()", output)
 }
 
 // We can not handle cross byte here
@@ -668,6 +667,16 @@ mod codegen_tests {
         assert_eq!(&zeros_mask(0, 63), "0x0000000000000000");
     }
 
+    macro_rules! new_do_test_field_codegen {
+        ($program: expr, $test_ty: ident, $test_fn: ident, $expected: expr, $start: expr $(, $arg: expr)*) => {
+            let tokenizer = Tokenizer::new($program);
+            let field = parse_with_error!(crate::parser::FieldParser, tokenizer).unwrap();
+            let mut buf: Vec<u8> = ::std::vec::Vec::new();
+            $test_ty{field: &field, start: $start}.$test_fn($($arg,)* &mut buf);
+            assert_eq!($expected, std::str::from_utf8(&buf[..]).unwrap());
+        };
+    }
+
     macro_rules! do_test_field_codegen {
         ($program: expr, $test_fn: ident, $expected: expr $(, $arg: expr)*) => {
             let tokenizer = Tokenizer::new($program);
@@ -690,8 +699,9 @@ mod codegen_tests {
 
     #[test]
     fn test_read_repr_8b() {
-        do_test_field_codegen!(
+        new_do_test_field_codegen!(
             "Field {bit  = 5}",
+            FieldGetMethod,
             read_repr,
             "(self.buf.as_ref()[0]>>2)&0x1f",
             BitPos {
@@ -701,8 +711,9 @@ mod codegen_tests {
             "self.buf.as_ref()"
         );
 
-        do_test_field_codegen!(
+        new_do_test_field_codegen!(
             "Field {bit  = 5}",
+            FieldGetMethod,
             read_repr,
             "self.buf.as_ref()[0]&0x1f",
             BitPos {
@@ -712,8 +723,9 @@ mod codegen_tests {
             "self.buf.as_ref()"
         );
 
-        do_test_field_codegen!(
+        new_do_test_field_codegen!(
             "Field {bit  = 5}",
+            FieldGetMethod,
             read_repr,
             "self.buf.as_ref()[0]>>3",
             BitPos {
@@ -723,8 +735,9 @@ mod codegen_tests {
             "self.buf.as_ref()"
         );
 
-        do_test_field_codegen!(
+        new_do_test_field_codegen!(
             "Field {bit  = 8}",
+            FieldGetMethod,
             read_repr,
             "self.buf.as_ref()[0]",
             BitPos {
@@ -734,8 +747,9 @@ mod codegen_tests {
             "self.buf.as_ref()"
         );
 
-        do_test_field_codegen!(
+        new_do_test_field_codegen!(
             "Field {bit  = 3}",
+            FieldGetMethod,
             read_repr,
             "((self.buf.as_ref()[0]<<1)|(self.buf.as_ref()[1]>>7))&0x7",
             BitPos {
@@ -745,8 +759,9 @@ mod codegen_tests {
             "self.buf.as_ref()"
         );
 
-        do_test_field_codegen!(
+        new_do_test_field_codegen!(
             "Field {bit  = 8}",
+            FieldGetMethod,
             read_repr,
             "(self.buf.as_ref()[0]<<6)|(self.buf.as_ref()[1]>>2)",
             BitPos {
@@ -759,8 +774,9 @@ mod codegen_tests {
 
     #[test]
     fn test_read_repr_gt_8b() {
-        do_test_field_codegen!(
+        new_do_test_field_codegen!(
             "Field {bit  = 9}",
+            FieldGetMethod,
             read_repr,
             "NetworkEndian::read_u16(&self.buf.as_ref()[0..2])>>7",
             BitPos {
@@ -770,8 +786,9 @@ mod codegen_tests {
             "self.buf.as_ref()"
         );
 
-        do_test_field_codegen!(
+        new_do_test_field_codegen!(
             "Field {bit  = 14}",
+            FieldGetMethod,
             read_repr,
             "NetworkEndian::read_u16(&self.buf.as_ref()[0..2])&0x3fff",
             BitPos {
@@ -781,8 +798,9 @@ mod codegen_tests {
             "self.buf.as_ref()"
         );
 
-        do_test_field_codegen!(
+        new_do_test_field_codegen!(
             "Field {bit  = 16}",
+            FieldGetMethod,
             read_repr,
             "NetworkEndian::read_u16(&self.buf.as_ref()[0..2])",
             BitPos {
@@ -792,8 +810,9 @@ mod codegen_tests {
             "self.buf.as_ref()"
         );
 
-        do_test_field_codegen!(
+        new_do_test_field_codegen!(
             "Field {bit  = 16, repr = &[u8]}",
+            FieldGetMethod,
             read_repr,
             "&self.buf.as_ref()[0..2]",
             BitPos {
@@ -803,8 +822,9 @@ mod codegen_tests {
             "self.buf.as_ref()"
         );
 
-        do_test_field_codegen!(
+        new_do_test_field_codegen!(
             "Field {bit  = 55}",
+            FieldGetMethod,
             read_repr,
             "NetworkEndian::read_uint(&self.buf.as_ref()[3..10], 7)>>1",
             BitPos {
@@ -814,8 +834,9 @@ mod codegen_tests {
             "self.buf.as_ref()"
         );
 
-        do_test_field_codegen!(
+        new_do_test_field_codegen!(
             "Field {bit  = 60}",
+            FieldGetMethod,
             read_repr,
             "NetworkEndian::read_u64(&self.buf.as_ref()[3..11])&0xfffffffffffffff",
             BitPos {
@@ -825,8 +846,9 @@ mod codegen_tests {
             "self.buf.as_ref()"
         );
 
-        do_test_field_codegen!(
+        new_do_test_field_codegen!(
             "Field {bit  = 128}",
+            FieldGetMethod,
             read_repr,
             "&self.buf.as_ref()[3..19]",
             BitPos {
@@ -839,8 +861,9 @@ mod codegen_tests {
 
     #[test]
     fn test_read_arg() {
-        do_test_field_codegen!(
+        new_do_test_field_codegen!(
             "Field {bit  = 32, repr = &[u8], arg = %%Ipv4Addr%%, default=%%Ipv4Addr::default()%%}",
+            FieldGetMethod,
             read_as_arg,
             "Ipv4Addr::from_byte_slice(&self.buf.as_ref()[3..7])",
             BitPos {
@@ -850,8 +873,9 @@ mod codegen_tests {
             "self.buf.as_ref()"
         );
 
-        do_test_field_codegen!(
+        new_do_test_field_codegen!(
             "Field {bit = 1, arg = bool, default = false}",
+            FieldGetMethod,
             read_as_arg,
             "self.buf.as_ref()[13]&0x80 != 0",
             BitPos {
@@ -899,7 +923,6 @@ mod codegen_tests {
             "self.buf.as_mut()",
             "value"
         );
-        
 
         do_test_field_codegen!(
             "Field {bit  = 8}",
