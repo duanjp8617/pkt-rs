@@ -375,7 +375,7 @@ pub struct LengthInfo {
 
 #[derive(Debug, Clone)]
 pub struct Packet {
-    pub name: String,
+    pub protocol_name: String,
     pub field_list: Vec<(String, Field)>,
     pub field_pos_map: HashMap<String, (BitPos, usize)>,
     pub header_len_option_name: Option<(LengthInfo, String)>,
@@ -387,7 +387,7 @@ impl Packet {
     /// We should perform checks to ensure that the length fields
     /// are correctly defined, but for now, we ignore it.
     pub fn new(
-        name: String,
+        protocol_name: String,
         field_list: Vec<(String, Field)>,
         field_pos_map: HashMap<String, (BitPos, usize)>,
         header_len_with_pos: Option<(LengthInfo, String, (usize, usize))>,
@@ -395,7 +395,7 @@ impl Packet {
         packet_len_with_pos: Option<(LengthInfo, (usize, usize))>,
     ) -> Result<Self, (Error, (usize, usize))> {
         Ok(Self {
-            name,
+            protocol_name,
             field_list,
             field_pos_map,
             header_len_option_name: header_len_with_pos.map(|t| (t.0, t.1)),

@@ -1,17 +1,17 @@
 packet Ipv6 {
     header = [
-        version = Field{bit = 4, default = 6}, 
-        traffic_class = Field{bit = 8},
-        flow_label = Field {bit = 20},
+        version_ = Field{bit = 4, default = 6}, 
+        traffic_class_ = Field{bit = 8},
+        flow_label_ = Field {bit = 20},
         payload_len_ = Field{
             bit = 16,
             default = 0,
             gen = false
         },
-        next_header = Field{bit = 8, arg = %%IpProtocol%%, default = %%IpProtocol::UDP%%},
-        hop_limit = Field{bit = 8},
-        src_addr = Field{bit = 128, arg = %%Ipv6Addr%%, default = %%Ipv6Addr::default()%%},
-        dst_addr = Field{bit = 128, arg = %%Ipv6Addr%%, default = %%Ipv6Addr::default()%%},
+        next_header_ = Field{bit = 8, arg = %%IpProtocol%%, default = %%IpProtocol::UDP%%},
+        hop_limit_ = Field{bit = 8},
+        src_addr_ = Field{bit = 128, arg = %%Ipv6Addr%%, default = %%Ipv6Addr::default()%%},
+        dst_addr_ = Field{bit = 128, arg = %%Ipv6Addr%%, default = %%Ipv6Addr::default()%%},
     ],
     payload_len = PayloadLen {
         expr = payload_len_,
