@@ -1,4 +1,4 @@
-use pktfmt::{codegen::FieldAccessMethodBlob, *};
+use pktfmt::{codegen::FieldAccessMethod, *};
 
 #[macro_use]
 mod common;
@@ -11,27 +11,13 @@ fn print_header() {
     let packet = res.unwrap();
     let mut buf: Vec<u8> = Vec::new();
 
-    // packet.field_list.iter().for_each(|(name, field)| {
-    //     let (bitpos, _) = packet.field_pos_map.get(name).unwrap();
-    //     codegen::header_field_get_method(name, field, *bitpos, &mut buf);
-    // });
+    let type_name = packet.protocol_name.clone() + "Packet";
+    let trait_name = "PktMut";
+    let target_slice = "self.buf.chunk_mut()";
+    let write_value = "value";
 
-    // println!("{}", std::str::from_utf8(&buf[..]).unwrap());
-
-    let type_name = packet.protocol_name.clone() + "Header";
-    let trait_name = "AsMut<[u8]>";
-    let target_slice = "self.buf.as_mut()";
-    let write_value = Some("value".into());
-
-    FieldAccessMethodBlob::new(
-        &packet.field_list,
-        &packet.field_pos_map,
-        type_name,
-        trait_name.into(),
-        target_slice.into(),
-        write_value,
-    )
-    .code_gen(&mut buf);
+    packet.set_method_gen(&type_name, trait_name, target_slice, write_value, &mut buf);
+    // packet.get_method_gen(&type_name, trait_name, target_slice, &mut buf);
 
     println!("{}", std::str::from_utf8(&buf[..]).unwrap());
 }

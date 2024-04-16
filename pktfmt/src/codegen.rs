@@ -587,70 +587,139 @@ impl<'a> FieldSetMethod<'a> {
     }
 }
 
-pub struct FieldAccessMethodBlob<'a> {
-    field_list: &'a Vec<(String, Field)>,
-    field_pos_map: &'a HashMap<String, (BitPos, usize)>,
-    type_name: String,
-    trait_name: String,
-    target_slice: String,
-    write_value: Option<String>,
-}
+pub trait FieldAccessMethod {
+    fn field_list(&self) -> &Vec<(String, Field)>;
+    fn field_pos_map(&self) -> &HashMap<String, (BitPos, usize)>;
 
-impl<'a> FieldAccessMethodBlob<'a> {
-    pub fn new(
-        field_list: &'a Vec<(String, Field)>,
-        field_pos_map: &'a HashMap<String, (BitPos, usize)>,
-        type_name: String,
-        trait_name: String,
-        target_slice: String,
-        write_value: Option<String>,
-    ) -> Self {
-        Self {
-            field_list,
-            field_pos_map,
-            type_name,
-            trait_name,
-            target_slice,
-            write_value,
+    fn get_method_gen(
+        &self,
+        type_name: &str,
+        trait_name: &str,
+        target_slice: &str,
+        output: &mut dyn Write,
+    ) {
+        write!(output, "impl<T: {}> {}<T>{{\n", trait_name, type_name).unwrap();
+
+        for (field_name, field) in self.field_list() {
+            let (start, _) = self.field_pos_map().get(field_name).unwrap();
+
+            FieldGetMethod {
+                field,
+                start: *start,
+            }
+            .code_gen(field_name, target_slice, output);
         }
+
+        write!(output, "}}\n").unwrap();
     }
 
-    pub fn code_gen(&self, output: &mut dyn Write) {
-        write!(
-            output,
-            "impl<T: {}> {}<T>{{\n",
-            self.trait_name, self.type_name
-        )
-        .unwrap();
+    fn set_method_gen(
+        &self,
+        type_name: &str,
+        trait_name: &str,
+        target_slice: &str,
+        write_value: &str,
+        output: &mut dyn Write,
+    ) {
+        write!(output, "impl<T: {}> {}<T>{{\n", trait_name, type_name).unwrap();
 
-        for (field_name, field) in self.field_list {
-            let (start, _) = self.field_pos_map.get(field_name).unwrap();
-            match &self.write_value {
-                Some(write_value) => {
-                    FieldSetMethod {
-                        field,
-                        start: *start,
-                    }
-                    .code_gen(
-                        field_name,
-                        &self.target_slice,
-                        write_value,
-                        output,
-                    );
-                }
-                None => {
-                    FieldGetMethod {
-                        field,
-                        start: *start,
-                    }
-                    .code_gen(field_name, &self.target_slice, output);
-                }
+        for (field_name, field) in self.field_list() {
+            let (start, _) = self.field_pos_map().get(field_name).unwrap();
+
+            FieldSetMethod {
+                field,
+                start: *start,
             }
+            .code_gen(field_name, target_slice, write_value, output);
         }
 
         write!(output, "}}\n").unwrap();
     }
 }
+
+macro_rules! impl_field_access_method {
+    ($($ast_ty: ident),*) => {
+        $(
+            impl $crate::codegen::FieldAccessMethod for $ast_ty {
+                fn field_list(&self) -> &::std::vec::Vec<(String, $crate::ast::Field)> {
+                    &self.field_list
+                }
+
+                fn field_pos_map(
+                    &self,
+                ) -> &::std::collections::HashMap<String, ($crate::ast::BitPos, usize)> {
+                    &self.field_pos_map
+                }
+            }
+        )*
+    };
+}
+impl_field_access_method!(Packet);
+
+// pub struct FieldAccessMethodBlob<'a> {
+//     field_list: &'a Vec<(String, Field)>,
+//     field_pos_map: &'a HashMap<String, (BitPos, usize)>,
+//     type_name: String,
+//     trait_name: String,
+//     target_slice: String,
+//     write_value: Option<String>,
+// }
+
+// impl<'a> FieldAccessMethodBlob<'a> {
+//     pub fn new(
+//         field_list: &'a Vec<(String, Field)>,
+//         field_pos_map: &'a HashMap<String, (BitPos, usize)>,
+//         type_name: String,
+//         trait_name: String,
+//         target_slice: String,
+//         write_value: Option<String>,
+//     ) -> Self {
+//         Self {
+//             field_list,
+//             field_pos_map,
+//             type_name,
+//             trait_name,
+//             target_slice,
+//             write_value,
+//         }
+//     }
+
+//     pub fn code_gen(&self, output: &mut dyn Write) {
+//         write!(
+//             output,
+//             "impl<T: {}> {}<T>{{\n",
+//             self.trait_name, self.type_name
+//         )
+//         .unwrap();
+
+//         for (field_name, field) in self.field_list {
+//             let (start, _) = self.field_pos_map.get(field_name).unwrap();
+//             match &self.write_value {
+//                 Some(write_value) => {
+//                     FieldSetMethod {
+//                         field,
+//                         start: *start,
+//                     }
+//                     .code_gen(
+//                         field_name,
+//                         &self.target_slice,
+//                         write_value,
+//                         output,
+//                     );
+//                 }
+//                 None => {
+//                     FieldGetMethod {
+//                         field,
+//                         start: *start,
+//                     }
+//                     .code_gen(field_name, &self.target_slice, output);
+//                 }
+//             }
+//         }
+
+//         write!(output, "}}\n").unwrap();
+//     }
+// }
 
 #[cfg(test)]
 mod codegen_tests {
