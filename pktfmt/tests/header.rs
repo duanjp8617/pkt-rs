@@ -5,7 +5,7 @@ mod common;
 
 #[test]
 fn print_header() {
-    let file = "wtf.pktfmt";
+    let file = "ipv6.pktfmt";
 
     let res = parse_for_result!(file, pktfmt::parser::PacketParser);
     let packet = res.unwrap();
@@ -13,7 +13,7 @@ fn print_header() {
 
     packet.field_list.iter().for_each(|(name, field)| {
         let (bitpos, _) = packet.field_pos_map.get(name).unwrap();
-        codegen::header_field_set_method(name, field, *bitpos, &mut buf);
+        codegen::header_field_get_method(name, field, *bitpos, &mut buf);
     });
 
     println!("{}", std::str::from_utf8(&buf[..]).unwrap());

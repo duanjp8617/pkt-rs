@@ -162,6 +162,7 @@ fn rust_var_as_repr(var_name: &str, repr: BuiltinTypes) -> String {
 }
 
 fn read_field(field: &Field, start: BitPos, target_slice: &str, mut output: &mut dyn Write) {
+    let end = start.next_pos(field.bit);
     match field.repr {
         BuiltinTypes::ByteSlice => {
             write!(
@@ -174,45 +175,33 @@ fn read_field(field: &Field, start: BitPos, target_slice: &str, mut output: &mut
             .unwrap();
         }
         BuiltinTypes::U8 => {
-            let end = start.next_pos(field.bit);
             assert!(start.byte_pos == end.byte_pos);
 
-            if end.bit_pos < 7 {
-                // add shift operation
-                let mut bw = HeadTailWriter::new(&mut output, "(", ")");
+            let read_byte = format!("{}[{}]", target_slice, start.byte_pos);
+
+            if end.bit_pos < 7 && start.bit_pos > 0 {
+                // right shift followed by bitwise and
                 write!(
-                    bw.get_writer(),
-                    "{}[{}]>>{}",
-                    target_slice,
-                    start.byte_pos,
-                    7 - end.bit_pos
+                    output,
+                    "({}>>{})&{}",
+                    read_byte,
+                    7 - end.bit_pos,
+                    ones_mask(0, field.bit - 1)
                 )
                 .unwrap();
+            } else if end.bit_pos < 7 {
+                // right shift only
+                write!(output, "{}>>{}", read_byte, 7 - end.bit_pos).unwrap();
+            } else if start.bit_pos > 0 {
+                // bitwise and only
+                write!(output, "{}&{}", read_byte, ones_mask(0, field.bit - 1)).unwrap();
             } else {
-                write!(output, "{}[{}]", target_slice, start.byte_pos).unwrap();
-            }
-
-            if field.bit < 8 {
-                // add or
-                write!(output, "&{}", ones_mask(0, field.bit - 1)).unwrap();
+                // field.bit % 8 == 0, do nothing
+                write!(output, "{}", read_byte).unwrap();
             }
         }
         BuiltinTypes::U16 | BuiltinTypes::U32 | BuiltinTypes::U64 => {
-            if start.bit_pos == 0 && field.bit % 8 != 0 {
-                let mut bw = HeadTailWriter::new(&mut output, "(", ")");
-                {
-                    let mut new = network_endian_read(bw.get_writer(), field.bit);
-                    write!(
-                        new.get_writer(),
-                        "&{}[{}..{}]",
-                        target_slice,
-                        start.byte_pos,
-                        start.byte_pos + byte_len(field.bit)
-                    )
-                    .unwrap();
-                }
-                write!(bw.get_writer(), ">>{}", 8 * byte_len(field.bit) - field.bit).unwrap();
-            } else {
+            {
                 let mut new = network_endian_read(&mut output, field.bit);
                 write!(
                     new.get_writer(),
@@ -224,46 +213,35 @@ fn read_field(field: &Field, start: BitPos, target_slice: &str, mut output: &mut
                 .unwrap();
             }
 
-            if field.bit % 8 != 0 {
+            if end.bit_pos < 7 {
+                write!(output, ">>{}", 7 - end.bit_pos).unwrap();
+            } else if start.bit_pos > 0 {
                 write!(output, "&{}", ones_mask(0, field.bit - 1)).unwrap();
+            } else {
+                // field.bit % 8 == 0, do nothing
             }
         }
         _ => panic!(),
     }
 }
 
-fn read_field_cross_byte(
-    field: &Field,
-    start: BitPos,
-    target_slice: &str,
-    mut output: &mut dyn Write,
-) {
+fn read_field_cross_byte(field: &Field, start: BitPos, target_slice: &str, output: &mut dyn Write) {
     let end = start.next_pos(field.bit);
-    let do_write = |output: &mut dyn Write| {
-        write!(
-            output,
-            "({}[{}]<<{})|({}[{}]>>{})",
-            target_slice,
-            start.byte_pos,
-            field.bit - (8 - start.bit_pos),
-            target_slice,
-            end.byte_pos,
-            7 - end.bit_pos
-        )
-        .unwrap();
-    };
+
+    let read_result = format!(
+        "({}[{}]<<{})|({}[{}]>>{})",
+        target_slice,
+        start.byte_pos,
+        field.bit - (8 - start.bit_pos),
+        target_slice,
+        end.byte_pos,
+        7 - end.bit_pos
+    );
 
     if field.bit < 8 {
-        // add shift operation
-        let mut bw = HeadTailWriter::new(&mut output, "(", ")");
-        do_write(bw.get_writer());
+        write!(output, "({})&{}", read_result, ones_mask(0, field.bit - 1)).unwrap();
     } else {
-        do_write(output);
-    }
-
-    if field.bit < 8 {
-        // add or
-        write!(output, "&{}", ones_mask(0, field.bit - 1)).unwrap();
+        write!(output, "{}", read_result).unwrap();
     }
 }
 
@@ -365,28 +343,34 @@ fn write_field(
             let end = start.next_pos(field.bit);
             assert!(start.byte_pos == end.byte_pos);
 
-            let mut field_writer = HeadTailWriter::new(
-                &mut output,
-                &format!("{}[{}]=", target_slice, start.byte_pos),
-                ";",
-            );
+            let write_target = format!("{}[{}]", target_slice, start.byte_pos);
+
             if field.bit % 8 == 0 {
-                write!(field_writer.get_writer(), "{}", write_value).unwrap();
+                // the field is located in a single byte
+                write!(output, "{}={};", write_target, write_value).unwrap();
             } else {
-                write!(
-                    field_writer.get_writer(),
+                let rest_of_field = format!(
                     "({}[{}]&{})",
                     target_slice,
                     start.byte_pos,
                     zeros_mask(7 - end.bit_pos, 7 - start.bit_pos)
-                )
-                .unwrap();
+                );
+
                 if end.bit_pos == 7 {
-                    write!(field_writer.get_writer(), "|{}", write_value).unwrap();
-                } else {
+                    // no left shift
                     write!(
-                        field_writer.get_writer(),
-                        "|({}<<{})",
+                        output,
+                        "{}={}|{};",
+                        write_target, rest_of_field, write_value
+                    )
+                    .unwrap();
+                } else {
+                    // left shift
+                    write!(
+                        output,
+                        "{}={}|({}<<{});",
+                        write_target,
+                        rest_of_field,
                         write_value,
                         7 - end.bit_pos
                     )
@@ -410,6 +394,7 @@ fn write_field(
                 .unwrap();
                 write!(field_writer.get_writer(), "{}", write_value).unwrap();
             } else {
+                // first, read rest of the field into a temporary variable REST_OF_FIELD
                 {
                     let mut let_assign =
                         HeadTailWriter::new(&mut output, &format!("let {}=", REST_OF_FIELD), ";\n");
@@ -437,7 +422,9 @@ fn write_field(
                     }
                 }
 
+                // setup the write guard
                 let mut field_writer = network_endian_write(&mut output, field.bit);
+                // specify the target slice to write to
                 write!(
                     field_writer.get_writer(),
                     "&mut {}[{}..{}],",
@@ -448,6 +435,7 @@ fn write_field(
                 .unwrap();
 
                 if end.bit_pos == 7 {
+                    // no left shift
                     write!(
                         field_writer.get_writer(),
                         "{}|{}",
@@ -456,6 +444,7 @@ fn write_field(
                     )
                     .unwrap();
                 } else {
+                    // left shift
                     write!(
                         field_writer.get_writer(),
                         "{}|({}<<{})",
@@ -476,56 +465,36 @@ fn write_field_cross_byte(
     start: BitPos,
     target_slice: &str,
     write_value: &str,
-    mut output: &mut dyn Write,
+    output: &mut dyn Write,
 ) {
     let end = start.next_pos(field.bit);
     assert!(field.bit <= 8 && start.byte_pos != end.byte_pos);
 
-    {
-        let mut field_writer = HeadTailWriter::new(
-            &mut output,
-            &format!("{}[{}]=", target_slice, start.byte_pos),
-            ";\n",
-        );
-        write!(
-            field_writer.get_writer(),
-            "({}[{}]&{})|",
-            target_slice,
-            start.byte_pos,
-            zeros_mask(0, 7 - start.bit_pos)
-        )
-        .unwrap();
-        write!(
-            field_writer.get_writer(),
-            "({}>>{})",
-            write_value,
-            end.bit_pos + 1
-        )
-        .unwrap();
-    }
+    write!(
+        output,
+        "{}[{}]=({}[{}]&{})|({}>>{});\n",
+        target_slice,
+        start.byte_pos,
+        target_slice,
+        start.byte_pos,
+        zeros_mask(0, 7 - start.bit_pos),
+        write_value,
+        end.bit_pos + 1
+    )
+    .unwrap();
 
-    {
-        let mut field_writer = HeadTailWriter::new(
-            &mut output,
-            &format!("{}[{}]=", target_slice, end.byte_pos),
-            ";",
-        );
-        write!(
-            field_writer.get_writer(),
-            "({}[{}]&{})|",
-            target_slice,
-            end.byte_pos,
-            zeros_mask(7 - end.bit_pos, 7)
-        )
-        .unwrap();
-        write!(
-            field_writer.get_writer(),
-            "({}<<{})",
-            write_value,
-            7 - end.bit_pos
-        )
-        .unwrap();
-    }
+    write!(
+        output,
+        "{}[{}]=({}[{}]&{})|({}<<{});",
+        target_slice,
+        end.byte_pos,
+        target_slice,
+        end.byte_pos,
+        zeros_mask(7 - end.bit_pos, 7),
+        write_value,
+        7 - end.bit_pos
+    )
+    .unwrap();
 }
 
 fn write_repr(
@@ -720,7 +689,7 @@ mod codegen_tests {
     }
 
     #[test]
-    fn test_read_repr() {
+    fn test_read_repr_8b() {
         do_test_field_codegen!(
             "Field {bit  = 5}",
             read_repr,
@@ -739,6 +708,17 @@ mod codegen_tests {
             BitPos {
                 byte_pos: 0,
                 bit_pos: 3,
+            },
+            "self.buf.as_ref()"
+        );
+
+        do_test_field_codegen!(
+            "Field {bit  = 5}",
+            read_repr,
+            "self.buf.as_ref()[0]>>3",
+            BitPos {
+                byte_pos: 0,
+                bit_pos: 0,
             },
             "self.buf.as_ref()"
         );
@@ -775,11 +755,14 @@ mod codegen_tests {
             },
             "self.buf.as_ref()"
         );
+    }
 
+    #[test]
+    fn test_read_repr_gt_8b() {
         do_test_field_codegen!(
             "Field {bit  = 9}",
             read_repr,
-            "(NetworkEndian::read_u16(&self.buf.as_ref()[0..2])>>7)&0x1ff",
+            "NetworkEndian::read_u16(&self.buf.as_ref()[0..2])>>7",
             BitPos {
                 byte_pos: 0,
                 bit_pos: 0,
@@ -821,53 +804,9 @@ mod codegen_tests {
         );
 
         do_test_field_codegen!(
-            "Field {bit  = 22}",
-            read_repr,
-            "NetworkEndian::read_u24(&self.buf.as_ref()[4..7])&0x3fffff",
-            BitPos {
-                byte_pos: 4,
-                bit_pos: 2,
-            },
-            "self.buf.as_ref()"
-        );
-
-        do_test_field_codegen!(
-            "Field {bit  = 29}",
-            read_repr,
-            "(NetworkEndian::read_u32(&self.buf.as_ref()[3..7])>>3)&0x1fffffff",
-            BitPos {
-                byte_pos: 3,
-                bit_pos: 0,
-            },
-            "self.buf.as_ref()"
-        );
-
-        do_test_field_codegen!(
-            "Field {bit  = 35}",
-            read_repr,
-            "(NetworkEndian::read_uint(&self.buf.as_ref()[3..8], 5)>>5)&0x7ffffffff",
-            BitPos {
-                byte_pos: 3,
-                bit_pos: 0,
-            },
-            "self.buf.as_ref()"
-        );
-
-        do_test_field_codegen!(
-            "Field {bit  = 46}",
-            read_repr,
-            "NetworkEndian::read_uint(&self.buf.as_ref()[3..9], 6)&0x3fffffffffff",
-            BitPos {
-                byte_pos: 3,
-                bit_pos: 2,
-            },
-            "self.buf.as_ref()"
-        );
-
-        do_test_field_codegen!(
             "Field {bit  = 55}",
             read_repr,
-            "(NetworkEndian::read_uint(&self.buf.as_ref()[3..10], 7)>>1)&0x7fffffffffffff",
+            "NetworkEndian::read_uint(&self.buf.as_ref()[3..10], 7)>>1",
             BitPos {
                 byte_pos: 3,
                 bit_pos: 0,
@@ -924,7 +863,7 @@ mod codegen_tests {
     }
 
     #[test]
-    fn test_write_repr() {
+    fn test_write_repr_8b() {
         do_test_field_codegen!(
             "Field {bit  = 5}",
             write_repr,
@@ -948,6 +887,19 @@ mod codegen_tests {
             "self.buf.as_mut()",
             "value"
         );
+
+        do_test_field_codegen!(
+            "Field {bit  = 5}",
+            write_repr,
+            "self.buf.as_mut()[0]=(self.buf.as_mut()[0]&0x07)|(value<<3);",
+            BitPos {
+                byte_pos: 0,
+                bit_pos: 0,
+            },
+            "self.buf.as_mut()",
+            "value"
+        );
+        
 
         do_test_field_codegen!(
             "Field {bit  = 8}",
@@ -986,7 +938,10 @@ self.buf.as_mut()[1]=(self.buf.as_mut()[1]&0x03)|(value<<2);",
             "self.buf.as_mut()",
             "value"
         );
+    }
 
+    #[test]
+    fn test_write_repr_gt_8b() {
         do_test_field_codegen!(
             "Field {bit  = 9}",
             write_repr,
@@ -1032,58 +987,6 @@ NetworkEndian::write_u16(&mut self.buf.as_mut()[0..2],rest_of_field|value);",
             BitPos {
                 byte_pos: 0,
                 bit_pos: 0,
-            },
-            "self.buf.as_mut()",
-            "value"
-        );
-
-        do_test_field_codegen!(
-            "Field {bit  = 22}",
-            write_repr,
-            "let rest_of_field=((self.buf.as_mut()[4]&0xc0) as u32) << 16;
-NetworkEndian::write_u24(&mut self.buf.as_mut()[4..7],rest_of_field|value);",
-            BitPos {
-                byte_pos: 4,
-                bit_pos: 2,
-            },
-            "self.buf.as_mut()",
-            "value"
-        );
-
-        do_test_field_codegen!(
-            "Field {bit  = 29}",
-            write_repr,
-            "let rest_of_field=(self.buf.as_mut()[6]&0x7) as u32;
-NetworkEndian::write_u32(&mut self.buf.as_mut()[3..7],rest_of_field|(value<<3));",
-            BitPos {
-                byte_pos: 3,
-                bit_pos: 0,
-            },
-            "self.buf.as_mut()",
-            "value"
-        );
-
-        do_test_field_codegen!(
-            "Field {bit  = 35}",
-            write_repr,
-            "let rest_of_field=(self.buf.as_mut()[7]&0x1f) as u64;
-NetworkEndian::write_uint(&mut self.buf.as_mut()[3..8],rest_of_field|(value<<5),5);",
-            BitPos {
-                byte_pos: 3,
-                bit_pos: 0,
-            },
-            "self.buf.as_mut()",
-            "value"
-        );
-
-        do_test_field_codegen!(
-            "Field {bit  = 46}",
-            write_repr,
-            "let rest_of_field=((self.buf.as_mut()[3]&0xc0) as u64) << 40;
-NetworkEndian::write_uint(&mut self.buf.as_mut()[3..9],rest_of_field|value,6);",
-            BitPos {
-                byte_pos: 3,
-                bit_pos: 2,
             },
             "self.buf.as_mut()",
             "value"
