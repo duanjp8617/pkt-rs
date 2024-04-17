@@ -586,83 +586,81 @@ impl<'a> FieldSetMethod<'a> {
         }
     }
 }
+trait FieldAccessMethod {
+    fn field_list(&self) -> &Vec<(String, Field)>;
+    fn field_pos_map(&self) -> &HashMap<String, (BitPos, usize)>;
 
-pub struct FieldAccessMethodBlob<'a> {
-    field_list: &'a Vec<(String, Field)>,
-    field_pos_map: &'a HashMap<String, (BitPos, usize)>,
-    type_name: &'a str,
-    trait_name: &'a str,
-    target_slice: &'a str,
-    write_value: Option<&'a str>,
-}
+    fn get_method_gen(
+        &self,
+        type_name: &str,
+        trait_name: &str,
+        target_slice: &str,
+        output: &mut dyn Write,
+    ) {
+        write!(output, "impl<T: {}> {}<T>{{\n", trait_name, type_name).unwrap();
 
-impl<'a> FieldAccessMethodBlob<'a> {
-    pub fn new(
-        field_list: &'a Vec<(String, Field)>,
-        field_pos_map: &'a HashMap<String, (BitPos, usize)>,
-        type_name: &'a str,
-        trait_name: &'a str,
-        target_slice: &'a str,
-        write_value: Option<&'a str>,
-    ) -> Self {
-        Self {
-            field_list,
-            field_pos_map,
-            type_name,
-            trait_name,
-            target_slice,
-            write_value,
+        for (field_name, field) in self.field_list() {
+            let (start, _) = self.field_pos_map().get(field_name).unwrap();
+
+            FieldGetMethod {
+                field,
+                start: *start,
+            }
+            .code_gen(field_name, target_slice, output);
         }
+
+        write!(output, "}}\n").unwrap();
     }
 
-    pub fn code_gen(&self, output: &mut dyn Write) {
-        write!(
-            output,
-            "impl<T: {}> {}<T>{{\n",
-            self.trait_name, self.type_name
-        )
-        .unwrap();
+    fn set_method_gen(
+        &self,
+        type_name: &str,
+        trait_name: &str,
+        target_slice: &str,
+        write_value: &str,
+        output: &mut dyn Write,
+    ) {
+        write!(output, "impl<T: {}> {}<T>{{\n", trait_name, type_name).unwrap();
 
-        for (field_name, field) in self.field_list {
-            let (start, _) = self.field_pos_map.get(field_name).unwrap();
-            match &self.write_value {
-                Some(write_value) => {
-                    FieldSetMethod {
-                        field,
-                        start: *start,
-                    }
-                    .code_gen(
-                        field_name,
-                        &self.target_slice,
-                        write_value,
-                        output,
-                    );
-                }
-                None => {
-                    FieldGetMethod {
-                        field,
-                        start: *start,
-                    }
-                    .code_gen(field_name, &self.target_slice, output);
-                }
+        for (field_name, field) in self.field_list() {
+            let (start, _) = self.field_pos_map().get(field_name).unwrap();
+
+            FieldSetMethod {
+                field,
+                start: *start,
             }
+            .code_gen(field_name, target_slice, write_value, output);
         }
 
         write!(output, "}}\n").unwrap();
     }
 }
 
+macro_rules! impl_field_access_method {
+    ($($ast_ty: ident),*) => {
+        $(
+            impl $crate::codegen::FieldAccessMethod for $ast_ty {
+                fn field_list(&self) -> &::std::vec::Vec<(String, $crate::ast::Field)> {
+                    &self.field_list
+                }
+
+                fn field_pos_map(
+                    &self,
+                ) -> &::std::collections::HashMap<String, ($crate::ast::BitPos, usize)> {
+                    &self.field_pos_map
+                }
+            }
+        )*
+    };
+}
+impl_field_access_method!(Packet);
+
 struct StructDefinition<'a> {
-    protocol_name: &'a str,
-    suffix: &'a str,
+    struct_name: &'a str,
     derives: &'a [&'static str],
 }
 
 impl<'a> StructDefinition<'a> {
-    fn struct_name(&self) -> String {
-        self.protocol_name.to_string() + self.suffix
-    }
-
     fn code_gen(&self, mut output: &mut dyn Write) {
         assert!(self.derives.len() > 0);
         {
@@ -677,38 +675,75 @@ impl<'a> StructDefinition<'a> {
                     }
                 });
         }
-        write!(
-            output,
-            "pub struct {}{}<T> {{\n",
-            self.protocol_name, self.suffix
-        )
-        .unwrap();
+        write!(output, "pub struct {}<T> {{\n", self.struct_name).unwrap();
         write!(output, "buf: T\n").unwrap();
         write!(output, "}}\n").unwrap();
     }
 }
 
-struct HeaderLenConst<'a> {
-    protocol_name: &'a str,
-    field_list: &'a Vec<(String, Field)>,
-    field_pos_map: &'a HashMap<String, (BitPos, usize)>,
+pub struct HeaderImpl<'a> {
+    packet: &'a Packet,
 }
 
-impl<'a> HeaderLenConst<'a> {
-    fn header_len_name(&self) -> String {
-        self.protocol_name.to_uppercase() + "_HEADER_LEN"
+impl<'a> HeaderImpl<'a> {
+    pub fn new(packet: &'a Packet) -> Self {
+        Self { packet }
     }
 
-    fn code_gen(&self, output: &mut dyn Write) {
+    pub fn code_gen(&self, output: &mut dyn Write) {
+        self.header_len_gen(output);
+        writeln!(output).unwrap();
+
+        // Defines the header struct.
+        let header_struct_gen = StructDefinition {
+            struct_name: &self.header_struct_name(),
+            derives: &["Debug", "Clone", "Copy"],
+        };
+        header_struct_gen.code_gen(output);
+        writeln!(output).unwrap();
+
+        // Generate basic methods.
+        self.header_base_gen(output);
+        writeln!(output).unwrap();
+
+        // Generate get methods
+        self.packet.get_method_gen(
+            &self.header_struct_name(),
+            "AsRef<[u8]>",
+            "self.buf.as_ref()",
+            output,
+        );
+        writeln!(output).unwrap();
+
+        // Generate set methods
+        self.packet.set_method_gen(
+            &self.header_struct_name(),
+            "AsMut<[u8]>",
+            "self.buf.as_mut()",
+            "value",
+            output,
+        );
+        writeln!(output).unwrap();
+    }
+
+    fn header_len_name(&self) -> String {
+        self.packet.protocol_name.to_uppercase() + "_HEADER_LEN"
+    }
+
+    fn header_struct_name(&self) -> String {
+        self.packet.protocol_name.clone() + "Header"
+    }
+
+    fn header_len_gen(&self, output: &mut dyn Write) {
         write!(
             output,
             "/// A constant that defines the fixed byte length of the {} protocol header.\n",
-            self.protocol_name
+            &self.packet.protocol_name
         )
         .unwrap();
 
-        let (field_name, field) = self.field_list.last().unwrap();
-        let (start, _) = self.field_pos_map.get(field_name).unwrap();
+        let (field_name, field) = self.packet.field_list.last().unwrap();
+        let (start, _) = self.packet.field_pos_map.get(field_name).unwrap();
         let end = start.next_pos(field.bit);
         // Prevent an over-large header length.
         assert!(end.byte_pos < u64::MAX / 2);
@@ -720,31 +755,6 @@ impl<'a> HeaderLenConst<'a> {
         )
         .unwrap();
     }
-}
-
-struct HeaderBaseMethod<'a> {
-    header_struct_name: &'a str,
-    header_len_name: &'a str,
-}
-
-impl<'a> HeaderBaseMethod<'a> {
-    fn code_gen(&self, output: &mut dyn Write) {
-        let trait_name = "AsRef<[u8]>";
-
-        write!(
-            output,
-            "impl<T: {}> {}<T>{{\n",
-            trait_name, self.header_struct_name
-        )
-        .unwrap();
-
-        self.parse(output);
-        self.parse_unchecked(output);
-        self.as_byte_slice(output);
-        self.to_owned(output);
-
-        write!(output, "}}\n").unwrap();
-    }
 
     fn parse(&self, output: &mut dyn Write) {
         write!(output, "#[inline]\n").unwrap();
@@ -752,7 +762,7 @@ impl<'a> HeaderBaseMethod<'a> {
         write!(
             output,
             "if buf.as_ref().len()>={}{{\n",
-            self.header_len_name
+            self.header_len_name()
         )
         .unwrap();
         write!(output, "Ok(Self{{buf}})\n").unwrap();
@@ -774,7 +784,8 @@ impl<'a> HeaderBaseMethod<'a> {
         write!(
             output,
             "&{}[0..{}]\n",
-            "self.buf.as_ref()", self.header_len_name
+            "self.buf.as_ref()",
+            self.header_len_name()
         )
         .unwrap();
         write!(output, "}}\n").unwrap();
@@ -785,70 +796,137 @@ impl<'a> HeaderBaseMethod<'a> {
         write!(
             output,
             "pub fn to_owned(&self) -> {}<[u8; {}]>{{\n",
-            self.header_struct_name, self.header_len_name
+            self.header_struct_name(),
+            self.header_len_name()
         )
         .unwrap();
-        write!(output, "let mut buf = [0; {}];\n", self.header_len_name).unwrap();
+        write!(output, "let mut buf = [0; {}];\n", self.header_len_name()).unwrap();
         write!(output, "buf.copy_from_slice(self.as_bytes());\n").unwrap();
-        write!(output, "{} {{buf}}\n", self.header_struct_name).unwrap();
+        write!(output, "{} {{buf}}\n", self.header_struct_name()).unwrap();
+        write!(output, "}}\n").unwrap();
+    }
+
+    fn header_base_gen(&self, output: &mut dyn Write) {
+        let trait_name = "AsRef<[u8]>";
+
+        write!(
+            output,
+            "impl<T: {}> {}<T>{{\n",
+            trait_name,
+            self.header_struct_name()
+        )
+        .unwrap();
+
+        self.parse(output);
+        self.parse_unchecked(output);
+        self.as_byte_slice(output);
+        self.to_owned(output);
+
         write!(output, "}}\n").unwrap();
     }
 }
 
-pub struct Header<'a> {
-    pub packet: &'a Packet,
+pub struct PacketImpl<'a> {
+    header_impl: &'a HeaderImpl<'a>,
 }
 
-impl<'a> Header<'a> {
+impl<'a> PacketImpl<'a> {
+    pub fn new(header_impl: &'a HeaderImpl<'a>) -> Self {
+        Self { header_impl }
+    }
+
     pub fn code_gen(&self, output: &mut dyn Write) {
-        // Generate a constant value that contains header length.
-        let header_len_gen = HeaderLenConst {
-            protocol_name: &self.packet.protocol_name,
-            field_list: &self.packet.field_list,
-            field_pos_map: &self.packet.field_pos_map,
+        // Generate packet struct definition.
+        let packet_struct_gen = StructDefinition {
+            struct_name: &self.packet_struct_name(),
+            derives: &["Debug"],
         };
-        header_len_gen.code_gen(output);
+        packet_struct_gen.code_gen(output);
         writeln!(output).unwrap();
 
-        // Defines the header struct.
-        let header_struct_gen = StructDefinition {
-            protocol_name: &self.packet.protocol_name,
-            suffix: "Header",
-            derives: &["Debug", "Clone", "Copy"],
-        };
-        header_struct_gen.code_gen(output);
-        writeln!(output).unwrap();
-
-        // Generate basic methods.
-        let header_base_method_gen = HeaderBaseMethod {
-            header_struct_name: &header_struct_gen.struct_name(),
-            header_len_name: &header_len_gen.header_len_name(),
-        };
-        header_base_method_gen.code_gen(output);
+        // Generate packet base methods.
+        self.packet_base_gen(output);
         writeln!(output).unwrap();
 
         // Generate get methods
-        let header_get_methods_gen = FieldAccessMethodBlob {
-            field_list: &self.packet.field_list,
-            field_pos_map: &self.packet.field_pos_map,
-            type_name: &header_struct_gen.struct_name(),
-            trait_name: "AsRef<[u8]>",
-            target_slice: "self.buf.as_ref()",
-            write_value: None,
-        };
-        header_get_methods_gen.code_gen(output);
+        self.header_impl.packet.get_method_gen(
+            &self.packet_struct_name(),
+            "Buf",
+            "self.buf.chunk()",
+            output,
+        );
         writeln!(output).unwrap();
 
         // Generate set methods
-        let header_set_methods_gen = FieldAccessMethodBlob {
-            field_list: &self.packet.field_list,
-            field_pos_map: &self.packet.field_pos_map,
-            type_name: &header_struct_gen.struct_name(),
-            trait_name: "AsMut<[u8]>",
-            target_slice: "self.buf.as_mut()",
-            write_value: Some("value"),
-        };
-        header_set_methods_gen.code_gen(output);
+        self.header_impl.packet.set_method_gen(
+            &self.packet_struct_name(),
+            "PktMut",
+            "self.buf.chunk_mut()",
+            "value",
+            output,
+        );
+        writeln!(output).unwrap();
+    }
+
+    fn packet_struct_name(&self) -> String {
+        self.header_impl.packet.protocol_name.clone() + "Packet"
+    }
+
+    fn buf(&self, output: &mut dyn Write) {
+        write!(output, "#[inline]\n").unwrap();
+        write!(output, "pub fn buf(&self) -> &T{{\n").unwrap();
+        write!(output, "&self.buf\n").unwrap();
+        write!(output, "}}\n").unwrap();
+    }
+
+    fn release(&self, output: &mut dyn Write) {
+        write!(output, "#[inline]\n").unwrap();
+        write!(output, "pub fn release(self) -> T{{\n").unwrap();
+        write!(output, "self.buf\n").unwrap();
+        write!(output, "}}\n").unwrap();
+    }
+
+    fn header(&self, output: &mut dyn Write) {
+        write!(output, "#[inline]\n").unwrap();
+        write!(
+            output,
+            "pub fn header(self) -> {}<&[u8]>{{\n",
+            self.header_impl.header_struct_name()
+        )
+        .unwrap();
+        write!(
+            output,
+            "let data = &self.buf.chunk()[..{}]\n",
+            self.header_impl.header_len_name()
+        )
+        .unwrap();
+        write!(
+            output,
+            "{}::parse_unchecked(data)\n",
+            self.header_impl.header_struct_name()
+        )
+        .unwrap();
+        write!(output, "}}\n").unwrap();
+    }
+
+    fn packet_base_gen(&self, output: &mut dyn Write) {
+        let trait_name = "Buf";
+
+        write!(
+            output,
+            "impl<T: {}> {}<T>{{\n",
+            trait_name,
+            self.packet_struct_name()
+        )
+        .unwrap();
+
+        // The parse unchecked method is exactly the same
+        self.header_impl.parse_unchecked(output);
+        self.buf(output);
+        self.release(output);
+        self.header(output);
+
+        write!(output, "}}\n").unwrap();
     }
 }
 
