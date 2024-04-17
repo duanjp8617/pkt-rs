@@ -1,4 +1,4 @@
-use pktfmt::{codegen::FieldAccessMethod, *};
+use pktfmt::{codegen::*, *};
 
 #[macro_use]
 mod common;
@@ -11,13 +11,9 @@ fn print_header() {
     let packet = res.unwrap();
     let mut buf: Vec<u8> = Vec::new();
 
-    let type_name = packet.protocol_name.clone() + "Packet";
-    let trait_name = "PktMut";
-    let target_slice = "self.buf.chunk_mut()";
-    let write_value = "value";
-
-    packet.set_method_gen(&type_name, trait_name, target_slice, write_value, &mut buf);
+    Header { packet: &packet }.code_gen(&mut buf);
     // packet.get_method_gen(&type_name, trait_name, target_slice, &mut buf);
+    // packet.header_base_gen(&mut buf);
 
     println!("{}", std::str::from_utf8(&buf[..]).unwrap());
 }
