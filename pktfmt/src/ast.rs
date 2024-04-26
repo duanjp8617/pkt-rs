@@ -359,11 +359,93 @@ pub enum AlgOp {
     Div,
 }
 
+/// Only the following types of algorithmic expressions can be analyzed:
+/// 1. Num
+/// 2. Ident
+/// 3.1 Binary(Box<Num>, AlgOp::Add, Box<Ident>)
+/// 3.2 Binary(Box<Ident>, AlgOp::Add, )
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum AlgExpr {
     Num(u64),
     Ident(String),
     Binary(Box<AlgExpr>, AlgOp, Box<AlgExpr>),
+}
+
+pub enum UsableAlgExpr {
+    IdentOnly(String),
+    /// String + u64
+    SimpleAdd(String, u64),
+    /// String + u64
+    SimpleMult(String, u64),
+    /// (String + u64.1) * u64.2
+    AddMult(String, u64, u64),
+    /// String * u64.1 + u64.2
+    MultAdd(String, u64, u64),
+}
+
+impl AlgExpr {
+    fn try_take_simple_type(&self) -> Option<UsableAlgExpr> {
+        match self {
+            AlgExpr::Ident(s) => Some(UsableAlgExpr::IdentOnly(s.clone())),
+            AlgExpr::Binary(left, op, right) => match (&(**left), op, &(**right)) {
+                (AlgExpr::Num(num), AlgOp::Add, AlgExpr::Ident(s)) => {
+                    Some(UsableAlgExpr::SimpleAdd(s.clone(), *num))
+                }
+                (AlgExpr::Ident(s), AlgOp::Add, AlgExpr::Num(num)) => {
+                    Some(UsableAlgExpr::SimpleAdd(s.clone(), *num))
+                }
+                (AlgExpr::Num(num), AlgOp::Mul, AlgExpr::Ident(s)) => {
+                    Some(UsableAlgExpr::SimpleMult(s.clone(), *num))
+                }
+                (AlgExpr::Ident(s), AlgOp::Mul, AlgExpr::Num(num)) => {
+                    Some(UsableAlgExpr::SimpleMult(s.clone(), *num))
+                }
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    pub fn try_take_usable_expr(&self) -> Option<UsableAlgExpr> {
+        match self {
+            AlgExpr::Binary(left, op, right) => match (&(**left), op, &(**right)) {
+                (AlgExpr::Binary(_, _, _), AlgOp::Add, AlgExpr::Num(other)) => {
+                    match left.try_take_simple_type()? {
+                        UsableAlgExpr::SimpleMult(s, num) => {
+                            Some(UsableAlgExpr::MultAdd(s, num, *other))
+                        }
+                        _ => None,
+                    }
+                }
+                (AlgExpr::Num(other), AlgOp::Add, AlgExpr::Binary(_, _, _)) => {
+                    match right.try_take_simple_type()? {
+                        UsableAlgExpr::SimpleMult(s, num) => {
+                            Some(UsableAlgExpr::MultAdd(s, num, *other))
+                        }
+                        _ => None,
+                    }
+                }
+                (AlgExpr::Binary(_, _, _), AlgOp::Mul, AlgExpr::Num(other)) => {
+                    match left.try_take_simple_type()? {
+                        UsableAlgExpr::SimpleAdd(s, num) => {
+                            Some(UsableAlgExpr::AddMult(s, num, *other))
+                        }
+                        _ => None,
+                    }
+                }
+                (AlgExpr::Num(other), AlgOp::Mul, AlgExpr::Binary(_, _, _)) => {
+                    match right.try_take_simple_type()? {
+                        UsableAlgExpr::SimpleAdd(s, num) => {
+                            Some(UsableAlgExpr::AddMult(s, num, *other))
+                        }
+                        _ => None,
+                    }
+                }
+                _ => None,
+            },
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
