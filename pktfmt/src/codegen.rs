@@ -825,7 +825,6 @@ impl<'a> HeaderImpl<'a> {
         write!(output, "}}\n").unwrap();
     }
 }
-
 pub struct PacketImpl<'a> {
     header_impl: &'a HeaderImpl<'a>,
 }
@@ -849,7 +848,7 @@ impl<'a> PacketImpl<'a> {
         writeln!(output).unwrap();
 
         // Generate get methods
-        self.header_impl.packet.get_method_gen(
+        self.packet().get_method_gen(
             &self.packet_struct_name(),
             "Buf",
             "self.buf.chunk()",
@@ -858,7 +857,7 @@ impl<'a> PacketImpl<'a> {
         writeln!(output).unwrap();
 
         // Generate set methods
-        self.header_impl.packet.set_method_gen(
+        self.packet().set_method_gen(
             &self.packet_struct_name(),
             "PktMut",
             "self.buf.chunk_mut()",
@@ -868,8 +867,34 @@ impl<'a> PacketImpl<'a> {
         writeln!(output).unwrap();
     }
 
+    // obtain a reference to the packet contained
+    // in the `header_impl`
+    fn packet(&self) -> &Packet {
+        &self.header_impl.packet
+    }
+
     fn packet_struct_name(&self) -> String {
-        self.header_impl.packet.protocol_name.clone() + "Packet"
+        self.packet().protocol_name.clone() + "Packet"
+    }
+
+    fn packet_base_gen(&self, output: &mut dyn Write) {
+        let trait_name = "Buf";
+
+        write!(
+            output,
+            "impl<T: {}> {}<T>{{\n",
+            trait_name,
+            self.packet_struct_name()
+        )
+        .unwrap();
+
+        // The parse unchecked method is exactly the same
+        self.header_impl.parse_unchecked(output);
+        self.buf(output);
+        self.release(output);
+        self.header(output);
+
+        write!(output, "}}\n").unwrap();
     }
 
     fn buf(&self, output: &mut dyn Write) {
@@ -906,26 +931,6 @@ impl<'a> PacketImpl<'a> {
             self.header_impl.header_struct_name()
         )
         .unwrap();
-        write!(output, "}}\n").unwrap();
-    }
-
-    fn packet_base_gen(&self, output: &mut dyn Write) {
-        let trait_name = "Buf";
-
-        write!(
-            output,
-            "impl<T: {}> {}<T>{{\n",
-            trait_name,
-            self.packet_struct_name()
-        )
-        .unwrap();
-
-        // The parse unchecked method is exactly the same
-        self.header_impl.parse_unchecked(output);
-        self.buf(output);
-        self.release(output);
-        self.header(output);
-
         write!(output, "}}\n").unwrap();
     }
 }
