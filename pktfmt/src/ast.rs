@@ -359,11 +359,6 @@ pub enum AlgOp {
     Div,
 }
 
-/// Only the following types of algorithmic expressions can be analyzed:
-/// 1. Num
-/// 2. Ident
-/// 3.1 Binary(Box<Num>, AlgOp::Add, Box<Ident>)
-/// 3.2 Binary(Box<Ident>, AlgOp::Add, )
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum AlgExpr {
     Num(u64),
@@ -441,9 +436,9 @@ impl AlgExpr {
                         _ => None,
                     }
                 }
-                _ => None,
+                _ => self.try_take_usable_expr(),
             },
-            _ => None,
+            _ => self.try_take_usable_expr(),
         }
     }
 }
@@ -451,7 +446,6 @@ impl AlgExpr {
 #[derive(Debug, Clone)]
 pub struct LengthInfo {
     pub expr: Box<AlgExpr>,
-    pub min: u64,
     pub max: Option<u64>,
 }
 

@@ -30,6 +30,6 @@ header = [
     header_len = HeaderLen {
         option_name = options,
         expr = data_off * 4,
-        min = 20,
+        max = 60,
     }
 }

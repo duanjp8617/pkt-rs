@@ -163,12 +163,11 @@ AlgExpr: Box<AlgExpr> = {
     AddExpr => <>
 }
 
-LengthBase: (Box<AlgExpr>, u64, Option<u64>) = {
-    "expr" "=" <expr: AlgExpr> "," 
-    "min" "=" <min: "num"> 
+LengthBase: (Box<AlgExpr>, Option<u64>) = {
+    "expr" "=" <expr: AlgExpr>
     <max: ("," "max" "=" <"num">)?> 
     ","? => 
-        (expr, u64::from_str(min).unwrap(), max.map(|s| u64::from_str(s).unwrap()))
+        (expr, max.map(|s| u64::from_str(s).unwrap()))
 }
 
 HeaderLenOption: (LengthInfo, String, (usize, usize)) = {
@@ -176,8 +175,8 @@ HeaderLenOption: (LengthInfo, String, (usize, usize)) = {
         "option_name" "=" <option_name: "ident">
         <length_base: ("," <LengthBase>)>
     "}" <r: @R> => {
-        let (expr, min, max) = length_base;
-        (LengthInfo {expr, min, max}, String::from_str(option_name).unwrap(), (l, r))
+        let (expr, max) = length_base;
+        (LengthInfo {expr, max}, String::from_str(option_name).unwrap(), (l, r))
     }
 }
 
@@ -185,8 +184,8 @@ PayloadLen: (LengthInfo, (usize, usize)) = {
     <l: @L> "payload_len" "=" "PayloadLen" "{"
         <length_base: LengthBase>
     "}" <r: @R> => {
-        let (expr, min, max) = length_base;
-        (LengthInfo {expr, min, max}, (l, r))
+        let (expr, max) = length_base;
+        (LengthInfo {expr, max}, (l, r))
     }
 }
 
@@ -194,8 +193,8 @@ PacketLen: (LengthInfo, (usize, usize)) = {
     <l: @L> "packet_len" "=" "PacketLen" "{"
         <length_base: LengthBase>
     "}" <r: @R> => {
-        let (expr, min, max) = length_base;
-        (LengthInfo {expr, min, max}, (l, r))
+        let (expr, max) = length_base;
+        (LengthInfo {expr, max}, (l, r))
     }
 }
 
