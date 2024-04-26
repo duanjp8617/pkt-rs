@@ -53,6 +53,9 @@ const ERR_REASON_HEADER3: &str = r#"not aligned to byte boundary
 If the header field contains multiple bytes, then one of the two ends 
 must be aligned to the byte boudaries."#;
 
+const ERR_REASON_HEADER4: &str = r#"invalid field name
+header_len, payload_len and packet_len are reserved field names"#;
+
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum BuiltinTypes {
     U8,
@@ -302,6 +305,8 @@ impl BitPos {
     }
 }
 
+const RESERVED_NAMES: &[&str] = &["header_len", "payload_len", "packet_len"];
+
 /// Given a preparsed header list, check its correctness
 /// and return a correct header list
 ///
@@ -320,6 +325,12 @@ pub fn check_header_list(
             if field_pos.get(&sp_str.item).is_some() {
                 // First, we dedup the header field names.
                 Err((Error::InvalidHeader(ERR_REASON_HEADER1), sp_str.span))
+            } else if RESERVED_NAMES
+                .iter()
+                .find(|reserved| **reserved == &sp_str.item)
+                .is_some()
+            {
+                Err((Error::InvalidHeader(ERR_REASON_HEADER4), sp_str.span))
             } else {
                 // Next, we check whether the bit size of the field
                 // is correctly aligned.
