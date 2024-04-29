@@ -1,6 +1,9 @@
 use std::collections::HashMap;
+use std::io::{Read, Write};
 
 use crate::utils::Spanned;
+
+const RESERVED_FIELD_NAMES: &[&str] = &["header_len", "payload_len", "packet_len"];
 
 quick_error! {
     #[derive(Debug, PartialEq, Eq, Hash, Clone)]
@@ -55,6 +58,8 @@ must be aligned to the byte boudaries."#;
 
 const ERR_REASON_HEADER4: &str = r#"invalid field name
 header_len, payload_len and packet_len are reserved field names"#;
+
+const ERR_REASON_LENGTH1: &str = r#"wtf?"#;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum BuiltinTypes {
@@ -305,8 +310,6 @@ impl BitPos {
     }
 }
 
-const RESERVED_NAMES: &[&str] = &["header_len", "payload_len", "packet_len"];
-
 /// Given a preparsed header list, check its correctness
 /// and return a correct header list
 ///
@@ -325,7 +328,7 @@ pub fn check_header_list(
             if field_pos.get(&sp_str.item).is_some() {
                 // First, we dedup the header field names.
                 Err((Error::InvalidHeader(ERR_REASON_HEADER1), sp_str.span))
-            } else if RESERVED_NAMES
+            } else if RESERVED_FIELD_NAMES
                 .iter()
                 .find(|reserved| **reserved == &sp_str.item)
                 .is_some()
@@ -375,18 +378,6 @@ pub enum AlgExpr {
     Num(u64),
     Ident(String),
     Binary(Box<AlgExpr>, AlgOp, Box<AlgExpr>),
-}
-
-pub enum UsableAlgExpr {
-    IdentOnly(String),
-    /// String + u64
-    SimpleAdd(String, u64),
-    /// String + u64
-    SimpleMult(String, u64),
-    /// (String + u64.1) * u64.2
-    AddMult(String, u64, u64),
-    /// String * u64.1 + u64.2
-    MultAdd(String, u64, u64),
 }
 
 impl AlgExpr {
@@ -451,6 +442,112 @@ impl AlgExpr {
             },
             _ => self.try_take_usable_expr(),
         }
+    }
+}
+
+pub enum UsableAlgExpr {
+    IdentOnly(String),
+    /// String + u64
+    SimpleAdd(String, u64),
+    /// String + u64
+    SimpleMult(String, u64),
+    /// (String + u64.1) * u64.2
+    AddMult(String, u64, u64),
+    /// String * u64.1 + u64.2
+    MultAdd(String, u64, u64),
+}
+
+impl UsableAlgExpr {
+    /// Given an input variable `x`, calculate the final value of this expression.
+    ///
+    /// Note: we assume that all the calculations done here will not trigger overflow,
+    /// because the parser will ensure that the values are bounded by `COMPILER_MAX_NUM`.
+    pub fn exec(&self, x: u64) -> u64 {
+        match self {
+            Self::IdentOnly(_) => x,
+            Self::SimpleAdd(_, add) => x + add,
+            Self::SimpleMult(_, mult) => x * mult,
+            Self::AddMult(_, add, mult) => (x + add) * mult,
+            Self::MultAdd(_, mult, add) => x * mult + add,
+        }
+    }
+
+    /// Given an result value `y`, do reverse calculation and find out the
+    /// corresponding input value.
+    ///
+    /// Return the input value if it's an integer, or return `None` if it's fractional.
+    pub fn reverse_exec(&self, y: u64) -> Option<u64> {
+        match self {
+            Self::IdentOnly(_) => Some(y),
+            Self::SimpleAdd(_, add) => {
+                if y >= *add {
+                    Some(y - add)
+                } else {
+                    None
+                }
+            }
+            Self::SimpleMult(_, mult) => {
+                if y % mult == 0 {
+                    Some(y / mult)
+                } else {
+                    None
+                }
+            }
+            Self::AddMult(_, add, mult) => {
+                if y % mult == 0 && (y / mult) >= *add {
+                    Some(y / mult - add)
+                } else {
+                    None
+                }
+            }
+            Self::MultAdd(_, mult, add) => {
+                if y >= *add && (y - add) % mult == 0 {
+                    Some((y - add) / mult)
+                } else {
+                    None
+                }
+            }
+        }
+    }
+
+    /// Given an input string `x_str`, dump the expression for calculating the
+    /// result value to the `output`.
+    pub fn gen_exec(&self, x_str: &str, output: &mut dyn Write) {
+        let res = match self {
+            Self::IdentOnly(_) => write!(output, "{}", x_str),
+            Self::SimpleAdd(_, add) => write!(output, "{}+{}", x_str, add),
+            Self::SimpleMult(_, mult) => write!(output, "{}*{}", x_str, mult),
+            Self::AddMult(_, add, mult) => write!(output, "({}+{})*{}", x_str, add, mult),
+            Self::MultAdd(_, mult, add) => write!(output, "{}*{}+{}", x_str, mult, add),
+        };
+        res.unwrap();
+    }
+
+    /// Dump a guard condition to the `output` that can be used to protect the reverse calculation
+    /// expression.
+    pub fn reverse_exec_guard(&self, y_str: &str) -> String {
+        match self {
+            Self::SimpleMult(_, mult) | Self::AddMult(_, _, mult) => {
+                format!("{}%{}==0", y_str, mult)
+            }
+            Self::MultAdd(_, mult, add) => {
+                format!("({}-{})%{}==0", y_str, add, mult)
+            }
+            _ => "".to_string(),
+        }
+    }
+
+    /// Given a result string `y_str`, dump the expression for reverse calculating the
+    /// intput value to the `output`.
+    pub fn write_reverse_exec(&self, y_str: &str, output: &mut dyn Write) {
+        let res = match self {
+            Self::IdentOnly(_) => write!(output, "{}", y_str),
+            Self::SimpleAdd(_, add) => write!(output, "{}-{}", y_str, add),
+            Self::SimpleMult(_, mult) => write!(output, "{}/{}", y_str, mult),
+            Self::AddMult(_, add, mult) => write!(output, "{}/{}-{}", y_str, mult, add),
+            Self::MultAdd(_, mult, add) => write!(output, "({}-{})/{}", y_str, add, mult),
+        };
+        res.unwrap();
     }
 }
 
