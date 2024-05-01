@@ -438,9 +438,9 @@ impl AlgExpr {
                         _ => None,
                     }
                 }
-                _ => self.try_take_usable_expr(),
+                _ => self.try_take_simple_type(),
             },
-            _ => self.try_take_usable_expr(),
+            _ => self.try_take_simple_type(),
         }
     }
 }

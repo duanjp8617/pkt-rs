@@ -655,6 +655,8 @@ trait FieldAccessMethod {
         let (_, field) = &self.field_list()[*field_idx];
         assert!(check_valid_length_expr(field));
 
+        println!("I'm here");
+
         write!(output, "#[inline]\n").unwrap();
         write!(output, "pub fn get_{}(&self) -> usize {{\n", length_name).unwrap();
         write!(output, "let length = self.get_{}();\n", field_name).unwrap();
@@ -689,7 +691,7 @@ trait FieldAccessMethod {
             // The first guard condition ensures that the input length
             // does not exceed that maximum value allowed by the field
             // bits.
-            guards.push(format!("length<={}", field_max_val));
+            guards.push(format!("length<={}", length_expr.exec(field_max_val)));
         }
         let guard_str = length_expr.reverse_exec_guard("length");
         if guard_str.len() > 0 {
@@ -701,7 +703,7 @@ trait FieldAccessMethod {
         if guards.len() > 0 {
             let mut assert_writer = HeadTailWriter::new(&mut output, "assert!(", ");\n");
             guards.iter().enumerate().for_each(|(idx, s)| {
-                write!(assert_writer.get_writer(), "{}", s).unwrap();
+                write!(assert_writer.get_writer(), "({})", s).unwrap();
                 if idx < guards.len() - 1 {
                     write!(assert_writer.get_writer(), "&&").unwrap();
                 }
@@ -810,6 +812,20 @@ impl<'a> HeaderImpl<'a> {
             output,
         );
         writeln!(output).unwrap();
+
+        if let Some((header_len_info, _)) = &self.packet.header_len_option_name {
+            self.packet.get_length_method_gen(
+                "header_len",
+                &header_len_info.expr.try_take_usable_expr().unwrap(),
+                output,
+            );
+
+            self.packet.set_length_method_gen(
+                "header_len",
+                &header_len_info.expr.try_take_usable_expr().unwrap(),
+                output,
+            );
+        }
     }
 
     fn header_len_name(&self) -> String {

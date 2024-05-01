@@ -12,7 +12,8 @@ fn print_header() {
     let mut buf: Vec<u8> = Vec::new();
 
     let hl = HeaderImpl::new(&packet);
-    PacketImpl::new(&hl).code_gen(&mut buf);
+    // PacketImpl::new(&hl).code_gen(&mut buf);
+    hl.code_gen(&mut buf);
     // packet.get_method_gen(&type_name, trait_name, target_slice, &mut buf);
     // packet.header_base_gen(&mut buf);
 
