@@ -590,6 +590,14 @@ trait FieldAccessMethod {
     fn field_list(&self) -> &Vec<(String, Field)>;
     fn field_pos_map(&self) -> &HashMap<String, (BitPos, usize)>;
 
+    fn fixed_header_len(&self) -> u64 {
+        let (field_name, field) = self.field_list().last().unwrap();
+        let (start, _) = self.field_pos_map().get(field_name).unwrap();
+        let end = start.next_pos(field.bit);
+
+        end.byte_pos + 1
+    }
+
     fn get_method_gen(
         &self,
         type_name: &str,
@@ -632,6 +640,84 @@ trait FieldAccessMethod {
             .code_gen(field_name, target_slice, write_value, output);
         }
 
+        write!(output, "}}\n").unwrap();
+    }
+
+    fn get_length_method_gen(
+        &self,
+        length_name: &str,
+        length_expr: &UsableAlgExpr,
+        mut output: &mut dyn Write,
+    ) {
+        let field_name = length_expr.field_name();
+
+        let (_, field_idx) = self.field_pos_map().get(field_name).unwrap();
+        let (_, field) = &self.field_list()[*field_idx];
+        assert!(check_valid_length_expr(field));
+
+        write!(output, "#[inline]\n").unwrap();
+        write!(output, "pub fn get_{}(&self) -> usize {{\n", length_name).unwrap();
+        write!(output, "let length = self.get_{}();\n", field_name).unwrap();
+        length_expr.gen_exec("(length as usize)", &mut output);
+        write!(output, ";\n").unwrap();
+        write!(output, "}}\n").unwrap();
+    }
+
+    fn set_length_method_gen(
+        &self,
+        length_name: &str,
+        length_expr: &UsableAlgExpr,
+        mut output: &mut dyn Write,
+    ) {
+        let field_name = length_expr.field_name();
+
+        let (_, field_idx) = self.field_pos_map().get(field_name).unwrap();
+        let (_, field) = &self.field_list()[*field_idx];
+        assert!(check_valid_length_expr(field));
+
+        write!(output, "#[inline]\n").unwrap();
+        write!(
+            output,
+            "pub fn set_{}_unchecked(&self, length: uszie) {{\n",
+            length_name
+        )
+        .unwrap();
+
+        let mut guards = Vec::new();
+        if field.bit < 64 {
+            let field_max_val = (2 as u64).pow(field.bit as u32) - 1;
+            // The first guard condition ensures that the input length
+            // does not exceed that maximum value allowed by the field
+            // bits.
+            guards.push(format!("length<={}", field_max_val));
+        }
+        let guard_str = length_expr.reverse_exec_guard("length");
+        if guard_str.len() > 0 {
+            // The second guard condition ensures that there is no
+            // remainder after reverse calculation.
+            guards.push(guard_str);
+        }
+
+        if guards.len() > 0 {
+            let mut assert_writer = HeadTailWriter::new(&mut output, "assert!(", ");\n");
+            guards.iter().enumerate().for_each(|(idx, s)| {
+                write!(assert_writer.get_writer(), "{}", s).unwrap();
+                if idx < guards.len() - 1 {
+                    write!(assert_writer.get_writer(), "&&").unwrap();
+                }
+            });
+        }
+
+        {
+            let mut val_def_writer = HeadTailWriter::new(
+                &mut output,
+                "let val = (",
+                &format!(") as {};\n", field.repr.to_string()),
+            );
+            length_expr.gen_reverse_exec("length", val_def_writer.get_writer());
+        }
+
+        write!(output, "self.set_{}(val);\n", field_name).unwrap();
         write!(output, "}}\n").unwrap();
     }
 }
@@ -742,16 +828,15 @@ impl<'a> HeaderImpl<'a> {
         )
         .unwrap();
 
-        let (field_name, field) = self.packet.field_list.last().unwrap();
-        let (start, _) = self.packet.field_pos_map.get(field_name).unwrap();
-        let end = start.next_pos(field.bit);
-        // Prevent an over-large header length.
-        assert!(end.byte_pos < u64::MAX / 2);
+        let header_len = self.packet.fixed_header_len();
+        // TODO:
+        // assert!(header_len < SOME_CONSTANT);
+
         write!(
             output,
             "pub const {}: usize = {};\n",
             self.header_len_name(),
-            end.byte_pos + 1
+            header_len
         )
         .unwrap();
     }

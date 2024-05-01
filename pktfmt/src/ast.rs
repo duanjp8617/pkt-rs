@@ -445,6 +445,21 @@ impl AlgExpr {
     }
 }
 
+// Check whether a field can be used in a length expression.
+pub(crate) fn check_valid_length_expr(field: &Field) -> bool {
+    // A field can only be used in a length expression
+    // if the repr is not a byte slice and that the arg
+    // is the same as the repr.
+    if field.repr != BuiltinTypes::ByteSlice {
+        match field.arg {
+            Arg::BuiltinTypes(arg) => field.repr == arg,
+            _ => false,
+        }
+    } else {
+        false
+    }
+}
+
 pub enum UsableAlgExpr {
     IdentOnly(String),
     /// String + u64
@@ -458,6 +473,17 @@ pub enum UsableAlgExpr {
 }
 
 impl UsableAlgExpr {
+    /// Get the field name contained in the expression.
+    pub fn field_name(&self) -> &str {
+        match self {
+            Self::IdentOnly(s)
+            | Self::SimpleAdd(s, _)
+            | Self::SimpleMult(s, _)
+            | Self::AddMult(s, _, _)
+            | Self::MultAdd(s, _, _) => s,
+        }
+    }
+
     /// Given an input variable `x`, calculate the final value of this expression.
     ///
     /// Note: we assume that all the calculations done here will not trigger overflow,
@@ -539,7 +565,7 @@ impl UsableAlgExpr {
 
     /// Given a result string `y_str`, dump the expression for reverse calculating the
     /// intput value to the `output`.
-    pub fn write_reverse_exec(&self, y_str: &str, output: &mut dyn Write) {
+    pub fn gen_reverse_exec(&self, y_str: &str, output: &mut dyn Write) {
         let res = match self {
             Self::IdentOnly(_) => write!(output, "{}", y_str),
             Self::SimpleAdd(_, add) => write!(output, "{}-{}", y_str, add),
