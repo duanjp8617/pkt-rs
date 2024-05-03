@@ -51,6 +51,7 @@ fn network_endian_read<T: Write>(writer: T, bit_len: u64) -> HeadTailWriter<T> {
     }
 }
 
+// Similar to `network_endian_read`, but it appends the write method.
 fn network_endian_write<T: Write>(writer: T, bit_len: u64) -> HeadTailWriter<T> {
     let byte_len = byte_len(bit_len);
     match byte_len {
@@ -76,6 +77,8 @@ fn byte_len(bit_len: u64) -> u64 {
     }
 }
 
+// Generate bit mask with all ones from `low`-th bit
+// to the `high`-th bit.
 fn ones_mask(mut low: u64, high: u64) -> String {
     assert!(low <= high && high < 64);
 
@@ -103,6 +106,8 @@ fn ones_mask(mut low: u64, high: u64) -> String {
     format!("{:#x}", res) + &s
 }
 
+// Generate bit mask with all zeros from `low`-th bit
+// to the `high`-th bit.
 fn zeros_mask(mut low: u64, high: u64) -> String {
     assert!(low <= high && high < 64);
 
@@ -141,6 +146,11 @@ fn zeros_mask(mut low: u64, high: u64) -> String {
     s
 }
 
+// If the `arg` is a rust type, then the rust type must implement a convert
+// method that turns the `repr`-typed value into a `arg`-typed one.
+//
+// Take `Ipv4Addr` as an example, it should implement:
+// pub fn Ipv4Addr::from_byte_slice(value: &[u8]) -> Ipv4Addr {...}
 fn to_rust_type(repr: BuiltinTypes, rust_type_code: &str) -> String {
     match repr {
         BuiltinTypes::U8 | BuiltinTypes::U16 | BuiltinTypes::U32 | BuiltinTypes::U64 => {
@@ -153,6 +163,11 @@ fn to_rust_type(repr: BuiltinTypes, rust_type_code: &str) -> String {
     }
 }
 
+// If the `arg` is a rust type, then the rust type must implement a convert
+// method that turns the `arg`-typed value into a `repr`-typed one.
+//
+// Take `EtherType` as an example, it should implement:
+// pub fn EtherType::as_u16(&self) -> u16 {...}
 fn rust_var_as_repr(var_name: &str, repr: BuiltinTypes) -> String {
     match repr {
         BuiltinTypes::U8 | BuiltinTypes::U16 | BuiltinTypes::U32 | BuiltinTypes::U64 => {
@@ -171,6 +186,9 @@ struct FieldGetMethod<'a> {
 }
 
 impl<'a> FieldGetMethod<'a> {
+    // Generate a get method to access the field with name `field_name` from the buffer slice
+    // `target_slice`.
+    // The generated method is written to `output`.
     fn code_gen(&self, field_name: &str, target_slice: &str, mut output: &mut dyn Write) {
         writeln!(output, "#[inline]").unwrap();
 
@@ -191,10 +209,11 @@ impl<'a> FieldGetMethod<'a> {
         self.read_as_arg(target_slice, func_def_writer.get_writer());
     }
 
-    // A generalized method that read the field from the underlying bytes into
-    // a value with type represented by field's `repr`.
-    // This method does not handle the condition that the `repr` is `U8` and the 
-    // field crosses the byte boundary. 
+    // Generae a code piece that read the field from the `target_slice` into a
+    // `repr`-typed value.
+    //
+    // Note: this method does not handle the condition that the `repr` is `U8` and the
+    // field crosses the byte boundary.
     fn read_field(&self, target_slice: &str, mut output: &mut dyn Write) {
         // The ending `BitPos` of the current header field.
         let end = self.start.next_pos(self.field.bit);
@@ -202,9 +221,10 @@ impl<'a> FieldGetMethod<'a> {
         match self.field.repr {
             BuiltinTypes::ByteSlice => {
                 // The `repr` is a `ByteSlice`.
-                // The field covers multiple contiguous bytes, we
-                // can just return a byte slice covering the field
-                // region.
+                // The field has the following form:
+                // 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
+                // |          field              |
+                // The field covers the entire byte slice and can be directly read out.
                 write!(
                     output,
                     "&{}[{}..{}]",
@@ -216,20 +236,20 @@ impl<'a> FieldGetMethod<'a> {
             }
             BuiltinTypes::U8 => {
                 // The `repr` is a `U8`.
-                // The condition that the underlying field crosses the byte
-                // boundary is actually handled by `read_field_cross_byte`.
-                // In `read_field`, the field must be contained within a single
-                // byte, we use the following assertion to highlight this.
+                // The following assertion shows that the field locates within
+                // a single byte and does not cross the byte boundaries.
                 assert!(self.start.byte_pos == end.byte_pos);
 
                 // Index the actual byte containing the field.
                 let read_byte = format!("{}[{}]", target_slice, self.start.byte_pos);
 
                 if end.bit_pos < 7 && self.start.bit_pos > 0 {
-                    // The position of the field looks like this:
+                    // The field has the following form:
                     // 0 1 2 3 4 5 6 7
                     //   | field |
                     // We perform a right shift followed by bitwise and.
+                    // This will clear the extra bits on the target byte
+                    // and align the field to the 7th bit position.
                     write!(
                         output,
                         "({}>>{})&{}",
@@ -239,19 +259,19 @@ impl<'a> FieldGetMethod<'a> {
                     )
                     .unwrap();
                 } else if end.bit_pos < 7 {
-                    // The position of the field looks like this:
+                    // The field has the following form:
                     // 0 1 2 3 4 5 6 7
                     // | field |
-                    // We perform right shift only.
+                    // We only perform right shift.
                     write!(output, "{}>>{}", read_byte, 7 - end.bit_pos).unwrap();
                 } else if self.start.bit_pos > 0 {
-                    // The position of the field looks like this:
+                    // The field has the following form:
                     // 0 1 2 3 4 5 6 7
                     //       | field |
-                    // We perform bitwise and only.
+                    // We only perform bitwise and.
                     write!(output, "{}&{}", read_byte, ones_mask(0, self.field.bit - 1)).unwrap();
                 } else {
-                    // The position of the field looks like this:
+                    // The field has the following form:
                     // 0 1 2 3 4 5 6 7
                     // |     field   |
                     // We directly index the underlying byte.
@@ -259,14 +279,11 @@ impl<'a> FieldGetMethod<'a> {
                 }
             }
             BuiltinTypes::U16 | BuiltinTypes::U32 | BuiltinTypes::U64 => {
-                // The `repr` is neither `ByteSlice` nor `U8`.
-
+                // The field is stored over multiple bytes and will be read
+                // as an integer type while honoring the network endianess.
                 {
-                    // We should first read the field from the underlying byteslice
-                    // while honoring the network endianness.
-
-                    // This will prepend the corresponding method for performing a
-                    // byte slice read that honors network endianess.
+                    // Create a new writer that will prepend a method for reading a byte slice
+                    // as an integer type while honoring endianess.
                     let mut new = network_endian_read(&mut output, self.field.bit);
 
                     // Fill in the byteslice that need to be read from.
@@ -281,49 +298,46 @@ impl<'a> FieldGetMethod<'a> {
                 }
 
                 if end.bit_pos < 7 {
-                    // The position of the field looks like this:
+                    // The field has the form:
                     // 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
                     // |     field           |
                     // We perform a right shift.
                     write!(output, ">>{}", 7 - end.bit_pos).unwrap();
                 } else if self.start.bit_pos > 0 {
-                    // The position of the field looks like this:
+                    // The field has the form:
                     // 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
                     //         |     field           |
                     // We perform a bitwise and.
                     write!(output, "&{}", ones_mask(0, self.field.bit - 1)).unwrap();
                 } else {
-                    // The position of the field looks like this:
+                    // The field has the form:
                     // 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
                     // |      field                  |
-                    // Do nothing.
+                    // We just do nothing.
                 }
             }
             _ => panic!(),
         }
     }
 
-    // A specialied method that only read field if field's `repr` is `U8` and 
-    // the field crosses byte boundaries. 
+    // Generae a code piece that read a field if field's `repr` is `U8` and
+    // the field crosses byte boundaries.
     fn read_field_cross_byte(&self, target_slice: &str, output: &mut dyn Write) {
-        // The ending `BitPos` of the current header field.
         let end = self.start.next_pos(self.field.bit);
 
-        // The field to be read looks like this:
+        // The field will have the following form:
         // 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
-        //       |     fie-ld    | 
+        //       |     fie-ld    |
         // The field is splitted into two parts by the byte boundary:
-        // The first part is (the "({}[{}]<<{})" part): 
+        // The 1st part ("({}[{}]<<{})") is :
         // 0 1 2 3 4 5 6 7
         //       |  fie- |
-        // The 1st part should left-shift the length of the 2nd part
-        // to make room for the 2nd part. 
-        // The second part is (the "({}[{}]>>{})" part):
+        // We need to left a left-shift to make room for the 2nd part.
+        // The 2nd part ("({}[{}]>>{})") is :
         // 0 1 2 3 4 5 6 7
         // |-ld|
-        // The 2nd part should right-shift to 7th bit. 
-        // Finally, we glue the two parts together with 
-        // bitwise or.
+        // The 2nd part should right-shift to 7th bit.
+        // Finally, we glue the two parts together with bitwise or.
         let read_result = format!(
             "({}[{}]<<{})|({}[{}]>>{})",
             target_slice,
@@ -335,6 +349,7 @@ impl<'a> FieldGetMethod<'a> {
         );
 
         if self.field.bit < 8 {
+            // Clear the extra bits if the field size is smaller than 8.
             write!(
                 output,
                 "({})&{}",
@@ -343,10 +358,15 @@ impl<'a> FieldGetMethod<'a> {
             )
             .unwrap();
         } else {
+            // Otherwise, read the field as it is.
             write!(output, "{}", read_result).unwrap();
         }
     }
 
+    // Generae a code piece that read the field from the `target_slice` into
+    // a `repr`-typed value.
+    //
+    // Note: this is the top-level method that combines `read_field` and `read_field_cross_byte`.
     fn read_repr(&self, target_slice: &str, output: &mut dyn Write) {
         let end = self.start.next_pos(self.field.bit);
         if self.field.bit <= 8 && self.start.byte_pos != end.byte_pos {
@@ -356,24 +376,36 @@ impl<'a> FieldGetMethod<'a> {
         }
     }
 
+    // Generate a code piece that read the field from the `target_slice` into a
+    // `arg`-typed value.
+    //
+    // Note: we first call `read_repr` to read the field into a `repr`-typed value.
+    // Then we convert the `repr`-typed value into `arg`-typed one.
     fn read_as_arg(&self, target_slice: &str, mut output: &mut dyn Write) {
         match &self.field.arg {
             Arg::Code(code) => {
-                // arg is code
+                // `arg` is a rust type.
+                // We force a converter that turns the `repr`-typed value
+                // into `arg`-typed one.
                 let mut into_writer = HeadTailWriter::new(
                     &mut output,
                     &format!("{}(", to_rust_type(self.field.repr, code)),
                     ")",
                 );
+                // Read the `repr`-typed value.
                 self.read_repr(target_slice, into_writer.get_writer());
             }
             Arg::BuiltinTypes(defined_arg) => {
                 if *defined_arg == self.field.repr {
-                    // arg is the same as the repr
+                    // `arg` is the same as the `repr`.
+                    // Simply read the `repr`-typed value.
                     self.read_repr(target_slice, output);
                 } else {
-                    // arg is bool, field.bit == 1
-                    // A fast path method for accessing bool
+                    // `arg` is bool and field.bit == 1.
+                    // We generate fast-path code for converting the single-bit
+                    // field to bool type.
+                    // The code has the form: "field_slice[field_index]&0x1 != 0",
+                    // evaluting to `true` if the field bit is 1, and `false` otherwise.
                     write!(
                         output,
                         "{}[{}]&{} != 0",
@@ -394,6 +426,9 @@ struct FieldSetMethod<'a> {
 }
 
 impl<'a> FieldSetMethod<'a> {
+    // Generate a set method to set an input value `write_value` to
+    // the field area with name `field_name` on the byte slice `target_slice`.
+    // The generated method is written to `output`.
     fn code_gen(
         &self,
         field_name: &str,
@@ -403,6 +438,11 @@ impl<'a> FieldSetMethod<'a> {
     ) {
         writeln!(output, "#[inline]").unwrap();
 
+        // Generate function definition for a field set method.
+        // It will generate:
+        // pub fn set_field_name(&mut self, write_value: FieldArgType) {
+        // ...
+        // }
         let mut func_def = if self.field.gen {
             "pub fn ".to_string()
         } else {
@@ -414,17 +454,45 @@ impl<'a> FieldSetMethod<'a> {
             write_value,
             self.field.arg.to_string()
         );
-
         let mut func_def_writer = HeadTailWriter::new(&mut output, &func_def, "\n}\n");
+
+        // Fill in the function body for a field set method.
         self.write_as_arg(target_slice, write_value, func_def_writer.get_writer());
     }
 
+    // Generate a code piece that write `write_value` of type `repr`
+    // to the field area on the byte slice `target_slice`.
+    //
+    // Generally, the byte slice containing the field has the following form:
+    // 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
+    // | rest bits | |field          |
+    // The `write_value` has the form:
+    // 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
+    //               |write_value    |
+    //
+    // This method has the following steps:
+    // 1. read the rest of the bits from the byte slice:
+    // 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
+    // | rest bits |
+    // 2. combine the rest bits with the `write_value` into:
+    // 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
+    // | rest bits | |write_value    |
+    // 3. write to the interested area on the `target_slice`.
+    //
+    // Note: this method does not handle the condition that the `repr` is `U8` and the
+    // field crosses the byte boundary.
+    //
+    // Also note: the `write_value` only contains valid bits on the field area,
+    // the rest of the bits are all zeroed out.
     fn write_field(&self, target_slice: &str, write_value: &str, mut output: &mut dyn Write) {
-        // we first check some assertions, they are only
-        // added here to help me reason about the algorithm
         match self.field.repr {
             BuiltinTypes::ByteSlice => {
-                assert!(self.field.bit % 8 == 0 && self.field.bit > 8);
+                // The `repr` is a `ByteSlice`.
+                // The field has the following form:
+                // 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
+                // |          field              |
+                // The field area contains no extra bits,
+                // we just write `write_value` to the field area.
                 let mut field_writer = HeadTailWriter::new(
                     &mut output,
                     &format!(
@@ -437,18 +505,26 @@ impl<'a> FieldSetMethod<'a> {
                 );
                 write!(field_writer.get_writer(), "{}", write_value).unwrap();
             }
-            // we do not handle the cross byte u8
             BuiltinTypes::U8 => {
+                // The `repr` is a `U8`.
+                // The following assertion shows that the field locates within
+                // a single byte and does not cross the byte boundaries.
                 let end = self.start.next_pos(self.field.bit);
                 assert!(self.start.byte_pos == end.byte_pos);
 
+                // The write target is the byte containing the field.
                 let write_target = format!("{}[{}]", target_slice, self.start.byte_pos);
 
                 if self.field.bit % 8 == 0 {
-                    // the field is located in a single byte
+                    // The field has the following form:
+                    // 0 1 2 3 4 5 6 7
+                    // |     field   |
+                    // We directly assign the `write_value` to the write target.
                     write!(output, "{}={};", write_target, write_value).unwrap();
                 } else {
-                    let rest_of_field = format!(
+                    // The field area contains extra bits and we extract
+                    // the rest of the bits through a mask.
+                    let rest_of_bits = format!(
                         "({}[{}]&{})",
                         target_slice,
                         self.start.byte_pos,
@@ -456,20 +532,27 @@ impl<'a> FieldSetMethod<'a> {
                     );
 
                     if end.bit_pos == 7 {
-                        // no left shift
-                        write!(
-                            output,
-                            "{}={}|{};",
-                            write_target, rest_of_field, write_value
-                        )
-                        .unwrap();
+                        // The field has the following form:
+                        // 0 1 2 3 4 5 6 7
+                        //       | field |
+                        // `write_value` has the same form as field.
+                        // We glue `rest_of_bits` with `write_value` and write
+                        // to the `write_target`.
+                        write!(output, "{}={}|{};", write_target, rest_of_bits, write_value)
+                            .unwrap();
                     } else {
-                        // left shift
+                        // The field has the following form:
+                        // 0 1 2 3 4 5 6 7
+                        // | field |
+                        // We left shift the `write_value` to make room
+                        // for the rest of the bits.
+                        // Then we glue them together and write to the
+                        // `write_target`.
                         write!(
                             output,
                             "{}={}|({}<<{});",
                             write_target,
-                            rest_of_field,
+                            rest_of_bits,
                             write_value,
                             7 - end.bit_pos
                         )
@@ -479,10 +562,20 @@ impl<'a> FieldSetMethod<'a> {
             }
             BuiltinTypes::U16 | BuiltinTypes::U32 | BuiltinTypes::U64 => {
                 let end = self.start.next_pos(self.field.bit);
+                // The following assertion ensures that the field is stored over
+                // multiple bytes.
                 assert!(self.start.bit_pos == 0 || end.bit_pos == 7);
 
                 if self.field.bit % 8 == 0 {
+                    // The field has the form:
+                    // 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
+                    // |   field                     |
+
+                    // Create a new writer that will prepend a method for writing to a byte
+                    // slice while honoring endianess.
                     let mut field_writer = network_endian_write(&mut output, self.field.bit);
+
+                    // Create a mutable byte slice covering the field area.
                     write!(
                         field_writer.get_writer(),
                         "&mut {}[{}..{}],",
@@ -491,16 +584,32 @@ impl<'a> FieldSetMethod<'a> {
                         self.start.byte_pos + byte_len(self.field.bit)
                     )
                     .unwrap();
+
+                    // The field area contains no extra bits, so
+                    // we directly write the `write_value` to the field area.
                     write!(field_writer.get_writer(), "{}", write_value).unwrap();
                 } else {
-                    // first, read rest of the field into a temporary variable REST_OF_FIELD
+                    // The field has the form:
+                    // 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
+                    // |   field       | | rest bits |
+
                     {
+                        // First, read the rest of the bits into a variable.
                         let mut let_assign = HeadTailWriter::new(
                             &mut output,
                             &format!("let {}=", REST_OF_FIELD),
                             ";\n",
                         );
+
                         if end.bit_pos == 7 {
+                            // The field has the form:
+                            // 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
+                            // |rest bits| |   field         |
+                            // We do the following steps to read the rest of the bits:
+                            // 1. Read the byte containing the rest of the bits ("{}[{}]").
+                            // 2. Remove the extra bits that belong to the field area ("{}[{}]&{}").
+                            // 3. Convert the value to `repr` type ("({}[{}]&{}) as {})")
+                            // 4. Left shift to make room for the field area ("(({}[{}]&{}) as {}) << {}")
                             write!(
                                 let_assign.get_writer(),
                                 "(({}[{}]&{}) as {}) << {}",
@@ -512,6 +621,10 @@ impl<'a> FieldSetMethod<'a> {
                             )
                             .unwrap();
                         } else {
+                            // The field has the form:
+                            // 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
+                            // |   field         | |rest bits|
+                            // We do similar steps except for the final one (the left-shift one).
                             write!(
                                 let_assign.get_writer(),
                                 "({}[{}]&{}) as {}",
@@ -524,9 +637,11 @@ impl<'a> FieldSetMethod<'a> {
                         }
                     }
 
-                    // setup the write guard
+                    // Create a new writer that will prepend a method for writing an integer type
+                    // to to a byte slice while honoring endianess.
                     let mut field_writer = network_endian_write(&mut output, self.field.bit);
-                    // specify the target slice to write to
+
+                    // Specify the target slice to write to.
                     write!(
                         field_writer.get_writer(),
                         "&mut {}[{}..{}],",
@@ -537,7 +652,12 @@ impl<'a> FieldSetMethod<'a> {
                     .unwrap();
 
                     if end.bit_pos == 7 {
-                        // no left shift
+                        // The field has the following form:
+                        // 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
+                        //             |   field         |
+                        // `write_value` has the same form as field.
+                        // We glue the variable defined as `REST_OF_FIELD`
+                        // and `write_value` together.
                         write!(
                             field_writer.get_writer(),
                             "{}|{}",
@@ -546,7 +666,12 @@ impl<'a> FieldSetMethod<'a> {
                         )
                         .unwrap();
                     } else {
-                        // left shift
+                        // The field has the following form:
+                        // 0 1 2 3 4 5 6 7
+                        // | field |
+                        // We left shift the `write_value` to make room
+                        // for the rest of the bits.
+                        // Then we glue them together.
                         write!(
                             field_writer.get_writer(),
                             "{}|({}<<{})",
@@ -562,6 +687,8 @@ impl<'a> FieldSetMethod<'a> {
         }
     }
 
+    // Generae a code piece that write a field if field's `repr` is `U8` and
+    // the field crosses byte boundaries.
     fn write_field_cross_byte(
         &self,
         target_slice: &str,
@@ -571,6 +698,18 @@ impl<'a> FieldSetMethod<'a> {
         let end = self.start.next_pos(self.field.bit);
         assert!(self.field.bit <= 8 && self.start.byte_pos != end.byte_pos);
 
+        // The field will have the following form:
+        // 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
+        //       |     fie-ld    |
+        // The field is splitted into two parts by the byte boundary:
+
+        // The 1st part is :
+        // 0 1 2 3 4 5 6 7
+        //       |  fie- |
+        // To write to the 1st part, we do the following steps:
+        // 1. Read the rest of the bits on the first part ("({}[{}]&{})")
+        // 2. Right shift the `write_value` ("({}>>{})")
+        // 3. Glue them together and write to the area covering the 1st part.
         write!(
             output,
             "{}[{}]=({}[{}]&{})|({}>>{});\n",
@@ -584,6 +723,13 @@ impl<'a> FieldSetMethod<'a> {
         )
         .unwrap();
 
+        // The 2nd part ("({}[{}]>>{})") is :
+        // 0 1 2 3 4 5 6 7
+        // |-ld|
+        // To write to the 2nd part, we do the following steps:
+        // 1. Read the rest of the bits on the 2nd part ("({}[{}]&{})")
+        // 2. Left shift the `write_value` ("({}<<{})")
+        // 3. Glue them together and write to the area covering the 2nd part.
         write!(
             output,
             "{}[{}]=({}[{}]&{})|({}<<{});",
@@ -598,6 +744,10 @@ impl<'a> FieldSetMethod<'a> {
         .unwrap();
     }
 
+    // The top-level method for generating code piece that writes
+    // a value to the field.
+    //
+    // Note: it combines `write_field` and `write_field_cross_byte`.
     fn write_repr(&self, target_slice: &str, write_value: &str, output: &mut dyn Write) {
         let end = self.start.next_pos(self.field.bit);
         if self.field.bit <= 8 && self.start.byte_pos != end.byte_pos {
@@ -607,9 +757,15 @@ impl<'a> FieldSetMethod<'a> {
         }
     }
 
+    // Generate a code piece for writing an input value `write_value` of type `arg` to the field
+    // area stored on `target_slice`.
     fn write_as_arg(&self, target_slice: &str, write_value: &str, output: &mut dyn Write) {
         match &self.field.arg {
             Arg::BuiltinTypes(defined_arg) if *defined_arg != self.field.repr => {
+                // Generate a fast path method in case that
+                //`bit` is 1, `repr` is `U8` and `arg` is bool.
+                // This will write 1 to the field bit if `write_value` is true,
+                // and write 0 to the field bit if `write_value` is false.
                 write!(output, "if {} {{\n", write_value).unwrap();
                 write!(
                     output,
@@ -637,6 +793,9 @@ impl<'a> FieldSetMethod<'a> {
             _ => {
                 match &self.field.arg {
                     Arg::Code(_) => {
+                        // `arg` is rust type.
+                        // We convert the `write_value` to the `repr` type
+                        // using `arg`'s compulsory association method.
                         write!(
                             output,
                             "let {} = {};\n",
@@ -648,6 +807,11 @@ impl<'a> FieldSetMethod<'a> {
                     _ => {}
                 };
                 if self.field.bit % 8 != 0 {
+                    // The `write_value` will have the following form:
+                    // 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
+                    // |extra bits | |  write_value  |
+                    // Here, we insert a guard condition to make sure that
+                    // the extra bits on the `write_value` are all zeroed out.
                     write!(
                         output,
                         "assert!({} <= {});\n",
