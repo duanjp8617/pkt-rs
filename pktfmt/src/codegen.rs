@@ -32,6 +32,9 @@ impl<T: Write> Drop for HeadTailWriter<T> {
     }
 }
 
+// Append corresponding read method that honors the network endianess to the
+// input `writer`.
+// We use the `byteorder` crate just like `smoltcp` here.
 fn network_endian_read<T: Write>(writer: T, bit_len: u64) -> HeadTailWriter<T> {
     let byte_len = byte_len(bit_len);
     match byte_len {
@@ -171,21 +174,37 @@ impl<'a> FieldGetMethod<'a> {
     fn code_gen(&self, field_name: &str, target_slice: &str, mut output: &mut dyn Write) {
         writeln!(output, "#[inline]").unwrap();
 
+        // Generate function definition for a field get method.
+        // It will generate:
+        // pub fn field_name(&self) -> FieldArgType {
+        // ...
+        // }
         let mut func_def = if self.field.gen {
             "pub fn ".to_string()
         } else {
             "fn ".to_string()
         };
         func_def += &format!("{}(&self)->{}{{\n", field_name, self.field.arg.to_string());
-
         let mut func_def_writer = HeadTailWriter::new(&mut output, &func_def, "\n}\n");
+
+        // Fill in the function body for a field get method.
         self.read_as_arg(target_slice, func_def_writer.get_writer());
     }
 
+    // A generalized method that read the field from the underlying bytes into
+    // a value with type represented by field's `repr`.
+    // This method does not handle the condition that the `repr` is `U8` and the 
+    // field crosses the byte boundary. 
     fn read_field(&self, target_slice: &str, mut output: &mut dyn Write) {
+        // The ending `BitPos` of the current header field.
         let end = self.start.next_pos(self.field.bit);
+
         match self.field.repr {
             BuiltinTypes::ByteSlice => {
+                // The `repr` is a `ByteSlice`.
+                // The field covers multiple contiguous bytes, we
+                // can just return a byte slice covering the field
+                // region.
                 write!(
                     output,
                     "&{}[{}..{}]",
@@ -196,12 +215,21 @@ impl<'a> FieldGetMethod<'a> {
                 .unwrap();
             }
             BuiltinTypes::U8 => {
+                // The `repr` is a `U8`.
+                // The condition that the underlying field crosses the byte
+                // boundary is actually handled by `read_field_cross_byte`.
+                // In `read_field`, the field must be contained within a single
+                // byte, we use the following assertion to highlight this.
                 assert!(self.start.byte_pos == end.byte_pos);
 
+                // Index the actual byte containing the field.
                 let read_byte = format!("{}[{}]", target_slice, self.start.byte_pos);
 
                 if end.bit_pos < 7 && self.start.bit_pos > 0 {
-                    // right shift followed by bitwise and
+                    // The position of the field looks like this:
+                    // 0 1 2 3 4 5 6 7
+                    //   | field |
+                    // We perform a right shift followed by bitwise and.
                     write!(
                         output,
                         "({}>>{})&{}",
@@ -211,19 +239,37 @@ impl<'a> FieldGetMethod<'a> {
                     )
                     .unwrap();
                 } else if end.bit_pos < 7 {
-                    // right shift only
+                    // The position of the field looks like this:
+                    // 0 1 2 3 4 5 6 7
+                    // | field |
+                    // We perform right shift only.
                     write!(output, "{}>>{}", read_byte, 7 - end.bit_pos).unwrap();
                 } else if self.start.bit_pos > 0 {
-                    // bitwise and only
+                    // The position of the field looks like this:
+                    // 0 1 2 3 4 5 6 7
+                    //       | field |
+                    // We perform bitwise and only.
                     write!(output, "{}&{}", read_byte, ones_mask(0, self.field.bit - 1)).unwrap();
                 } else {
-                    // field.bit % 8 == 0, do nothing
+                    // The position of the field looks like this:
+                    // 0 1 2 3 4 5 6 7
+                    // |     field   |
+                    // We directly index the underlying byte.
                     write!(output, "{}", read_byte).unwrap();
                 }
             }
             BuiltinTypes::U16 | BuiltinTypes::U32 | BuiltinTypes::U64 => {
+                // The `repr` is neither `ByteSlice` nor `U8`.
+
                 {
+                    // We should first read the field from the underlying byteslice
+                    // while honoring the network endianness.
+
+                    // This will prepend the corresponding method for performing a
+                    // byte slice read that honors network endianess.
                     let mut new = network_endian_read(&mut output, self.field.bit);
+
+                    // Fill in the byteslice that need to be read from.
                     write!(
                         new.get_writer(),
                         "&{}[{}..{}]",
@@ -235,25 +281,54 @@ impl<'a> FieldGetMethod<'a> {
                 }
 
                 if end.bit_pos < 7 {
+                    // The position of the field looks like this:
+                    // 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
+                    // |     field           |
+                    // We perform a right shift.
                     write!(output, ">>{}", 7 - end.bit_pos).unwrap();
                 } else if self.start.bit_pos > 0 {
+                    // The position of the field looks like this:
+                    // 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
+                    //         |     field           |
+                    // We perform a bitwise and.
                     write!(output, "&{}", ones_mask(0, self.field.bit - 1)).unwrap();
                 } else {
-                    // field.bit % 8 == 0, do nothing
+                    // The position of the field looks like this:
+                    // 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
+                    // |      field                  |
+                    // Do nothing.
                 }
             }
             _ => panic!(),
         }
     }
 
+    // A specialied method that only read field if field's `repr` is `U8` and 
+    // the field crosses byte boundaries. 
     fn read_field_cross_byte(&self, target_slice: &str, output: &mut dyn Write) {
+        // The ending `BitPos` of the current header field.
         let end = self.start.next_pos(self.field.bit);
 
+        // The field to be read looks like this:
+        // 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
+        //       |     fie-ld    | 
+        // The field is splitted into two parts by the byte boundary:
+        // The first part is (the "({}[{}]<<{})" part): 
+        // 0 1 2 3 4 5 6 7
+        //       |  fie- |
+        // The 1st part should left-shift the length of the 2nd part
+        // to make room for the 2nd part. 
+        // The second part is (the "({}[{}]>>{})" part):
+        // 0 1 2 3 4 5 6 7
+        // |-ld|
+        // The 2nd part should right-shift to 7th bit. 
+        // Finally, we glue the two parts together with 
+        // bitwise or.
         let read_result = format!(
             "({}[{}]<<{})|({}[{}]>>{})",
             target_slice,
             self.start.byte_pos,
-            self.field.bit - (8 - self.start.bit_pos),
+            end.bit_pos + 1,
             target_slice,
             end.byte_pos,
             7 - end.bit_pos
