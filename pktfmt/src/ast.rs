@@ -488,13 +488,13 @@ impl UsableAlgExpr {
     ///
     /// Note: we assume that all the calculations done here will not trigger overflow,
     /// because the parser will ensure that the values are bounded by `COMPILER_MAX_NUM`.
-    pub fn exec(&self, x: u64) -> u64 {
+    pub fn exec(&self, x: u64) -> Option<u64> {
         match self {
-            Self::IdentOnly(_) => x,
-            Self::SimpleAdd(_, add) => x + add,
-            Self::SimpleMult(_, mult) => x * mult,
-            Self::AddMult(_, add, mult) => (x + add) * mult,
-            Self::MultAdd(_, mult, add) => x * mult + add,
+            Self::IdentOnly(_) => Some(x),
+            Self::SimpleAdd(_, add) => x.checked_add(*add),
+            Self::SimpleMult(_, mult) => x.checked_mul(*mult),
+            Self::AddMult(_, add, mult) => x.checked_add(*add)?.checked_mul(*mult),
+            Self::MultAdd(_, mult, add) => x.checked_mul(*mult)?.checked_add(*add),
         }
     }
 
