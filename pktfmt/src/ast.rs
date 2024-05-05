@@ -460,6 +460,7 @@ pub(crate) fn check_valid_length_expr(field: &Field) -> bool {
     }
 }
 
+#[derive(Debug, Clone)]
 pub enum UsableAlgExpr {
     IdentOnly(String),
     /// String + u64
@@ -578,39 +579,58 @@ impl UsableAlgExpr {
 }
 
 #[derive(Debug, Clone)]
-pub struct LengthInfo {
-    pub expr: Box<AlgExpr>,
-    pub max: Option<u64>,
-}
-
-#[derive(Debug, Clone)]
 pub struct Packet {
     pub protocol_name: String,
     pub field_list: Vec<(String, Field)>,
     pub field_pos_map: HashMap<String, (BitPos, usize)>,
-    pub header_len_option_name: Option<(LengthInfo, String)>,
-    pub payload_len: Option<LengthInfo>,
-    pub packet_len: Option<LengthInfo>,
+    pub length_exprs: Vec<Option<UsableAlgExpr>>,
+    pub option_name: Option<String>,
 }
 
 impl Packet {
+    pub(crate) const LENGTH_FIELD_NAMES: &'static [&'static str] =
+        &["header_len", "payload_len", "packet_len"];
+
     /// We should perform checks to ensure that the length fields
     /// are correctly defined, but for now, we ignore it.
     pub fn new(
         protocol_name: String,
         field_list: Vec<(String, Field)>,
         field_pos_map: HashMap<String, (BitPos, usize)>,
-        header_len_with_pos: Option<(LengthInfo, String, (usize, usize))>,
-        payload_len_with_pos: Option<(LengthInfo, (usize, usize))>,
-        packet_len_with_pos: Option<(LengthInfo, (usize, usize))>,
+        header_len: Option<(Box<AlgExpr>, String, (usize, usize))>,
+        payload_len: Option<(Box<AlgExpr>, (usize, usize))>,
+        packet_len: Option<(Box<AlgExpr>, (usize, usize))>,
     ) -> Result<Self, (Error, (usize, usize))> {
+        // TODO:
+        // 1. make sure that the field used for length computation
+        // is not generated, its `repr` is the same as `arg` and `repr`
+        // is not `ByteSlice`.
+        // 2. make sure that the bit size of the field does not exceed
+        // `USIZE_BYTES * 8`.
+        // 3. make sure that the identifier contained in the length expression
+        // corresponds to an existing field name
+        // 4. make sure that when the field is the max value,
+        // the length expression computation does not overflow.
+        let mut length_exprs = vec![None, None, None];
+        let mut option_name = None;
+
+        header_len.map(|(alg_expr, name, _)| {
+            length_exprs[0] = Some(alg_expr.try_take_usable_expr().unwrap());
+            option_name = Some(name);
+        });
+        payload_len.map(|(alg_expr, _)| {
+            length_exprs[1] = Some(alg_expr.try_take_usable_expr().unwrap());
+        });
+        packet_len.map(|(alg_expr, _)| {
+            length_exprs[2] = Some(alg_expr.try_take_usable_expr().unwrap());
+        });
+
         Ok(Self {
             protocol_name,
             field_list,
             field_pos_map,
-            header_len_option_name: header_len_with_pos.map(|t| (t.0, t.1)),
-            payload_len: payload_len_with_pos.map(|t| t.0),
-            packet_len: packet_len_with_pos.map(|t| t.0),
+            length_exprs,
+            option_name,
         })
     }
 }

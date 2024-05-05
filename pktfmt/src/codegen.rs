@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt::write;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -191,16 +192,6 @@ fn impl_block<'out>(
         &format!("impl<T: {}> {}<T>{{\n", trait_name, type_name),
         "}\n",
     )
-}
-
-fn get_length_helper<T: FieldAccessMethod>(
-    expr_opt: Option<&UsableAlgExpr>,
-    container: &T,
-    length_field_name: &str,
-    target_slice: &str,
-    output: &mut dyn Write,
-) {
-    expr_opt.map(|expr| container.get_length_gen(length_field_name, expr, target_slice, output));
 }
 
 struct FieldGetMethod<'a> {
@@ -998,6 +989,7 @@ impl<'a> LengthSetMethod<'a> {
 trait FieldAccessMethod {
     fn field_list(&self) -> &Vec<(String, Field)>;
     fn field_pos_map(&self) -> &HashMap<String, (BitPos, usize)>;
+    fn length_exprs(&self) -> &Vec<Option<UsableAlgExpr>>;
 
     fn fixed_header_len(&self) -> u64 {
         let (field_name, field) = self.field_list().last().unwrap();
@@ -1031,41 +1023,51 @@ trait FieldAccessMethod {
         }
     }
 
-    fn get_length_gen(
-        &self,
-        length_field_name: &str,
-        expr: &UsableAlgExpr,
-        target_slice: &str,
-        output: &mut dyn Write,
-    ) {
-        let (start, idx) = self.field_pos_map().get(expr.field_name()).unwrap();
-        let (_, field) = &self.field_list()[*idx];
+    fn get_length_gen(&self, target_slice: &str, output: &mut dyn Write) {
+        self.length_exprs()
+            .iter()
+            .enumerate()
+            .for_each(|(expr_idx, expr_opt)| {
+                expr_opt.as_ref().map(|expr| {
+                    let (start, field_idx) = self.field_pos_map().get(expr.field_name()).unwrap();
+                    let (_, field) = &self.field_list()[*field_idx];
 
-        LengthGetMethod {
-            field,
-            start: *start,
-            expr,
-        }
-        .code_gen(length_field_name, target_slice, output);
+                    LengthGetMethod {
+                        field,
+                        start: *start,
+                        expr,
+                    }
+                    .code_gen(
+                        Packet::LENGTH_FIELD_NAMES[expr_idx],
+                        target_slice,
+                        output,
+                    );
+                });
+            });
     }
 
-    fn set_length_gen(
-        &self,
-        length_field_name: &str,
-        expr: &UsableAlgExpr,
-        target_slice: &str,
-        write_value: &str,
-        output: &mut dyn Write,
-    ) {
-        let (start, idx) = self.field_pos_map().get(expr.field_name()).unwrap();
-        let (_, field) = &self.field_list()[*idx];
+    fn set_length_gen(&self, target_slice: &str, write_value: &str, output: &mut dyn Write) {
+        self.length_exprs()
+            .iter()
+            .enumerate()
+            .for_each(|(expr_idx, expr_opt)| {
+                expr_opt.as_ref().map(|expr| {
+                    let (start, field_idx) = self.field_pos_map().get(expr.field_name()).unwrap();
+                    let (_, field) = &self.field_list()[*field_idx];
 
-        LengthSetMethod {
-            field,
-            start: *start,
-            expr,
-        }
-        .code_gen(length_field_name, target_slice, write_value, output);
+                    LengthSetMethod {
+                        field,
+                        start: *start,
+                        expr,
+                    }
+                    .code_gen(
+                        Packet::LENGTH_FIELD_NAMES[expr_idx],
+                        target_slice,
+                        write_value,
+                        output,
+                    );
+                });
+            });
     }
 }
 
@@ -1081,6 +1083,10 @@ macro_rules! impl_field_access_method {
                     &self,
                 ) -> &::std::collections::HashMap<String, ($crate::ast::BitPos, usize)> {
                     &self.field_pos_map
+                }
+
+                fn length_exprs(&self) -> &::std::vec::Vec<Option<$crate::ast::UsableAlgExpr>> {
+                    &self.length_exprs
                 }
             }
         )*
@@ -1161,72 +1167,15 @@ impl<'a> HeaderImpl<'a> {
         // Generate length get methods
         {
             let mut impl_block = impl_block("AsRef<[u8]>", &self.header_struct_name(), &mut output);
-            let expr = self
-                .packet
-                .header_len_option_name
-                .as_ref()
-                .and_then(|t| t.0.expr.try_take_usable_expr());
-            get_length_helper(
-                expr.as_ref(),
-                self.packet,
-                "header_len",
-                "self.buf.as_ref()",
-                impl_block.get_writer(),
-            );
-
-            let expr = self
-                .packet
-                .payload_len
-                .as_ref()
-                .and_then(|t| t.expr.try_take_usable_expr());
-            if let Some(payload_len_info) = &self.packet.payload_len {
-                self.packet.get_length_gen(
-                    "payload_len",
-                    &payload_len_info.expr.try_take_usable_expr().unwrap(),
-                    "self.buf.as_ref()",
-                    impl_block.get_writer(),
-                );
-            }
-            if let Some(packet_len_info) = &self.packet.packet_len {
-                self.packet.get_length_gen(
-                    "packet_len",
-                    &packet_len_info.expr.try_take_usable_expr().unwrap(),
-                    "self.buf.as_ref()",
-                    impl_block.get_writer(),
-                );
-            }
+            self.packet
+                .get_length_gen("self.buf.as_ref()", impl_block.get_writer());
         }
 
         // Generate length set methods
         {
             let mut impl_block = impl_block("AsMut<[u8]>", &self.header_struct_name(), &mut output);
-            if let Some((header_len_info, _)) = &self.packet.header_len_option_name {
-                self.packet.set_length_gen(
-                    "header_len",
-                    &header_len_info.expr.try_take_usable_expr().unwrap(),
-                    "self.buf.as_mut()",
-                    "value",
-                    impl_block.get_writer(),
-                );
-            }
-            if let Some(payload_len_info) = &self.packet.payload_len {
-                self.packet.set_length_gen(
-                    "payload_len",
-                    &payload_len_info.expr.try_take_usable_expr().unwrap(),
-                    "self.buf.as_mut()",
-                    "value",
-                    impl_block.get_writer(),
-                );
-            }
-            if let Some(packet_len_info) = &self.packet.packet_len {
-                self.packet.set_length_gen(
-                    "packet_len",
-                    &packet_len_info.expr.try_take_usable_expr().unwrap(),
-                    "self.buf.as_mut()",
-                    "value",
-                    impl_block.get_writer(),
-                );
-            }
+            self.packet
+                .set_length_gen("self.buf.as_mut()", "value", impl_block.get_writer());
         }
     }
 
@@ -1358,62 +1307,15 @@ impl<'a> PacketImpl<'a> {
         // Generate length get methods
         {
             let mut impl_block = impl_block("Buf", &self.packet_struct_name(), &mut output);
-            if let Some((header_len_info, _)) = &self.packet().header_len_option_name {
-                self.packet().get_length_gen(
-                    "header_len",
-                    &header_len_info.expr.try_take_usable_expr().unwrap(),
-                    "self.buf.chunk()",
-                    impl_block.get_writer(),
-                );
-            }
-            if let Some(payload_len_info) = &self.packet().payload_len {
-                self.packet().get_length_gen(
-                    "payload_len",
-                    &payload_len_info.expr.try_take_usable_expr().unwrap(),
-                    "self.buf.chunk()",
-                    impl_block.get_writer(),
-                );
-            }
-            if let Some(packet_len_info) = &self.packet().packet_len {
-                self.packet().get_length_gen(
-                    "packet_len",
-                    &packet_len_info.expr.try_take_usable_expr().unwrap(),
-                    "self.buf.chunk()",
-                    impl_block.get_writer(),
-                );
-            }
+            self.packet()
+                .get_length_gen("self.buf.chunk()", impl_block.get_writer());
         }
 
         // Generate length set methods
         {
             let mut impl_block = impl_block("BufMut", &self.packet_struct_name(), &mut output);
-            if let Some((header_len_info, _)) = &self.packet().header_len_option_name {
-                self.packet().set_length_gen(
-                    "header_len",
-                    &header_len_info.expr.try_take_usable_expr().unwrap(),
-                    "self.buf.chunk_mut()",
-                    "value",
-                    impl_block.get_writer(),
-                );
-            }
-            if let Some(payload_len_info) = &self.packet().payload_len {
-                self.packet().set_length_gen(
-                    "payload_len",
-                    &payload_len_info.expr.try_take_usable_expr().unwrap(),
-                    "self.buf.chunk_mut()",
-                    "value",
-                    impl_block.get_writer(),
-                );
-            }
-            if let Some(packet_len_info) = &self.packet().packet_len {
-                self.packet().set_length_gen(
-                    "packet_len",
-                    &packet_len_info.expr.try_take_usable_expr().unwrap(),
-                    "self.buf.chunk_mut()",
-                    "value",
-                    impl_block.get_writer(),
-                );
-            }
+            self.packet()
+                .set_length_gen("self.buf.chunk_mut()", "value", impl_block.get_writer());
         }
     }
 

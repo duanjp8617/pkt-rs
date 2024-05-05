@@ -163,45 +163,35 @@ AlgExpr: Box<AlgExpr> = {
     AddExpr => <>
 }
 
-LengthBase: (Box<AlgExpr>, Option<u64>) = {
-    "expr" "=" <expr: AlgExpr>
-    <max: ("," "max" "=" <"num">)?> 
-    ","? => 
-        (expr, max.map(|s| u64::from_str(s).unwrap()))
-}
-
-HeaderLenOption: (LengthInfo, String, (usize, usize)) = {
+HeaderLen: (Box<AlgExpr>, String, (usize, usize)) = {
     <l: @L> "header_len" "="  "HeaderLen" "{"
-        "option_name" "=" <option_name: "ident">
-        <length_base: ("," <LengthBase>)>
+        "option_name" "=" <option_name: "ident"> ","
+        "expr" "=" <expr: AlgExpr> ","?
     "}" <r: @R> => {
-        let (expr, max) = length_base;
-        (LengthInfo {expr, max}, String::from_str(option_name).unwrap(), (l, r))
+        (expr, String::from_str(option_name).unwrap(), (l, r))
     }
 }
 
-PayloadLen: (LengthInfo, (usize, usize)) = {
+PayloadLen: (Box<AlgExpr>, (usize, usize)) = {
     <l: @L> "payload_len" "=" "PayloadLen" "{"
-        <length_base: LengthBase>
+        "expr" "=" <expr: AlgExpr> ","?
     "}" <r: @R> => {
-        let (expr, max) = length_base;
-        (LengthInfo {expr, max}, (l, r))
+        (expr, (l, r))
     }
 }
 
-PacketLen: (LengthInfo, (usize, usize)) = {
+PacketLen: (Box<AlgExpr>, (usize, usize)) = {
     <l: @L> "packet_len" "=" "PacketLen" "{"
-        <length_base: LengthBase>
+        "expr" "=" <expr: AlgExpr> ","?
     "}" <r: @R> => {
-        let (expr, max) = length_base;
-        (LengthInfo {expr, max}, (l, r))
+        (expr, (l, r))
     }
 }
 
 pub Packet: Packet = {
     "packet" <name: "ident"> "{"
         <header: Header>
-        <header_len: ("," <HeaderLenOption>)?>
+        <header_len: ("," <HeaderLen>)?>
         <payload_len: ("," <PayloadLen>)?>
         <packet_len: ("," <PacketLen>)?>
         ","?
