@@ -1330,6 +1330,12 @@ impl<'a> PacketImpl<'a> {
             self.parse_method(impl_block.get_writer());
             self.payload_method(impl_block.get_writer());
         }
+
+        // Generate prepend_header method
+        {
+            let mut impl_block = impl_block("PktMut", &self.packet_struct_name(), &mut output);
+            self.prepend_header_method(impl_block.get_writer());
+        }
     }
 
     // obtain a reference to the packet contained
@@ -1553,6 +1559,82 @@ impl<'a> PacketImpl<'a> {
 
         // return the buf
         write!(output, "buf\n").unwrap();
+        write!(output, "}}\n").unwrap();
+    }
+
+    fn prepend_header_method(&self, output: &mut dyn Write) {
+        write!(output, "#[inline]\n").unwrap();
+        write!(
+            output,
+            "pub fn prepend_header<HT: AsRef<[u8]>>(mut buf: T, header: &{}<HT>) -> {}<T> {{\n",
+            self.header_impl.header_struct_name(),
+            self.packet_struct_name()
+        )
+        .unwrap();
+
+        // if we have variable payload length, we save it to a local variable
+        if self.packet().length_exprs[1].is_some() {
+            write!(output, "let payload_len = buf.remaining();\n").unwrap();
+        }
+
+        // here, we record the name of the header length variable
+        let header_len_var = if self.packet().length_exprs[0].is_some() {
+            // add a guard condition to make sure that the header_len is larger
+            // than the fixed header length
+            write!(
+                output,
+                "assert!(header.header_len()>={});\n",
+                self.header_impl.header_len_name()
+            )
+            .unwrap();
+
+            "header.header_len()".to_string()
+        } else {
+            self.header_impl.header_len_name()
+        };
+
+        // move the cursor back
+        write!(output, "buf.move_back({});\n", header_len_var).unwrap();
+
+        // copy the fixed header content to the start of the buffer
+        write!(
+            output,
+            "(&mut buf.chunk_mut()[0..{}]).copy_from_slice(header.as_bytes());\n",
+            self.header_impl.header_len_name()
+        )
+        .unwrap();
+
+        if self.packet().length_exprs[1].is_none() && self.packet().length_exprs[2].is_none() {
+            // if we do not have variable payload length or packet length,
+            // we can construct a packet variable and return it
+            write!(
+                output,
+                "{}::parse_unchecked(buf)\n",
+                self.packet_struct_name()
+            )
+            .unwrap();
+        } else {
+            // create a mutable packet variable
+            write!(
+                output,
+                "let mut pkt = {}::parse_unchecked(buf);\n",
+                self.packet_struct_name()
+            )
+            .unwrap();
+
+            if self.packet().length_exprs[1].is_some() {
+                // we have variable payload length, we need to update the payload length
+                write!(output, "pkt.set_payload_len(payload_len);\n").unwrap();
+            }
+
+            if self.packet().length_exprs[2].is_some() {
+                // we have variable packet length, we need to update the packet length
+                write!(output, "pkt.set_packet_len(pkt.buf.remaining());\n").unwrap();
+            }
+
+            write!(output, "pkt\n").unwrap();
+        }
+
         write!(output, "}}\n").unwrap();
     }
 
