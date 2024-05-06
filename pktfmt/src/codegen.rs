@@ -1282,9 +1282,9 @@ impl<'a> PacketImpl<'a> {
         {
             let mut impl_block = impl_block("Buf", &self.packet_struct_name(), &mut output);
             self.header_impl.parse_unchecked(impl_block.get_writer());
-            self.buf(impl_block.get_writer());
-            self.release(impl_block.get_writer());
-            self.header(impl_block.get_writer());
+            self.buf_method(impl_block.get_writer());
+            self.release_method(impl_block.get_writer());
+            self.header_method(impl_block.get_writer());
             writeln!(impl_block.get_writer()).unwrap();
         }
 
@@ -1309,6 +1309,9 @@ impl<'a> PacketImpl<'a> {
             let mut impl_block = impl_block("Buf", &self.packet_struct_name(), &mut output);
             self.packet()
                 .get_length_gen("self.buf.chunk()", impl_block.get_writer());
+            self.packet().option_name.as_ref().map(|option_name| {
+                self.option_method(option_name, impl_block.get_writer());
+            });
         }
 
         // Generate length set methods
@@ -1316,6 +1319,16 @@ impl<'a> PacketImpl<'a> {
             let mut impl_block = impl_block("BufMut", &self.packet_struct_name(), &mut output);
             self.packet()
                 .set_length_gen("self.buf.chunk_mut()", "value", impl_block.get_writer());
+            self.packet().option_name.as_ref().map(|option_name| {
+                self.option_mut_method(option_name, impl_block.get_writer());
+            });
+        }
+
+        // Generate parse and payload
+        {
+            let mut impl_block = impl_block("PktBuf", &self.packet_struct_name(), &mut output);
+            self.parse_method(impl_block.get_writer());
+            self.payload_method(impl_block.get_writer());
         }
     }
 
@@ -1329,21 +1342,21 @@ impl<'a> PacketImpl<'a> {
         self.packet().protocol_name.clone() + "Packet"
     }
 
-    fn buf(&self, output: &mut dyn Write) {
+    fn buf_method(&self, output: &mut dyn Write) {
         write!(output, "#[inline]\n").unwrap();
         write!(output, "pub fn buf(&self) -> &T{{\n").unwrap();
         write!(output, "&self.buf\n").unwrap();
         write!(output, "}}\n").unwrap();
     }
 
-    fn release(&self, output: &mut dyn Write) {
+    fn release_method(&self, output: &mut dyn Write) {
         write!(output, "#[inline]\n").unwrap();
         write!(output, "pub fn release(self) -> T{{\n").unwrap();
         write!(output, "self.buf\n").unwrap();
         write!(output, "}}\n").unwrap();
     }
 
-    fn header(&self, output: &mut dyn Write) {
+    fn header_method(&self, output: &mut dyn Write) {
         write!(output, "#[inline]\n").unwrap();
         write!(
             output,
@@ -1361,6 +1374,212 @@ impl<'a> PacketImpl<'a> {
             output,
             "{}::parse_unchecked(data)\n",
             self.header_impl.header_struct_name()
+        )
+        .unwrap();
+        write!(output, "}}\n").unwrap();
+    }
+
+    fn parse_method(&self, output: &mut dyn Write) {
+        write!(output, "#[inline]\n").unwrap();
+        write!(
+            output,
+            "pub fn parse(buf: T) -> Result<{}<T>, T> {{\n",
+            self.packet_struct_name()
+        )
+        .unwrap();
+
+        // make sure that the length of the starting chunk is larger than
+        // the fixed length of the packet header
+        write!(output, "let chunk_len = buf.chunk().len();\n").unwrap();
+        write!(
+            output,
+            "if chunk_len < {} {{\n",
+            self.header_impl.header_len_name()
+        )
+        .unwrap();
+        write!(output, "return Err(buf);\n").unwrap();
+        write!(output, "}}\n").unwrap();
+
+        // create a temporary `packet` so that we can visit all the
+        // header fields
+        write!(output, "let packet = Self::parse_unchecked(buf);\n").unwrap();
+
+        // we will generate guard conditions in this array
+        let mut guards = Vec::new();
+
+        // if we have defined a header length expression, we need more checks to ensure that
+        // the header length has the correct format
+        self.packet().length_exprs[0].as_ref().map(|_| {
+            // the header_len of the packet must be larger than the fixed header length
+            guards.push(format!(
+                "packet.header_len()<{}",
+                self.header_impl.header_len_name()
+            ));
+            guards.push(format!("packet.header_len()>chunk_len"));
+        });
+
+        // add guard conditions for payload length,
+        // make ensure that the packet fits within the buffer
+        self.packet().length_exprs[1].as_ref().map(|_| {
+            if self.packet().length_exprs[0].is_some() {
+                // header length is defined, use the `header_len` method
+                guards.push(format!(
+                    "packet.payload_len()+packet.header_len()>packet.buf.remaining()"
+                ));
+            } else {
+                guards.push(format!(
+                    "packet.payload_len()+{}>packet.buf.remaining()",
+                    self.header_impl.header_len_name()
+                ));
+            }
+        });
+
+        // add gurad conditions for packet length,
+        // make sure that the header fits within the packet,
+        // and that the packet fits within the buffer
+        self.packet().length_exprs()[2].as_ref().map(|_| {
+            if self.packet().length_exprs[0].is_some() {
+                // header length is defined, use the `header_len` method
+                guards.push(format!("packet.header_len()>packet.packet_len()"));
+            } else {
+                guards.push(format!(
+                    "{}>packet.packet_len()",
+                    self.header_impl.header_len_name()
+                ));
+            }
+            guards.push(format!("packet.packet_len()>packet.buf.remaining()"));
+        });
+
+        // dirrectly return the buffer as it is, if the guarding conditions
+        // are met.
+        if guards.len() > 0 {
+            write!(output, "if ").unwrap();
+
+            if guards.len() == 1 {
+                write!(output, "{}", guards[0]).unwrap();
+            } else {
+                guards.iter().enumerate().for_each(|(idx, s)| {
+                    write!(output, "({})", s).unwrap();
+
+                    if idx < guards.len() - 1 {
+                        write!(output, "||").unwrap();
+                    }
+                });
+            }
+
+            write!(output, "{{\n").unwrap();
+            write!(output, "return Err(packet.release());\n").unwrap();
+            write!(output, "}}\n").unwrap();
+        }
+
+        write!(output, "Ok(packet)\n").unwrap();
+        write!(output, "}}\n").unwrap();
+    }
+
+    fn payload_method(&self, output: &mut dyn Write) {
+        // If we have a variable packet length, we need to trim off
+        // some bytes before we release the payload
+
+        write!(output, "#[inline]\n").unwrap();
+        write!(output, " #[inline] pub fn payload(self) -> T {{\n").unwrap();
+
+        // we have variable payload length
+        if self.packet().length_exprs[1].is_some() {
+            // first, make sure that the packet fits within the buffer
+            if self.packet().length_exprs[0].is_some() {
+                write!(
+                    output,
+                    "assert!(self.header_len()+self.packet_len()<=self.buf.remaining());\n"
+                )
+                .unwrap();
+                write!(
+                    output,
+                    "let trim_size = self.buf.remaining()-self.header_len()-self.packet_len();\n"
+                )
+                .unwrap();
+            } else {
+                write!(
+                    output,
+                    "assert!({}+self.packet_len()<=self.buf.remaining());\n",
+                    self.header_impl.header_len_name()
+                )
+                .unwrap();
+                write!(
+                    output,
+                    "let trim_size = self.buf.remaining()-{}-self.packet_len();\n",
+                    self.header_impl.header_len_name()
+                )
+                .unwrap();
+            }
+        }
+
+        // we have variable packet length
+        if self.packet().length_exprs[2].is_some() {
+            write!(
+                output,
+                "assert!(self.packet_len()<=self.buf.remaining());\n"
+            )
+            .unwrap();
+            write!(
+                output,
+                "let trim_size = self.buf.remaining()-self.packet_len();\n"
+            )
+            .unwrap();
+        }
+
+        let header_len_var = if self.packet().length_exprs[0].is_some() {
+            // Here, we have variable header length, so we must save the length
+            // to a local variable before we release the buffer
+            write!(output, "let header_len = self.header_len();\n").unwrap();
+            "header_len".to_string()
+        } else {
+            // The header has fixed length, we use the pre-defined constant
+            self.header_impl.header_len_name().to_string()
+        };
+
+        // release the internal buffer from the packet
+        write!(output, "let mut buf = self.release();\n").unwrap();
+        if self.packet().length_exprs[1].is_some() || self.packet().length_exprs[2].is_some() {
+            // if we have variable packet length, we are gona need to trim off the trailing bytes
+            // beyond the end of the packet
+
+            write!(output, "if trim_size > 0 {{\n").unwrap();
+            write!(output, "buf.trim_off(trim_size);\n").unwrap();
+            write!(output, "}}\n").unwrap();
+        }
+
+        // advance the cursor beyond the header
+        write!(output, "buf.advance({});\n", header_len_var).unwrap();
+
+        // return the buf
+        write!(output, "buf\n").unwrap();
+        write!(output, "}}\n").unwrap();
+    }
+
+    fn option_method(&self, option_name: &str, output: &mut dyn Write) {
+        write!(output, "#[inline]\n").unwrap();
+        write!(output, "pub fn {}(&self)->&[u8]{{\n", option_name).unwrap();
+        write!(
+            output,
+            "&self.buf.chunk()[{}..self.header_len()]\n",
+            self.header_impl.header_len_name()
+        )
+        .unwrap();
+        write!(output, "}}\n").unwrap();
+    }
+
+    fn option_mut_method(&self, option_name: &str, output: &mut dyn Write) {
+        write!(output, "#[inline]\n").unwrap();
+        write!(
+            output,
+            "pub fn {}_mut(&mut self)->&mut [u8]{{\n",
+            option_name
+        )
+        .unwrap();
+        write!(
+            output,
+            "&mut self.buf.chunk_mut()[{}..self.header_len()]\n",
+            self.header_impl.header_len_name()
         )
         .unwrap();
         write!(output, "}}\n").unwrap();
