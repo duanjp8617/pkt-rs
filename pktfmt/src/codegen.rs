@@ -1216,20 +1216,16 @@ impl<'a> HeaderImpl<'a> {
     }
 
     fn header_len_gen(&self, output: &mut dyn Write) {
-        write!(
-            output,
-            "/// A constant that defines the fixed byte length of the {} protocol header.\n",
-            &self.packet.protocol_name
-        )
-        .unwrap();
-
         let header_len = self.packet.fixed_header_len();
         // TODO:
         // assert!(header_len < SOME_CONSTANT);
 
         write!(
             output,
-            "pub const {}: usize = {};\n",
+            "/// A constant that defines the fixed byte length of the {} protocol header.
+pub const {}: usize = {};
+",
+            &self.packet.protocol_name,
             self.header_len_name(),
             header_len
         )
@@ -1237,53 +1233,63 @@ impl<'a> HeaderImpl<'a> {
     }
 
     fn parse(&self, output: &mut dyn Write) {
-        write!(output, "#[inline]\n").unwrap();
-        write!(output, "pub fn parse(buf: T) -> Result<Self, T>{{\n").unwrap();
         write!(
             output,
-            "if buf.as_ref().len()>={}{{\n",
+            "#[inline]
+pub fn parse(buf: T) -> Result<Self, T>{{
+    if buf.as_ref().len()>={}{{
+        Ok(Self{{buf}})
+    }} else {{
+        Err(buf)
+    }}
+}}
+",
             self.header_len_name()
         )
         .unwrap();
-        write!(output, "Ok(Self{{buf}})\n").unwrap();
-        write!(output, "}} else {{\n").unwrap();
-        write!(output, "Err(buf)\n").unwrap();
-        write!(output, "}}\n}}\n").unwrap();
     }
 
     fn parse_unchecked(&self, output: &mut dyn Write) {
-        write!(output, "#[inline]\n").unwrap();
-        write!(output, "pub fn parse_unchecked(buf: T) -> Self{{\n").unwrap();
-        write!(output, "Self{{buf}}\n").unwrap();
-        write!(output, "}}\n").unwrap();
+        write!(
+            output,
+            "#[inline]
+pub fn parse_unchecked(buf: T) -> Self{{
+    Self{{buf}}
+}}
+"
+        )
+        .unwrap();
     }
 
     fn as_byte_slice(&self, output: &mut dyn Write) {
-        write!(output, "#[inline]\n").unwrap();
-        write!(output, "pub fn as_byte_slice(&self) -> &[u8]{{\n").unwrap();
         write!(
             output,
-            "&{}[0..{}]\n",
-            "self.buf.as_ref()",
+            "#[inline]
+pub fn as_byte_slice(&self) -> &[u8]{{
+    &self.buf.as_ref()[0..{}]
+}}
+",
             self.header_len_name()
         )
         .unwrap();
-        write!(output, "}}\n").unwrap();
     }
 
     fn to_owned(&self, output: &mut dyn Write) {
-        write!(output, "#[inline]\n").unwrap();
         write!(
             output,
-            "pub fn to_owned(&self) -> {}<[u8; {}]>{{\n",
+            "#[inline]
+pub fn to_owned(&self) -> {}<[u8; {}]>{{
+    let mut buf = [0; {}];
+    buf.copy_from_slice(self.as_bytes());
+    {} {{buf}}
+}}
+",
             self.header_struct_name(),
-            self.header_len_name()
+            self.header_len_name(),
+            self.header_len_name(),
+            self.header_struct_name()
         )
         .unwrap();
-        write!(output, "let mut buf = [0; {}];\n", self.header_len_name()).unwrap();
-        write!(output, "buf.copy_from_slice(self.as_bytes());\n").unwrap();
-        write!(output, "{} {{buf}}\n", self.header_struct_name()).unwrap();
-        write!(output, "}}\n").unwrap();
     }
 }
 pub struct PacketImpl<'a> {
@@ -1379,66 +1385,62 @@ impl<'a> PacketImpl<'a> {
     }
 
     fn buf_method(&self, output: &mut dyn Write) {
-        write!(output, "#[inline]\n").unwrap();
-        write!(output, "pub fn buf(&self) -> &T{{\n").unwrap();
-        write!(output, "&self.buf\n").unwrap();
-        write!(output, "}}\n").unwrap();
+        write!(
+            output,
+            "#[inline]
+pub fn buf(&self) -> &T{{
+    &self.buf
+}}
+"
+        )
+        .unwrap();
     }
 
     fn release_method(&self, output: &mut dyn Write) {
-        write!(output, "#[inline]\n").unwrap();
-        write!(output, "pub fn release(self) -> T{{\n").unwrap();
-        write!(output, "self.buf\n").unwrap();
-        write!(output, "}}\n").unwrap();
+        write!(
+            output,
+            "#[inline]
+pub fn release(self) -> T{{
+    self.buf
+}}
+"
+        )
+        .unwrap();
     }
 
     fn header_method(&self, output: &mut dyn Write) {
-        write!(output, "#[inline]\n").unwrap();
         write!(
             output,
-            "pub fn header(self) -> {}<&[u8]>{{\n",
+            "#[inline]
+pub fn header(self) -> {}<&[u8]>{{
+    let data = &self.buf.chunk()[..{}];
+    {}::parse_unchecked(data)
+}}
+",
+            self.header_impl.header_struct_name(),
+            self.header_impl.header_len_name(),
             self.header_impl.header_struct_name()
         )
         .unwrap();
-        write!(
-            output,
-            "let data = &self.buf.chunk()[..{}]\n",
-            self.header_impl.header_len_name()
-        )
-        .unwrap();
-        write!(
-            output,
-            "{}::parse_unchecked(data)\n",
-            self.header_impl.header_struct_name()
-        )
-        .unwrap();
-        write!(output, "}}\n").unwrap();
     }
 
     fn parse_method(&self, output: &mut dyn Write) {
-        write!(output, "#[inline]\n").unwrap();
         write!(
             output,
-            "pub fn parse(buf: T) -> Result<{}<T>, T> {{\n",
-            self.packet_struct_name()
-        )
-        .unwrap();
-
-        // make sure that the length of the starting chunk is larger than
-        // the fixed length of the packet header
-        write!(output, "let chunk_len = buf.chunk().len();\n").unwrap();
-        write!(
-            output,
-            "if chunk_len < {} {{\n",
+            "#[inline]
+pub fn parse(buf: T) -> Result<{}<T>, T> {{
+    let chunk_len = buf.chunk().len();
+    // make sure that the length of the starting chunk is 
+    // larger than the fixed length of the packet header
+    if chunk_len < {} {{
+        return Err(buf);
+    }}
+    let packet = Self::parse_unchecked(buf);
+",
+            self.packet_struct_name(),
             self.header_impl.header_len_name()
         )
         .unwrap();
-        write!(output, "return Err(buf);\n").unwrap();
-        write!(output, "}}\n").unwrap();
-
-        // create a temporary `packet` so that we can visit all the
-        // header fields
-        write!(output, "let packet = Self::parse_unchecked(buf);\n").unwrap();
 
         // we will generate guard conditions in this array
         let mut guards = Vec::new();
