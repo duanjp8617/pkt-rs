@@ -185,11 +185,12 @@ fn rust_var_as_repr(var_name: &str, repr: BuiltinTypes) -> String {
 fn impl_block<'out>(
     trait_name: &str,
     type_name: &str,
+    type_param: &str,
     output: &'out mut dyn Write,
 ) -> HeadTailWriter<&'out mut dyn Write> {
     HeadTailWriter::new(
         output,
-        &format!("impl<T: {}> {}<T>{{\n", trait_name, type_name),
+        &format!("impl<{}> {}<{}>{{\n", trait_name, type_name, type_param),
         "}\n",
     )
 }
@@ -1143,7 +1144,12 @@ impl<'a> HeaderImpl<'a> {
 
         // Generate basic methods.
         {
-            let mut impl_block = impl_block("AsRef<[u8]>", &self.header_struct_name(), &mut output);
+            let mut impl_block = impl_block(
+                "T:AsRef<[u8]>",
+                &self.header_struct_name(),
+                "T",
+                &mut output,
+            );
             self.parse(impl_block.get_writer());
             self.parse_unchecked(impl_block.get_writer());
             self.as_byte_slice(impl_block.get_writer());
@@ -1152,28 +1158,48 @@ impl<'a> HeaderImpl<'a> {
 
         // Generate get methods
         {
-            let mut impl_block = impl_block("AsRef<[u8]>", &self.header_struct_name(), &mut output);
+            let mut impl_block = impl_block(
+                "T:AsRef<[u8]>",
+                &self.header_struct_name(),
+                "T",
+                &mut output,
+            );
             self.packet
                 .get_method_gen("self.buf.as_ref()", impl_block.get_writer());
         }
 
         // Generate set methods
         {
-            let mut impl_block = impl_block("AsMut<[u8]>", &self.header_struct_name(), &mut output);
+            let mut impl_block = impl_block(
+                "T:AsMut<[u8]>",
+                &self.header_struct_name(),
+                "T",
+                &mut output,
+            );
             self.packet
                 .set_method_gen("self.buf.as_mut()", "value", impl_block.get_writer());
         }
 
         // Generate length get methods
         {
-            let mut impl_block = impl_block("AsRef<[u8]>", &self.header_struct_name(), &mut output);
+            let mut impl_block = impl_block(
+                "T:AsRef<[u8]>",
+                &self.header_struct_name(),
+                "T",
+                &mut output,
+            );
             self.packet
                 .get_length_gen("self.buf.as_ref()", impl_block.get_writer());
         }
 
         // Generate length set methods
         {
-            let mut impl_block = impl_block("AsMut<[u8]>", &self.header_struct_name(), &mut output);
+            let mut impl_block = impl_block(
+                "T:AsMut<[u8]>",
+                &self.header_struct_name(),
+                "T",
+                &mut output,
+            );
             self.packet
                 .set_length_gen("self.buf.as_mut()", "value", impl_block.get_writer());
         }
@@ -1280,7 +1306,7 @@ impl<'a> PacketImpl<'a> {
 
         // Generate packet base methods.
         {
-            let mut impl_block = impl_block("Buf", &self.packet_struct_name(), &mut output);
+            let mut impl_block = impl_block("T:Buf", &self.packet_struct_name(), "T", &mut output);
             self.header_impl.parse_unchecked(impl_block.get_writer());
             self.buf_method(impl_block.get_writer());
             self.release_method(impl_block.get_writer());
@@ -1290,7 +1316,7 @@ impl<'a> PacketImpl<'a> {
 
         // Generate get methods
         {
-            let mut impl_block = impl_block("Buf", &self.packet_struct_name(), &mut output);
+            let mut impl_block = impl_block("T:Buf", &self.packet_struct_name(), "T", &mut output);
             self.packet()
                 .get_method_gen("self.buf.chunk()", impl_block.get_writer());
             writeln!(impl_block.get_writer()).unwrap();
@@ -1298,7 +1324,8 @@ impl<'a> PacketImpl<'a> {
 
         // Generate set methods
         {
-            let mut impl_block = impl_block("BufMut", &self.packet_struct_name(), &mut output);
+            let mut impl_block =
+                impl_block("T:BufMut", &self.packet_struct_name(), "T", &mut output);
             self.packet()
                 .set_method_gen("self.buf.chunk_mut()", "value", impl_block.get_writer());
             writeln!(impl_block.get_writer()).unwrap();
@@ -1306,7 +1333,7 @@ impl<'a> PacketImpl<'a> {
 
         // Generate length get methods
         {
-            let mut impl_block = impl_block("Buf", &self.packet_struct_name(), &mut output);
+            let mut impl_block = impl_block("T:Buf", &self.packet_struct_name(), "T", &mut output);
             self.packet()
                 .get_length_gen("self.buf.chunk()", impl_block.get_writer());
             self.packet().option_name.as_ref().map(|option_name| {
@@ -1316,7 +1343,8 @@ impl<'a> PacketImpl<'a> {
 
         // Generate length set methods
         {
-            let mut impl_block = impl_block("BufMut", &self.packet_struct_name(), &mut output);
+            let mut impl_block =
+                impl_block("T:BufMut", &self.packet_struct_name(), "T", &mut output);
             self.packet()
                 .set_length_gen("self.buf.chunk_mut()", "value", impl_block.get_writer());
             self.packet().option_name.as_ref().map(|option_name| {
@@ -1326,14 +1354,16 @@ impl<'a> PacketImpl<'a> {
 
         // Generate parse and payload
         {
-            let mut impl_block = impl_block("PktBuf", &self.packet_struct_name(), &mut output);
+            let mut impl_block =
+                impl_block("T:PktBuf", &self.packet_struct_name(), "T", &mut output);
             self.parse_method(impl_block.get_writer());
             self.payload_method(impl_block.get_writer());
         }
 
         // Generate prepend_header method
         {
-            let mut impl_block = impl_block("PktMut", &self.packet_struct_name(), &mut output);
+            let mut impl_block =
+                impl_block("T:PktMut", &self.packet_struct_name(), "T", &mut output);
             self.prepend_header_method(impl_block.get_writer());
         }
     }
