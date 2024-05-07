@@ -5,7 +5,7 @@ mod common;
 
 #[test]
 fn print_header() {
-    let file = "ipv6.pktfmt";
+    let file = "wtf.pktfmt";
 
     let res = parse_for_result!(file, pktfmt::parser::PacketParser);
     let packet = res.unwrap();

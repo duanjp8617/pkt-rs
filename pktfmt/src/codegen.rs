@@ -213,9 +213,9 @@ impl<'a> FieldGetMethod<'a> {
             // pub fn field_name(&self) -> FieldArgType {
             // ...
             // }
-            writeln!(output, "#[inline]").unwrap();
+            // writeln!(output, "#[inline]").unwrap();
             let func_def = format!(
-                "pub fn {}(&self)->{}{{\n",
+                "#[inline]\npub fn {}(&self)->{}{{\n",
                 field_name,
                 self.field.arg.to_string()
             );
@@ -453,8 +453,7 @@ impl<'a> LengthGetMethod<'a> {
         // pub fn length_field_name(&self) -> usize {
         // ...
         // }
-        writeln!(output, "#[inline]").unwrap();
-        let func_def = format!("pub fn {}(&self)->usize{{\n", length_field_name);
+        let func_def = format!("#[inline]\npub fn {}(&self)->usize{{\n", length_field_name);
         let mut func_def_writer = HeadTailWriter::new(&mut output, &func_def, "\n}\n");
 
         // Here, the checks performed by the parser will ensure that
@@ -505,9 +504,8 @@ impl<'a> FieldSetMethod<'a> {
             // pub fn set_field_name(&mut self, write_value: FieldArgType) {
             // ...
             // }
-            writeln!(output, "#[inline]").unwrap();
             let func_def = format!(
-                "pub fn set_{}(&mut self, {}:{}){{\n",
+                "#[inline]\npub fn set_{}(&mut self, {}:{}){{\n",
                 field_name,
                 write_value,
                 self.field.arg.to_string()
@@ -826,21 +824,20 @@ impl<'a> FieldSetMethod<'a> {
                 //`bit` is 1, `repr` is `U8` and `arg` is bool.
                 // This will write 1 to the field bit if `write_value` is true,
                 // and write 0 to the field bit if `write_value` is false.
-                write!(output, "if {} {{\n", write_value).unwrap();
                 write!(
                     output,
-                    "{}[{}]={}[{}]|{}\n",
+                    "if {} {{
+    {}[{}]={}[{}]|{}
+}}
+else {{
+    {}[{}]={}[{}]&{}
+}}",
+                    write_value,
                     target_slice,
                     self.start.byte_pos,
                     target_slice,
                     self.start.byte_pos,
-                    ones_mask(7 - self.start.bit_pos, 7 - self.start.bit_pos)
-                )
-                .unwrap();
-                write!(output, "}}\nelse {{\n").unwrap();
-                write!(
-                    output,
-                    "{}[{}]={}[{}]&{}\n",
+                    ones_mask(7 - self.start.bit_pos, 7 - self.start.bit_pos),
                     target_slice,
                     self.start.byte_pos,
                     target_slice,
@@ -848,7 +845,6 @@ impl<'a> FieldSetMethod<'a> {
                     zeros_mask(7 - self.start.bit_pos, 7 - self.start.bit_pos)
                 )
                 .unwrap();
-                write!(output, "}}").unwrap();
             }
             _ => {
                 match &self.field.arg {
@@ -909,9 +905,8 @@ impl<'a> LengthSetMethod<'a> {
         // pub fn set_length_field_name(&mut self, write_value: usize) {
         // ...
         // }
-        writeln!(output, "#[inline]").unwrap();
         let func_def = format!(
-            "pub fn set_{}(&mut self, {}:usize){{\n",
+            "#[inline]\npub fn set_{}(&mut self, {}:usize){{\n",
             length_field_name, write_value
         );
         let mut func_def_writer = HeadTailWriter::new(&mut output, &func_def, "\n}\n");
@@ -1115,9 +1110,14 @@ impl<'a> StructDefinition<'a> {
                     }
                 });
         }
-        write!(output, "pub struct {}<T> {{\n", self.struct_name).unwrap();
-        write!(output, "buf: T\n").unwrap();
-        write!(output, "}}\n").unwrap();
+        write!(
+            output,
+            "pub struct {}<T> {{
+    buf: T
+}}",
+            self.struct_name
+        )
+        .unwrap();
     }
 }
 
