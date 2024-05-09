@@ -15,7 +15,7 @@ struct HeadTailWriter<T: Write> {
 
 impl<T: Write> HeadTailWriter<T> {
     fn new(mut writer: T, head: &str, tail: &str) -> Self {
-        write!(writer, "{}", head).unwrap();
+        write!(writer, "{head}").unwrap();
         HeadTailWriter {
             writer,
             tail: tail.to_string(),
@@ -45,7 +45,7 @@ fn network_endian_read<T: Write>(writer: T, bit_len: u64) -> HeadTailWriter<T> {
         5 | 6 | 7 => HeadTailWriter::new(
             writer,
             "NetworkEndian::read_uint(",
-            &format!(", {})", byte_len),
+            &format!(", {byte_len})"),
         ),
         8 => HeadTailWriter::new(writer, "NetworkEndian::read_u64(", ")"),
         _ => panic!(),
@@ -62,7 +62,7 @@ fn network_endian_write<T: Write>(writer: T, bit_len: u64) -> HeadTailWriter<T> 
         5 | 6 | 7 => HeadTailWriter::new(
             writer,
             "NetworkEndian::write_uint(",
-            &format!(",{});", byte_len),
+            &format!(",{byte_len});"),
         ),
         8 => HeadTailWriter::new(writer, "NetworkEndian::write_u64(", ");"),
         _ => panic!(),
@@ -155,10 +155,10 @@ fn zeros_mask(mut low: u64, high: u64) -> String {
 fn to_rust_type(repr: BuiltinTypes, rust_type_code: &str) -> String {
     match repr {
         BuiltinTypes::U8 | BuiltinTypes::U16 | BuiltinTypes::U32 | BuiltinTypes::U64 => {
-            format!("{}::from_{}", rust_type_code, repr.to_string())
+            format!("{rust_type_code}::from_{}", repr.to_string())
         }
         BuiltinTypes::ByteSlice => {
-            format!("{}::from_byte_slice", rust_type_code)
+            format!("{rust_type_code}::from_byte_slice")
         }
         _ => panic!(),
     }
@@ -172,10 +172,10 @@ fn to_rust_type(repr: BuiltinTypes, rust_type_code: &str) -> String {
 fn rust_var_as_repr(var_name: &str, repr: BuiltinTypes) -> String {
     match repr {
         BuiltinTypes::U8 | BuiltinTypes::U16 | BuiltinTypes::U32 | BuiltinTypes::U64 => {
-            format!("{}.as_{}()", var_name, repr.to_string())
+            format!("{var_name}.as_{}()", repr.to_string())
         }
         BuiltinTypes::ByteSlice => {
-            format!("{}.as_byte_slice()", var_name)
+            format!("{var_name}.as_byte_slice()")
         }
         _ => panic!(),
     }
@@ -190,7 +190,7 @@ fn impl_block<'out>(
 ) -> HeadTailWriter<&'out mut dyn Write> {
     HeadTailWriter::new(
         output,
-        &format!("impl<{}> {}<{}>{{\n", trait_name, type_name, type_param),
+        &format!("impl<{trait_name}> {type_name}<{type_param}>{{\n"),
         "}\n",
     )
 }
@@ -215,8 +215,7 @@ impl<'a> FieldGetMethod<'a> {
             // }
             // writeln!(output, "#[inline]").unwrap();
             let func_def = format!(
-                "#[inline]\npub fn {}(&self)->{}{{\n",
-                field_name,
+                "#[inline]\npub fn {field_name}(&self)->{}{{\n",
                 self.field.arg.to_string()
             );
             let mut func_def_writer = HeadTailWriter::new(&mut output, &func_def, "\n}\n");
@@ -244,8 +243,7 @@ impl<'a> FieldGetMethod<'a> {
                 // The field covers the entire byte slice and can be directly read out.
                 write!(
                     output,
-                    "&{}[{}..{}]",
-                    target_slice,
+                    "&{target_slice}[{}..{}]",
                     self.start.byte_pos,
                     self.start.byte_pos + byte_len(self.field.bit)
                 )
@@ -258,7 +256,7 @@ impl<'a> FieldGetMethod<'a> {
                 assert!(self.start.byte_pos == end.byte_pos);
 
                 // Index the actual byte containing the field.
-                let read_byte = format!("{}[{}]", target_slice, self.start.byte_pos);
+                let read_byte = format!("{target_slice}[{}]", self.start.byte_pos);
 
                 if end.bit_pos < 7 && self.start.bit_pos > 0 {
                     // The field has the following form:
@@ -269,8 +267,7 @@ impl<'a> FieldGetMethod<'a> {
                     // and align the field to the 7th bit position.
                     write!(
                         output,
-                        "({}>>{})&{}",
-                        read_byte,
+                        "({read_byte}>>{})&{}",
                         7 - end.bit_pos,
                         ones_mask(0, self.field.bit - 1)
                     )
@@ -280,19 +277,19 @@ impl<'a> FieldGetMethod<'a> {
                     // 0 1 2 3 4 5 6 7
                     // | field |
                     // We only perform right shift.
-                    write!(output, "{}>>{}", read_byte, 7 - end.bit_pos).unwrap();
+                    write!(output, "{read_byte}>>{}", 7 - end.bit_pos).unwrap();
                 } else if self.start.bit_pos > 0 {
                     // The field has the following form:
                     // 0 1 2 3 4 5 6 7
                     //       | field |
                     // We only perform bitwise and.
-                    write!(output, "{}&{}", read_byte, ones_mask(0, self.field.bit - 1)).unwrap();
+                    write!(output, "{read_byte}&{}", ones_mask(0, self.field.bit - 1)).unwrap();
                 } else {
                     // The field has the following form:
                     // 0 1 2 3 4 5 6 7
                     // |     field   |
                     // We directly index the underlying byte.
-                    write!(output, "{}", read_byte).unwrap();
+                    write!(output, "{read_byte}").unwrap();
                 }
             }
             BuiltinTypes::U16 | BuiltinTypes::U32 | BuiltinTypes::U64 => {
@@ -306,8 +303,7 @@ impl<'a> FieldGetMethod<'a> {
                     // Fill in the byteslice that need to be read from.
                     write!(
                         new.get_writer(),
-                        "&{}[{}..{}]",
-                        target_slice,
+                        "&{target_slice}[{}..{}]",
                         self.start.byte_pos,
                         self.start.byte_pos + byte_len(self.field.bit)
                     )
@@ -356,11 +352,9 @@ impl<'a> FieldGetMethod<'a> {
         // The 2nd part should right-shift to 7th bit.
         // Finally, we glue the two parts together with bitwise or.
         let read_result = format!(
-            "({}[{}]<<{})|({}[{}]>>{})",
-            target_slice,
+            "({target_slice}[{}]<<{})|({target_slice}[{}]>>{})",
             self.start.byte_pos,
             end.bit_pos + 1,
-            target_slice,
             end.byte_pos,
             7 - end.bit_pos
         );
@@ -369,14 +363,13 @@ impl<'a> FieldGetMethod<'a> {
             // Clear the extra bits if the field size is smaller than 8.
             write!(
                 output,
-                "({})&{}",
-                read_result,
+                "({read_result})&{}",
                 ones_mask(0, self.field.bit - 1)
             )
             .unwrap();
         } else {
             // Otherwise, read the field as it is.
-            write!(output, "{}", read_result).unwrap();
+            write!(output, "{read_result}").unwrap();
         }
     }
 
@@ -425,8 +418,7 @@ impl<'a> FieldGetMethod<'a> {
                     // evaluting to `true` if the field bit is 1, and `false` otherwise.
                     write!(
                         output,
-                        "{}[{}]&{} != 0",
-                        target_slice,
+                        "{target_slice}[{}]&{} != 0",
                         self.start.byte_pos,
                         ones_mask(7 - self.start.bit_pos, 7 - self.start.bit_pos)
                     )
@@ -453,7 +445,7 @@ impl<'a> LengthGetMethod<'a> {
         // pub fn length_field_name(&self) -> usize {
         // ...
         // }
-        let func_def = format!("#[inline]\npub fn {}(&self)->usize{{\n", length_field_name);
+        let func_def = format!("#[inline]\npub fn {length_field_name}(&self)->usize{{\n");
         let mut func_def_writer = HeadTailWriter::new(&mut output, &func_def, "\n}\n");
 
         // Here, the checks performed by the parser will ensure that
@@ -505,9 +497,7 @@ impl<'a> FieldSetMethod<'a> {
             // ...
             // }
             let func_def = format!(
-                "#[inline]\npub fn set_{}(&mut self, {}:{}){{\n",
-                field_name,
-                write_value,
+                "#[inline]\npub fn set_{field_name}(&mut self, {write_value}:{}){{\n",
                 self.field.arg.to_string()
             );
             let mut func_def_writer = HeadTailWriter::new(&mut output, &func_def, "\n}\n");
@@ -554,8 +544,7 @@ impl<'a> FieldSetMethod<'a> {
                 let mut field_writer = HeadTailWriter::new(
                     &mut output,
                     &format!(
-                        "(&mut {}[{}..{}]).copy_from_slice(",
-                        target_slice,
+                        "(&mut {target_slice}[{}..{}]).copy_from_slice(",
                         self.start.byte_pos,
                         self.start.byte_pos + byte_len(self.field.bit)
                     ),
@@ -571,20 +560,19 @@ impl<'a> FieldSetMethod<'a> {
                 assert!(self.start.byte_pos == end.byte_pos);
 
                 // The write target is the byte containing the field.
-                let write_target = format!("{}[{}]", target_slice, self.start.byte_pos);
+                let write_target = format!("{target_slice}[{}]", self.start.byte_pos);
 
                 if self.field.bit % 8 == 0 {
                     // The field has the following form:
                     // 0 1 2 3 4 5 6 7
                     // |     field   |
                     // We directly assign the `write_value` to the write target.
-                    write!(output, "{}={};", write_target, write_value).unwrap();
+                    write!(output, "{write_target}={write_value};").unwrap();
                 } else {
                     // The field area contains extra bits and we extract
                     // the rest of the bits through a mask.
                     let rest_of_bits = format!(
-                        "({}[{}]&{})",
-                        target_slice,
+                        "({target_slice}[{}]&{})",
                         self.start.byte_pos,
                         zeros_mask(7 - end.bit_pos, 7 - self.start.bit_pos)
                     );
@@ -596,8 +584,7 @@ impl<'a> FieldSetMethod<'a> {
                         // `write_value` has the same form as field.
                         // We glue `rest_of_bits` with `write_value` and write
                         // to the `write_target`.
-                        write!(output, "{}={}|{};", write_target, rest_of_bits, write_value)
-                            .unwrap();
+                        write!(output, "{write_target}={rest_of_bits}|{write_value};").unwrap();
                     } else {
                         // The field has the following form:
                         // 0 1 2 3 4 5 6 7
@@ -608,10 +595,7 @@ impl<'a> FieldSetMethod<'a> {
                         // `write_target`.
                         write!(
                             output,
-                            "{}={}|({}<<{});",
-                            write_target,
-                            rest_of_bits,
-                            write_value,
+                            "{write_target}={rest_of_bits}|({write_value}<<{});",
                             7 - end.bit_pos
                         )
                         .unwrap();
@@ -636,8 +620,7 @@ impl<'a> FieldSetMethod<'a> {
                     // Create a mutable byte slice covering the field area.
                     write!(
                         field_writer.get_writer(),
-                        "&mut {}[{}..{}],",
-                        target_slice,
+                        "&mut {target_slice}[{}..{}],",
                         self.start.byte_pos,
                         self.start.byte_pos + byte_len(self.field.bit)
                     )
@@ -655,7 +638,7 @@ impl<'a> FieldSetMethod<'a> {
                         // First, read the rest of the bits into a variable.
                         let mut let_assign = HeadTailWriter::new(
                             &mut output,
-                            &format!("let {}=", REST_OF_FIELD),
+                            &format!("let {REST_OF_FIELD}="),
                             ";\n",
                         );
 
@@ -670,8 +653,7 @@ impl<'a> FieldSetMethod<'a> {
                             // 4. Left shift to make room for the field area ("(({}[{}]&{}) as {}) << {}")
                             write!(
                                 let_assign.get_writer(),
-                                "(({}[{}]&{}) as {}) << {}",
-                                target_slice,
+                                "(({target_slice}[{}]&{}) as {}) << {}",
                                 self.start.byte_pos,
                                 ones_mask(8 - self.start.bit_pos, 7),
                                 self.field.repr.to_string(),
@@ -685,8 +667,7 @@ impl<'a> FieldSetMethod<'a> {
                             // We do similar steps except for the final one (the left-shift one).
                             write!(
                                 let_assign.get_writer(),
-                                "({}[{}]&{}) as {}",
-                                target_slice,
+                                "({target_slice}[{}]&{}) as {}",
                                 end.byte_pos,
                                 ones_mask(0, 6 - end.bit_pos),
                                 self.field.repr.to_string()
@@ -702,8 +683,7 @@ impl<'a> FieldSetMethod<'a> {
                     // Specify the target slice to write to.
                     write!(
                         field_writer.get_writer(),
-                        "&mut {}[{}..{}],",
-                        target_slice,
+                        "&mut {target_slice}[{}..{}],",
                         self.start.byte_pos,
                         self.start.byte_pos + byte_len(self.field.bit)
                     )
@@ -716,13 +696,8 @@ impl<'a> FieldSetMethod<'a> {
                         // `write_value` has the same form as field.
                         // We glue the variable defined as `REST_OF_FIELD`
                         // and `write_value` together.
-                        write!(
-                            field_writer.get_writer(),
-                            "{}|{}",
-                            REST_OF_FIELD,
-                            write_value
-                        )
-                        .unwrap();
+                        write!(field_writer.get_writer(), "{REST_OF_FIELD}|{write_value}",)
+                            .unwrap();
                     } else {
                         // The field has the following form:
                         // 0 1 2 3 4 5 6 7
@@ -732,9 +707,7 @@ impl<'a> FieldSetMethod<'a> {
                         // Then we glue them together.
                         write!(
                             field_writer.get_writer(),
-                            "{}|({}<<{})",
-                            REST_OF_FIELD,
-                            write_value,
+                            "{REST_OF_FIELD}|({write_value}<<{})",
                             7 - end.bit_pos
                         )
                         .unwrap();
@@ -770,13 +743,10 @@ impl<'a> FieldSetMethod<'a> {
         // 3. Glue them together and write to the area covering the 1st part.
         write!(
             output,
-            "{}[{}]=({}[{}]&{})|({}>>{});\n",
-            target_slice,
+            "{target_slice}[{}]=({target_slice}[{}]&{})|({write_value}>>{});\n",
             self.start.byte_pos,
-            target_slice,
             self.start.byte_pos,
             zeros_mask(0, 7 - self.start.bit_pos),
-            write_value,
             end.bit_pos + 1
         )
         .unwrap();
@@ -790,13 +760,10 @@ impl<'a> FieldSetMethod<'a> {
         // 3. Glue them together and write to the area covering the 2nd part.
         write!(
             output,
-            "{}[{}]=({}[{}]&{})|({}<<{});",
-            target_slice,
+            "{target_slice}[{}]=({target_slice}[{}]&{})|({write_value}<<{});",
             end.byte_pos,
-            target_slice,
             end.byte_pos,
             zeros_mask(7 - end.bit_pos, 7),
-            write_value,
             7 - end.bit_pos
         )
         .unwrap();
@@ -826,21 +793,15 @@ impl<'a> FieldSetMethod<'a> {
                 // and write 0 to the field bit if `write_value` is false.
                 write!(
                     output,
-                    "if {} {{
-    {}[{}]={}[{}]|{}
-}}
-else {{
-    {}[{}]={}[{}]&{}
+                    "if {write_value} {{
+    {target_slice}[{}]={target_slice}[{}]|{}
+}} else {{
+    {target_slice}[{}]={target_slice}[{}]&{}
 }}",
-                    write_value,
-                    target_slice,
                     self.start.byte_pos,
-                    target_slice,
                     self.start.byte_pos,
                     ones_mask(7 - self.start.bit_pos, 7 - self.start.bit_pos),
-                    target_slice,
                     self.start.byte_pos,
-                    target_slice,
                     self.start.byte_pos,
                     zeros_mask(7 - self.start.bit_pos, 7 - self.start.bit_pos)
                 )
@@ -854,8 +815,7 @@ else {{
                         // using `arg`'s compulsory association method.
                         write!(
                             output,
-                            "let {} = {};\n",
-                            write_value,
+                            "let {write_value} = {};\n",
                             rust_var_as_repr(write_value, self.field.repr)
                         )
                         .unwrap();
@@ -870,8 +830,7 @@ else {{
                     // the extra bits on the `write_value` are all zeroed out.
                     write!(
                         output,
-                        "assert!({} <= {});\n",
-                        write_value,
+                        "assert!({write_value} <= {});\n",
                         ones_mask(0, self.field.bit - 1)
                     )
                     .unwrap();
@@ -906,8 +865,7 @@ impl<'a> LengthSetMethod<'a> {
         // ...
         // }
         let func_def = format!(
-            "#[inline]\npub fn set_{}(&mut self, {}:usize){{\n",
-            length_field_name, write_value
+            "#[inline]\npub fn set_{length_field_name}(&mut self, {write_value}:usize){{\n",
         );
         let mut func_def_writer = HeadTailWriter::new(&mut output, &func_def, "\n}\n");
 
@@ -934,8 +892,7 @@ impl<'a> LengthSetMethod<'a> {
         if self.field.bit < crate::USIZE_BYTES * 8 {
             // This guard condition corresponds to the 2nd branch.
             guards.push(format!(
-                "{}<={}",
-                write_value,
+                "{write_value}<={}",
                 self.expr
                     .exec((2 as u64).pow(self.field.bit as u32) - 1)
                     .unwrap()
@@ -953,7 +910,7 @@ impl<'a> LengthSetMethod<'a> {
             let mut assert_writer =
                 HeadTailWriter::new(func_def_writer.get_writer(), "assert!(", ");\n");
             guards.iter().enumerate().for_each(|(idx, s)| {
-                write!(assert_writer.get_writer(), "({})", s).unwrap();
+                write!(assert_writer.get_writer(), "({s})").unwrap();
                 if idx < guards.len() - 1 {
                     write!(assert_writer.get_writer(), "&&").unwrap();
                 }
@@ -1104,7 +1061,7 @@ impl<'a> StructDefinition<'a> {
                 .iter()
                 .enumerate()
                 .for_each(|(idx, derive_name)| {
-                    write!(derive_writer.get_writer(), "{}", derive_name).unwrap();
+                    write!(derive_writer.get_writer(), "{derive_name}").unwrap();
                     if idx < self.derives.len() - 1 {
                         write!(derive_writer.get_writer(), ",").unwrap();
                     }
@@ -1223,11 +1180,10 @@ impl<'a> HeaderImpl<'a> {
         write!(
             output,
             "/// A constant that defines the fixed byte length of the {} protocol header.
-pub const {}: usize = {};
+pub const {}: usize = {header_len};
 ",
             &self.packet.protocol_name,
             self.header_len_name(),
-            header_len
         )
         .unwrap();
     }
@@ -2167,10 +2123,9 @@ NetworkEndian::write_u64(&mut self.buf.as_mut()[3..11],rest_of_field|value);",
             FieldSetMethod,
             write_as_arg,
             "if value {
-self.buf.as_mut()[13]=self.buf.as_mut()[13]|0x80
-}
-else {
-self.buf.as_mut()[13]=self.buf.as_mut()[13]&0x7f
+    self.buf.as_mut()[13]=self.buf.as_mut()[13]|0x80
+} else {
+    self.buf.as_mut()[13]=self.buf.as_mut()[13]&0x7f
 }",
             BitPos {
                 byte_pos: 13,
