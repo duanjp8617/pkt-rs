@@ -741,11 +741,10 @@ impl<'a> FieldSetMethod<'a> {
         // 1. Read the rest of the bits on the first part ("({}[{}]&{})")
         // 2. Right shift the `write_value` ("({}>>{})")
         // 3. Glue them together and write to the area covering the 1st part.
+        let start_byte_pos = self.start.byte_pos;
         write!(
             output,
-            "{target_slice}[{}]=({target_slice}[{}]&{})|({write_value}>>{});\n",
-            self.start.byte_pos,
-            self.start.byte_pos,
+            "{target_slice}[{start_byte_pos}]=({target_slice}[{start_byte_pos}]&{})|({write_value}>>{});\n",
             zeros_mask(0, 7 - self.start.bit_pos),
             end.bit_pos + 1
         )
@@ -758,11 +757,10 @@ impl<'a> FieldSetMethod<'a> {
         // 1. Read the rest of the bits on the 2nd part ("({}[{}]&{})")
         // 2. Left shift the `write_value` ("({}<<{})")
         // 3. Glue them together and write to the area covering the 2nd part.
+        let end_byte_pos = end.byte_pos;
         write!(
             output,
-            "{target_slice}[{}]=({target_slice}[{}]&{})|({write_value}<<{});",
-            end.byte_pos,
-            end.byte_pos,
+            "{target_slice}[{end_byte_pos}]=({target_slice}[{end_byte_pos}]&{})|({write_value}<<{});",
             zeros_mask(7 - end.bit_pos, 7),
             7 - end.bit_pos
         )
@@ -791,18 +789,15 @@ impl<'a> FieldSetMethod<'a> {
                 //`bit` is 1, `repr` is `U8` and `arg` is bool.
                 // This will write 1 to the field bit if `write_value` is true,
                 // and write 0 to the field bit if `write_value` is false.
+                let start_byte_pos = self.start.byte_pos;
                 write!(
                     output,
                     "if {write_value} {{
-    {target_slice}[{}]={target_slice}[{}]|{}
+{target_slice}[{start_byte_pos}]={target_slice}[{start_byte_pos}]|{}
 }} else {{
-    {target_slice}[{}]={target_slice}[{}]&{}
+{target_slice}[{start_byte_pos}]={target_slice}[{start_byte_pos}]&{}
 }}",
-                    self.start.byte_pos,
-                    self.start.byte_pos,
                     ones_mask(7 - self.start.bit_pos, 7 - self.start.bit_pos),
-                    self.start.byte_pos,
-                    self.start.byte_pos,
                     zeros_mask(7 - self.start.bit_pos, 7 - self.start.bit_pos)
                 )
                 .unwrap();
@@ -1193,11 +1188,11 @@ pub const {}: usize = {header_len};
             output,
             "#[inline]
 pub fn parse(buf: T) -> Result<Self, T>{{
-    if buf.as_ref().len()>={}{{
-        Ok(Self{{buf}})
-    }} else {{
-        Err(buf)
-    }}
+if buf.as_ref().len()>={}{{
+Ok(Self{{buf}})
+}} else {{
+Err(buf)
+}}
 }}
 ",
             self.header_len_name()
@@ -1210,7 +1205,7 @@ pub fn parse(buf: T) -> Result<Self, T>{{
             output,
             "#[inline]
 pub fn parse_unchecked(buf: T) -> Self{{
-    Self{{buf}}
+Self{{buf}}
 }}
 "
         )
@@ -1222,7 +1217,7 @@ pub fn parse_unchecked(buf: T) -> Self{{
             output,
             "#[inline]
 pub fn as_byte_slice(&self) -> &[u8]{{
-    &self.buf.as_ref()[0..{}]
+&self.buf.as_ref()[0..{}]
 }}
 ",
             self.header_len_name()
@@ -1231,19 +1226,18 @@ pub fn as_byte_slice(&self) -> &[u8]{{
     }
 
     fn to_owned(&self, output: &mut dyn Write) {
+        let header_struct_name = self.header_struct_name();
+        let header_len_name = self.header_len_name();
+
         write!(
             output,
             "#[inline]
-pub fn to_owned(&self) -> {}<[u8; {}]>{{
-    let mut buf = [0; {}];
-    buf.copy_from_slice(self.as_bytes());
-    {} {{buf}}
+pub fn to_owned(&self) -> {header_struct_name}<[u8; {header_len_name}]>{{
+let mut buf = [0; {header_len_name}];
+buf.copy_from_slice(self.as_bytes());
+{header_struct_name} {{buf}}
 }}
-",
-            self.header_struct_name(),
-            self.header_len_name(),
-            self.header_len_name(),
-            self.header_struct_name()
+"
         )
         .unwrap();
     }
@@ -1345,7 +1339,7 @@ impl<'a> PacketImpl<'a> {
             output,
             "#[inline]
 pub fn buf(&self) -> &T{{
-    &self.buf
+&self.buf
 }}
 "
         )
@@ -1357,7 +1351,7 @@ pub fn buf(&self) -> &T{{
             output,
             "#[inline]
 pub fn release(self) -> T{{
-    self.buf
+self.buf
 }}
 "
         )
@@ -1365,54 +1359,52 @@ pub fn release(self) -> T{{
     }
 
     fn header_method(&self, output: &mut dyn Write) {
+        let header_struct_name = self.header_impl.header_struct_name();
+        let header_len_name = self.header_impl.header_len_name();
         write!(
             output,
             "#[inline]
-pub fn header(self) -> {}<&[u8]>{{
-    let data = &self.buf.chunk()[..{}];
-    {}::parse_unchecked(data)
+pub fn header(self) -> {header_struct_name}<&[u8]>{{
+let data = &self.buf.chunk()[..{header_len_name}];
+{header_struct_name}::parse_unchecked(data)
 }}
-",
-            self.header_impl.header_struct_name(),
-            self.header_impl.header_len_name(),
-            self.header_impl.header_struct_name()
+"
         )
         .unwrap();
     }
 
     fn parse_method(&self, output: &mut dyn Write) {
+        let packet_struct_name = self.packet_struct_name();
+        let header_len_name = self.header_impl.header_len_name();
+
+        // dump the start of the function body
+        // we need to make sure that the length of the starting chunk is
+        // larger than the fixed length of the packet header
         write!(
             output,
             "#[inline]
-pub fn parse(buf: T) -> Result<{}<T>, T> {{
-    let chunk_len = buf.chunk().len();
-    // make sure that the length of the starting chunk is 
-    // larger than the fixed length of the packet header
-    if chunk_len < {} {{
-        return Err(buf);
-    }}
-    let packet = Self::parse_unchecked(buf);
-",
-            self.packet_struct_name(),
-            self.header_impl.header_len_name()
+pub fn parse(buf: T) -> Result<{packet_struct_name}<T>, T> {{
+let chunk_len = buf.chunk().len();
+if chunk_len < {header_len_name} {{
+    return Err(buf);
+}}
+let packet = Self::parse_unchecked(buf);
+"
         )
         .unwrap();
 
-        // we will generate guard conditions in this array
+        // we will generate format check conditions in this array
         let mut guards = Vec::new();
 
         // if we have defined a header length expression, we need more checks to ensure that
         // the header length has the correct format
         self.packet().length_exprs[0].as_ref().map(|_| {
             // the header_len of the packet must be larger than the fixed header length
-            guards.push(format!(
-                "packet.header_len()<{}",
-                self.header_impl.header_len_name()
-            ));
+            guards.push(format!("packet.header_len()<{header_len_name}"));
             guards.push(format!("packet.header_len()>chunk_len"));
         });
 
-        // add guard conditions for payload length,
+        // add format check conditions for payload length,
         // make ensure that the packet fits within the buffer
         self.packet().length_exprs[1].as_ref().map(|_| {
             if self.packet().length_exprs[0].is_some() {
@@ -1422,101 +1414,92 @@ pub fn parse(buf: T) -> Result<{}<T>, T> {{
                 ));
             } else {
                 guards.push(format!(
-                    "packet.payload_len()+{}>packet.buf.remaining()",
-                    self.header_impl.header_len_name()
+                    "packet.payload_len()+{header_len_name}>packet.buf.remaining()"
                 ));
             }
         });
 
-        // add gurad conditions for packet length,
+        // add format check conditions for packet length,
         // make sure that the header fits within the packet,
         // and that the packet fits within the buffer
         self.packet().length_exprs()[2].as_ref().map(|_| {
             if self.packet().length_exprs[0].is_some() {
                 // header length is defined, use the `header_len` method
-                guards.push(format!("packet.header_len()>packet.packet_len()"));
+                guards.push(format!("packet.packet_len()<packet.header_len()"));
             } else {
-                guards.push(format!(
-                    "{}>packet.packet_len()",
-                    self.header_impl.header_len_name()
-                ));
+                guards.push(format!("packet.packet_len()<{header_len_name}"));
             }
             guards.push(format!("packet.packet_len()>packet.buf.remaining()"));
         });
 
-        // dirrectly return the buffer as it is, if the guarding conditions
-        // are met.
+        // we need to insert format checks depending on weather
+        // the packet has variable length fields
         if guards.len() > 0 {
-            write!(output, "if ").unwrap();
-
-            if guards.len() == 1 {
-                write!(output, "{}", guards[0]).unwrap();
+            let guard_str = if guards.len() == 1 {
+                format!("{}", guards[0])
             } else {
+                let mut buf = Vec::new();
                 guards.iter().enumerate().for_each(|(idx, s)| {
-                    write!(output, "({})", s).unwrap();
+                    write!(&mut buf, "({s})").unwrap();
 
                     if idx < guards.len() - 1 {
-                        write!(output, "||").unwrap();
+                        write!(&mut buf, "||").unwrap();
                     }
                 });
-            }
+                String::from_utf8(buf).unwrap()
+            };
 
-            write!(output, "{{\n").unwrap();
-            write!(output, "return Err(packet.release());\n").unwrap();
-            write!(output, "}}\n").unwrap();
+            write!(
+                output,
+                "if {guard_str} {{
+return Err(packet.release());
+}}
+"
+            )
+            .unwrap();
         }
 
-        write!(output, "Ok(packet)\n").unwrap();
-        write!(output, "}}\n").unwrap();
+        // dirrectly return the buffer as it is, if the guarding conditions
+        // are met.
+        write!(output, "Ok(packet)\n}}\n").unwrap();
     }
 
     fn payload_method(&self, output: &mut dyn Write) {
         // If we have a variable packet length, we need to trim off
         // some bytes before we release the payload
 
-        write!(output, "#[inline]\n").unwrap();
-        write!(output, " #[inline] pub fn payload(self) -> T {{\n").unwrap();
+        let header_len_name = self.header_impl.header_len_name();
+        write!(
+            output,
+            "#[inline]
+pub fn payload(self)->T{{
+"
+        )
+        .unwrap();
 
         // we have variable payload length
+        let header_len_var = if self.packet().length_exprs[0].is_some() {
+            "self.header_len()"
+        } else {
+            &header_len_name
+        };
         if self.packet().length_exprs[1].is_some() {
-            // first, make sure that the packet fits within the buffer
-            if self.packet().length_exprs[0].is_some() {
-                write!(
-                    output,
-                    "assert!(self.header_len()+self.packet_len()<=self.buf.remaining());\n"
-                )
-                .unwrap();
-                write!(
-                    output,
-                    "let trim_size = self.buf.remaining()-self.header_len()-self.packet_len();\n"
-                )
-                .unwrap();
-            } else {
-                write!(
-                    output,
-                    "assert!({}+self.packet_len()<=self.buf.remaining());\n",
-                    self.header_impl.header_len_name()
-                )
-                .unwrap();
-                write!(
-                    output,
-                    "let trim_size = self.buf.remaining()-{}-self.packet_len();\n",
-                    self.header_impl.header_len_name()
-                )
-                .unwrap();
-            }
+            write!(
+                output,
+                "assert!({header_len_var}+self.payload_len()<=self.buf.remaining());
+let trim_size = self.buf.remaining()-{header_len_var}-self.payload_len();
+"
+            )
+            .unwrap();
         }
 
         // we have variable packet length
         if self.packet().length_exprs[2].is_some() {
             write!(
                 output,
-                "assert!(self.packet_len()<=self.buf.remaining());\n"
-            )
-            .unwrap();
-            write!(
-                output,
-                "let trim_size = self.buf.remaining()-self.packet_len();\n"
+                "assert!(self.packet_len()<=self.buf.remaining());
+let trim_size = self.buf.remaining()-self.packet_len();
+"
             )
             .unwrap();
         }
@@ -1525,10 +1508,10 @@ pub fn parse(buf: T) -> Result<{}<T>, T> {{
             // Here, we have variable header length, so we must save the length
             // to a local variable before we release the buffer
             write!(output, "let header_len = self.header_len();\n").unwrap();
-            "header_len".to_string()
+            "header_len"
         } else {
             // The header has fixed length, we use the pre-defined constant
-            self.header_impl.header_len_name().to_string()
+            &header_len_name
         };
 
         // release the internal buffer from the packet
@@ -1536,27 +1519,36 @@ pub fn parse(buf: T) -> Result<{}<T>, T> {{
         if self.packet().length_exprs[1].is_some() || self.packet().length_exprs[2].is_some() {
             // if we have variable packet length, we are gona need to trim off the trailing bytes
             // beyond the end of the packet
-
-            write!(output, "if trim_size > 0 {{\n").unwrap();
-            write!(output, "buf.trim_off(trim_size);\n").unwrap();
-            write!(output, "}}\n").unwrap();
+            write!(
+                output,
+                "if trim_size > 0 {{
+buf.trim_off(trim_size);
+}}
+"
+            )
+            .unwrap();
         }
 
         // advance the cursor beyond the header
-        write!(output, "buf.advance({});\n", header_len_var).unwrap();
-
-        // return the buf
-        write!(output, "buf\n").unwrap();
-        write!(output, "}}\n").unwrap();
+        write!(
+            output,
+            "buf.advance({header_len_var});
+buf
+}}
+"
+        )
+        .unwrap();
     }
 
     fn prepend_header_method(&self, output: &mut dyn Write) {
-        write!(output, "#[inline]\n").unwrap();
+        let packet_struct_name = self.packet_struct_name();
+        let header_len_name = self.header_impl.header_len_name();
         write!(
             output,
-            "pub fn prepend_header<HT: AsRef<[u8]>>(mut buf: T, header: &{}<HT>) -> {}<T> {{\n",
-            self.header_impl.header_struct_name(),
-            self.packet_struct_name()
+            "#[inline]
+pub fn prepend_header<HT: AsRef<[u8]>>(mut buf: T, header: &{}<HT>) -> {packet_struct_name}<T> {{
+",
+            self.header_impl.header_struct_name()
         )
         .unwrap();
 
@@ -1569,90 +1561,72 @@ pub fn parse(buf: T) -> Result<{}<T>, T> {{
         let header_len_var = if self.packet().length_exprs[0].is_some() {
             // add a guard condition to make sure that the header_len is larger
             // than the fixed header length
-            write!(
-                output,
-                "assert!(header.header_len()>={});\n",
-                self.header_impl.header_len_name()
-            )
-            .unwrap();
-
-            "header.header_len()".to_string()
+            write!(output, "assert!(header.header_len()>={header_len_name});\n",).unwrap();
+            "header.header_len()"
         } else {
-            self.header_impl.header_len_name()
+            &header_len_name
         };
 
-        // move the cursor back
-        write!(output, "buf.move_back({});\n", header_len_var).unwrap();
-
-        // copy the fixed header content to the start of the buffer
+        // move the cursor back and copy the packet content in
         write!(
             output,
-            "(&mut buf.chunk_mut()[0..{}]).copy_from_slice(header.as_bytes());\n",
-            self.header_impl.header_len_name()
+            "buf.move_back({header_len_var});
+(&mut buf.chunk_mut()[0..{header_len_name}]).copy_from_slice(header.as_bytes());
+"
         )
         .unwrap();
 
         if self.packet().length_exprs[1].is_none() && self.packet().length_exprs[2].is_none() {
             // if we do not have variable payload length or packet length,
             // we can construct a packet variable and return it
-            write!(
-                output,
-                "{}::parse_unchecked(buf)\n",
-                self.packet_struct_name()
-            )
-            .unwrap();
+            write!(output, "{packet_struct_name}::parse_unchecked(buf)\n",).unwrap();
         } else {
+            let adjust_packet_length = if self.packet().length_exprs[1].is_some() {
+                "pkt.set_payload_len(payload_len);\n"
+            } else if self.packet().length_exprs[2].is_some() {
+                "pkt.set_packet_len(pkt.buf.remaining());\n"
+            } else {
+                ""
+            };
+
             // create a mutable packet variable
             write!(
                 output,
-                "let mut pkt = {}::parse_unchecked(buf);\n",
-                self.packet_struct_name()
+                "let mut pkt = {packet_struct_name}::parse_unchecked(buf);
+{adjust_packet_length}pkt
+}}
+",
             )
             .unwrap();
-
-            if self.packet().length_exprs[1].is_some() {
-                // we have variable payload length, we need to update the payload length
-                write!(output, "pkt.set_payload_len(payload_len);\n").unwrap();
-            }
-
-            if self.packet().length_exprs[2].is_some() {
-                // we have variable packet length, we need to update the packet length
-                write!(output, "pkt.set_packet_len(pkt.buf.remaining());\n").unwrap();
-            }
-
-            write!(output, "pkt\n").unwrap();
         }
 
         write!(output, "}}\n").unwrap();
     }
 
     fn option_method(&self, option_name: &str, output: &mut dyn Write) {
-        write!(output, "#[inline]\n").unwrap();
-        write!(output, "pub fn {}(&self)->&[u8]{{\n", option_name).unwrap();
         write!(
             output,
-            "&self.buf.chunk()[{}..self.header_len()]\n",
+            "#[inline]
+pub fn {option_name}(&self)->&[u8]{{
+    &self.buf.chunk()[{}..self.header_len()]
+}}
+",
             self.header_impl.header_len_name()
         )
         .unwrap();
-        write!(output, "}}\n").unwrap();
     }
 
     fn option_mut_method(&self, option_name: &str, output: &mut dyn Write) {
-        write!(output, "#[inline]\n").unwrap();
         write!(
             output,
-            "pub fn {}_mut(&mut self)->&mut [u8]{{\n",
-            option_name
-        )
-        .unwrap();
-        write!(
-            output,
-            "&mut self.buf.chunk_mut()[{}..self.header_len()]\n",
+            "#[inline]
+pub fn {option_name}_mut(&mut self)->&mut [u8]{{
+    &mut self.buf.chunk_mut()[{}..self.header_len()]
+}}
+",
             self.header_impl.header_len_name()
         )
         .unwrap();
-        write!(output, "}}\n").unwrap();
     }
 }
 
@@ -2123,9 +2097,9 @@ NetworkEndian::write_u64(&mut self.buf.as_mut()[3..11],rest_of_field|value);",
             FieldSetMethod,
             write_as_arg,
             "if value {
-    self.buf.as_mut()[13]=self.buf.as_mut()[13]|0x80
+self.buf.as_mut()[13]=self.buf.as_mut()[13]|0x80
 } else {
-    self.buf.as_mut()[13]=self.buf.as_mut()[13]&0x7f
+self.buf.as_mut()[13]=self.buf.as_mut()[13]&0x7f
 }",
             BitPos {
                 byte_pos: 13,
