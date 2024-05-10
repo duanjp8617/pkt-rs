@@ -578,6 +578,24 @@ impl UsableAlgExpr {
     }
 }
 
+pub enum LengthInfo {
+    // The packet does not have a variable
+    // length field/
+    None,
+    // The packet has a variable length field,
+    // but no expression is provided to calculate
+    // the length field. The users should manually
+    // implement getter and setter for the length field.
+    NoExpr,
+    // The packet has a variable length field and 
+    // a corresponding expression is defined for this field.
+    // An optional maximum value is provided for the length field.
+    Expr {
+        expr: UsableAlgExpr,
+        max: Option<u64>,
+    },
+}
+
 #[derive(Debug, Clone)]
 pub struct Packet {
     pub protocol_name: String,

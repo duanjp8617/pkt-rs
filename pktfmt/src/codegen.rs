@@ -451,7 +451,9 @@ impl<'a> LengthGetMethod<'a> {
         // Here, the checks performed by the parser will ensure that
         // field `arg` is the same as field `repr`, and that `repr` is
         // one of `U8`, `U16`, `U32` and `U64`.
-        // We also assume to
+        // We also ensure in the parser that the calculated length will
+        // not exceed a pre-defined constant that is way smaller than the
+        // maximum value of `USIZE`.
         // So, we first read the field value into a local variable `length_val`,
         // and cast its type to `usize`.
         {
@@ -868,22 +870,22 @@ impl<'a> LengthSetMethod<'a> {
         // method.
         let mut guards = Vec::new();
 
-        // Here, the `USIZE_BYTES` is the total byte number of the `usize` type.
-        // `usize` is the default argument type for all the length methods, this
-        // is designed to facilitate length calculation in rust.
-        //
-        // In the parser, we will make sure that, for the field that is used for
-        // length calculation, its bit size should not exceed `USIZE_BYTES * 8`.
-        // We will have two branches depending on the field bit size:
-        //
-        // 1st, if field bit size equals `USIZE_BYTES * 8`, then the only possible
-        // way to calculate the maximum length without triggering overflow is to
-        // directly return the field value. In this case, we don't need any form of
-        // guard condition for the length set method.
-        //
-        // 2nd, if the bit size is smaller than `USIZE_BYTES * 8`, we need to make sure that
-        // the input value to the header set method is smaller than the maximum expression value
-        // produced by the maximum field value.
+        /* Here, the `USIZE_BYTES` is the total byte number of the `usize` type.
+        `usize` is the default argument type for all the length methods, this
+        is designed to facilitate length calculation in rust.
+
+        In the parser, we will make sure that, for the field that is used for
+        length calculation, its bit size should not exceed `USIZE_BYTES * 8`.
+        We will have two branches depending on the field bit size:
+
+        1st, if field bit size equals `USIZE_BYTES * 8`, then the only possible
+        way to calculate the maximum length without triggering overflow is to
+        directly return the field value. In this case, we don't need any form of
+        guard condition for the length set method.
+
+        2nd, if the bit size is smaller than `USIZE_BYTES * 8`, we need to make sure that
+        the input value to the header set method is smaller than the maximum expression value
+        produced by the maximum field value. */
         if self.field.bit < crate::USIZE_BYTES * 8 {
             // This guard condition corresponds to the 2nd branch.
             guards.push(format!(
