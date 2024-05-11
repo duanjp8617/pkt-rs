@@ -684,7 +684,7 @@ pub struct Message {
     pub protocol_name: String,
     pub field_list: Vec<(String, Field)>,
     pub field_pos_map: HashMap<String, (BitPos, usize)>,
-    pub length_field: LengthField,
+    pub length_fields: Vec<LengthField>,
     pub option_name: Option<String>,
     pub condition: Option<UsableCmpExpr>,
 }
@@ -699,11 +699,12 @@ impl Message {
         header_len: Option<(Option<Box<AlgExpr>>, String, (usize, usize))>,
         cond: Vec<(String, u64)>,
     ) -> Result<Self, (Error, (usize, usize))> {
-        let mut length_field = LengthField::None;
+        let mut length_fields = vec![LengthField::None];
         let mut option_name = None;
 
         header_len.map(|(alg_expr, name, _)| {
-            length_field = LengthField::Expr(alg_expr.and_then(|expr| expr.try_take_usable_expr()));
+            length_fields[HEADER_LEN_IDX] =
+                LengthField::Expr(alg_expr.and_then(|expr| expr.try_take_usable_expr()));
 
             option_name = Some(name);
         });
@@ -721,7 +722,7 @@ impl Message {
             protocol_name,
             field_list,
             field_pos_map,
-            length_field,
+            length_fields,
             option_name,
             condition,
         })

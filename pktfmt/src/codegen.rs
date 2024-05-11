@@ -1038,7 +1038,7 @@ macro_rules! impl_field_access_method {
         )*
     };
 }
-impl_field_access_method!(Packet);
+impl_field_access_method!(Packet, Message);
 
 struct StructDefinition<'a> {
     struct_name: &'a str,
@@ -1064,8 +1064,48 @@ impl<'a> StructDefinition<'a> {
             output,
             "pub struct {}<T> {{
     buf: T
-}}",
+}}
+",
             self.struct_name
+        )
+        .unwrap();
+    }
+
+    // Wrap a `buf` inside a packet struct.
+    fn parse_unchecked(output: &mut dyn Write) {
+        write!(
+            output,
+            "#[inline]
+pub fn parse_unchecked(buf: T) -> Self{{
+Self{{buf}}
+}}
+"
+        )
+        .unwrap();
+    }
+
+    // Return an imutable reference to the contained `buf`.
+    fn buf(output: &mut dyn Write) {
+        write!(
+            output,
+            "#[inline]
+pub fn buf(&self) -> &T{{
+&self.buf
+}}
+"
+        )
+        .unwrap();
+    }
+
+    // Release the `buf` from the containing packet struct.
+    fn release(output: &mut dyn Write) {
+        write!(
+            output,
+            "#[inline]
+pub fn release(self) -> T{{
+self.buf
+}}
+"
         )
         .unwrap();
     }
@@ -1081,8 +1121,13 @@ impl<'a> HeaderImpl<'a> {
     }
 
     pub fn code_gen(&self, mut output: &mut dyn Write) {
+        // Generate a constant for the fixed header length.
         self.header_len_gen(output);
-        writeln!(output).unwrap();
+
+        // Generate a byte array containing a pre-defined header
+        // whose field values are set to default.
+        // TODO:
+        // self.predefined_header(output);
 
         // Defines the header struct.
         let header_struct_gen = StructDefinition {
@@ -1090,9 +1135,7 @@ impl<'a> HeaderImpl<'a> {
             derives: &["Debug", "Clone", "Copy"],
         };
         header_struct_gen.code_gen(output);
-        writeln!(output).unwrap();
 
-        // Generate basic methods.
         {
             let mut impl_block = impl_block(
                 "T:AsRef<[u8]>",
@@ -1100,22 +1143,22 @@ impl<'a> HeaderImpl<'a> {
                 "T",
                 &mut output,
             );
+
+            // Generate the `parse` and `parse_unchecked` methods.
             self.parse(impl_block.get_writer());
-            self.parse_unchecked(impl_block.get_writer());
-            self.as_byte_slice(impl_block.get_writer());
-            self.to_owned(impl_block.get_writer());
-        }
+            StructDefinition::parse_unchecked(impl_block.get_writer());
 
-        // Generate get methods
-        {
-            let mut impl_block = impl_block(
-                "T:AsRef<[u8]>",
-                &self.header_struct_name(),
-                "T",
-                &mut output,
-            );
+            // Generate `as_bytes` and `to_owned` methods.
+            self.as_bytes(impl_block.get_writer());
+            self.to_owned(impl_block.get_writer());
+
+            // Generate get methods for various header fields.
             self.packet
                 .get_method_gen("self.buf.as_ref()", impl_block.get_writer());
+
+            // Generate get methods for length fields if there are any.
+            self.packet
+                .get_length_gen("self.buf.as_ref()", impl_block.get_writer());
         }
 
         // Generate set methods
@@ -1126,30 +1169,12 @@ impl<'a> HeaderImpl<'a> {
                 "T",
                 &mut output,
             );
+
+            // Generate set methods for various header fields.
             self.packet
                 .set_method_gen("self.buf.as_mut()", "value", impl_block.get_writer());
-        }
 
-        // Generate length get methods
-        {
-            let mut impl_block = impl_block(
-                "T:AsRef<[u8]>",
-                &self.header_struct_name(),
-                "T",
-                &mut output,
-            );
-            self.packet
-                .get_length_gen("self.buf.as_ref()", impl_block.get_writer());
-        }
-
-        // Generate length set methods
-        {
-            let mut impl_block = impl_block(
-                "T:AsMut<[u8]>",
-                &self.header_struct_name(),
-                "T",
-                &mut output,
-            );
+            // Generate set methods for length fields if there are any.
             self.packet
                 .set_length_gen("self.buf.as_mut()", "value", impl_block.get_writer());
         }
@@ -1198,23 +1223,11 @@ Err(buf)
         .unwrap();
     }
 
-    fn parse_unchecked(&self, output: &mut dyn Write) {
+    fn as_bytes(&self, output: &mut dyn Write) {
         write!(
             output,
             "#[inline]
-pub fn parse_unchecked(buf: T) -> Self{{
-Self{{buf}}
-}}
-"
-        )
-        .unwrap();
-    }
-
-    fn as_byte_slice(&self, output: &mut dyn Write) {
-        write!(
-            output,
-            "#[inline]
-pub fn as_byte_slice(&self) -> &[u8]{{
+pub fn as_bytes(&self) -> &[u8]{{
 &self.buf.as_ref()[0..{}]
 }}
 ",
@@ -1240,6 +1253,7 @@ buf.copy_from_slice(self.as_bytes());
         .unwrap();
     }
 }
+
 pub struct PacketImpl<'a> {
     header_impl: &'a HeaderImpl<'a>,
 }
@@ -1256,69 +1270,61 @@ impl<'a> PacketImpl<'a> {
             derives: &["Debug"],
         };
         packet_struct_gen.code_gen(output);
-        writeln!(output).unwrap();
 
-        // Generate packet base methods.
         {
             let mut impl_block = impl_block("T:Buf", &self.packet_struct_name(), "T", &mut output);
-            self.header_impl.parse_unchecked(impl_block.get_writer());
-            self.buf_method(impl_block.get_writer());
-            self.release_method(impl_block.get_writer());
-            self.header_method(impl_block.get_writer());
-            writeln!(impl_block.get_writer()).unwrap();
-        }
 
-        // Generate get methods
-        {
-            let mut impl_block = impl_block("T:Buf", &self.packet_struct_name(), "T", &mut output);
+            // Generate `parse` and `parse_unchecked` methods.
+            StructDefinition::parse_unchecked(impl_block.get_writer());
+
+            // Generate the `buf`, `header` and `release` methods.
+            StructDefinition::buf(impl_block.get_writer());
+            self.header(impl_block.get_writer());
+            StructDefinition::release(impl_block.get_writer());
+
+            // Generate the get methods for various header fields.
             self.packet()
                 .get_method_gen("self.buf.chunk()", impl_block.get_writer());
-            writeln!(impl_block.get_writer()).unwrap();
+
+            // Generate the get methods for length fields if there are any.
+            self.packet()
+                .get_length_gen("self.buf.chunk()", impl_block.get_writer());
+
+            // Generate the method that return the option slice if option presents.
+            self.packet().option_name.as_ref().map(|option_name| {
+                self.option(option_name, impl_block.get_writer());
+            });
+        }
+
+        {
+            let mut impl_block =
+                impl_block("T:PktBuf", &self.packet_struct_name(), "T", &mut output);
+
+            // Generate the `parse` and `payload` methods.
+            self.parse(impl_block.get_writer());
+            self.payload(impl_block.get_writer());
         }
 
         // Generate set methods
         {
             let mut impl_block =
                 impl_block("T:BufMut", &self.packet_struct_name(), "T", &mut output);
+
+            // Generate set methods for various header fields.
             self.packet()
                 .set_method_gen("self.buf.chunk_mut()", "value", impl_block.get_writer());
-            writeln!(impl_block.get_writer()).unwrap();
-        }
 
-        // Generate length get methods
-        {
-            let mut impl_block = impl_block("T:Buf", &self.packet_struct_name(), "T", &mut output);
-            self.packet()
-                .get_length_gen("self.buf.chunk()", impl_block.get_writer());
-            self.packet().option_name.as_ref().map(|option_name| {
-                self.option_method(option_name, impl_block.get_writer());
-            });
-        }
-
-        // Generate length set methods
-        {
-            let mut impl_block =
-                impl_block("T:BufMut", &self.packet_struct_name(), "T", &mut output);
+            // Generate set methods for length fields if there are any.
             self.packet()
                 .set_length_gen("self.buf.chunk_mut()", "value", impl_block.get_writer());
+
+            // Generate the method that returns a mutable option slice if option presents.
             self.packet().option_name.as_ref().map(|option_name| {
-                self.option_mut_method(option_name, impl_block.get_writer());
+                self.option_mut(option_name, impl_block.get_writer());
             });
-        }
 
-        // Generate parse and payload
-        {
-            let mut impl_block =
-                impl_block("T:PktBuf", &self.packet_struct_name(), "T", &mut output);
-            self.parse_method(impl_block.get_writer());
-            self.payload_method(impl_block.get_writer());
-        }
-
-        // Generate prepend_header method
-        {
-            let mut impl_block =
-                impl_block("T:PktMut", &self.packet_struct_name(), "T", &mut output);
-            self.prepend_header_method(impl_block.get_writer());
+            // Generate `prepend_header` method.
+            self.prepend_header(impl_block.get_writer());
         }
     }
 
@@ -1332,31 +1338,7 @@ impl<'a> PacketImpl<'a> {
         self.packet().protocol_name.clone() + "Packet"
     }
 
-    fn buf_method(&self, output: &mut dyn Write) {
-        write!(
-            output,
-            "#[inline]
-pub fn buf(&self) -> &T{{
-&self.buf
-}}
-"
-        )
-        .unwrap();
-    }
-
-    fn release_method(&self, output: &mut dyn Write) {
-        write!(
-            output,
-            "#[inline]
-pub fn release(self) -> T{{
-self.buf
-}}
-"
-        )
-        .unwrap();
-    }
-
-    fn header_method(&self, output: &mut dyn Write) {
+    fn header(&self, output: &mut dyn Write) {
         let header_struct_name = self.header_impl.header_struct_name();
         let header_len_name = self.header_impl.header_len_name();
         write!(
@@ -1371,7 +1353,7 @@ let data = &self.buf.chunk()[..{header_len_name}];
         .unwrap();
     }
 
-    fn parse_method(&self, output: &mut dyn Write) {
+    fn parse(&self, output: &mut dyn Write) {
         let packet_struct_name = self.packet_struct_name();
         let header_len_name = self.header_impl.header_len_name();
 
@@ -1453,7 +1435,7 @@ return Err(packet.release());
         write!(output, "Ok(packet)\n}}\n").unwrap();
     }
 
-    fn payload_method(&self, output: &mut dyn Write) {
+    fn payload(&self, output: &mut dyn Write) {
         // If we have a variable packet length, we need to trim off
         // some bytes before we release the payload
 
@@ -1531,7 +1513,7 @@ buf
         .unwrap();
     }
 
-    fn prepend_header_method(&self, output: &mut dyn Write) {
+    fn prepend_header(&self, output: &mut dyn Write) {
         let packet_struct_name = self.packet_struct_name();
         let header_len_name = self.header_impl.header_len_name();
         write!(
@@ -1598,7 +1580,7 @@ pkt
         write!(output, "}}\n").unwrap();
     }
 
-    fn option_method(&self, option_name: &str, output: &mut dyn Write) {
+    fn option(&self, option_name: &str, output: &mut dyn Write) {
         write!(
             output,
             "#[inline]
@@ -1611,7 +1593,7 @@ pub fn {option_name}(&self)->&[u8]{{
         .unwrap();
     }
 
-    fn option_mut_method(&self, option_name: &str, output: &mut dyn Write) {
+    fn option_mut(&self, option_name: &str, output: &mut dyn Write) {
         write!(
             output,
             "#[inline]
@@ -1622,6 +1604,47 @@ pub fn {option_name}_mut(&mut self)->&mut [u8]{{
             self.header_impl.header_len_name()
         )
         .unwrap();
+    }
+}
+
+pub struct MessageImpl<'a> {
+    message: &'a Message,
+}
+
+impl<'a> MessageImpl<'a> {
+    pub fn new(message: &'a Message) -> Self {
+        Self { message }
+    }
+
+    // pub fn code_gen(&self, mut output: &mut dyn Write) {
+    //     // Generate message struct definition.
+    //     let message_struct_gen = StructDefinition {
+    //         struct_name: &self.message_struct_name(),
+    //         derives: &["Debug"],
+    //     };
+    //     message_struct_gen.code_gen(output);
+    //     writeln!(output).unwrap();
+
+    //     // Generate packet base methods.
+    //     {
+    //         let mut impl_block = impl_block(
+    //             "T:AsRef<[u8]>",
+    //             &self.message_struct_name(),
+    //             "T",
+    //             &mut output,
+    //         );
+    //         parse_unchecked(impl_block.get_writer());
+    //         // self.header_impl.parse_unchecked(impl_block.get_writer());
+    //         // self.buf_method(impl_block.get_writer());
+    //         // self.release_method(impl_block.get_writer());
+    //         // self.header_method(impl_block.get_writer());
+
+    //         writeln!(impl_block.get_writer()).unwrap();
+    //     }
+    // }
+
+    fn message_struct_name(&self) -> String {
+        format!("{}Message", self.message.protocol_name)
     }
 }
 

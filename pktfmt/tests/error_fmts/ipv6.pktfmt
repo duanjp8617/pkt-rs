@@ -14,6 +14,6 @@ packet Ipv6 {
         dst_addr_ = Field{bit = 128, arg = %%Ipv6Addr%%, default = %%Ipv6Addr::default()%%},
     ],
     payload_len = PayloadLen {
-        // expr = payload_len_
+        expr = payload_len_
     }
 }
