@@ -599,8 +599,8 @@ impl LengthField {
 
     // Try to acquire a `UsableAlgExpr` from the length field.
     // If the length field is not defined, or if the defined length
-    // field contains no expression for length calculation, it all 
-    // returns `None`. 
+    // field contains no expression for length calculation, it all
+    // returns `None`.
     pub fn try_get_expr(&self) -> Option<&UsableAlgExpr> {
         match self {
             Self::Expr(expr) => expr.as_ref(),
@@ -669,6 +669,61 @@ impl Packet {
             field_pos_map,
             length_fields,
             option_name,
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct UsableCmpExpr {
+    field_name: String,
+    nums: Vec<u64>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Message {
+    pub protocol_name: String,
+    pub field_list: Vec<(String, Field)>,
+    pub field_pos_map: HashMap<String, (BitPos, usize)>,
+    pub length_field: LengthField,
+    pub option_name: Option<String>,
+    pub condition: Option<UsableCmpExpr>,
+}
+
+impl Message {
+    /// We should perform checks to ensure that the length fields
+    /// are correctly defined, but for now, we ignore it.
+    pub fn new(
+        protocol_name: String,
+        field_list: Vec<(String, Field)>,
+        field_pos_map: HashMap<String, (BitPos, usize)>,
+        header_len: Option<(Option<Box<AlgExpr>>, String, (usize, usize))>,
+        cond: Vec<(String, u64)>,
+    ) -> Result<Self, (Error, (usize, usize))> {
+        let mut length_field = LengthField::None;
+        let mut option_name = None;
+
+        header_len.map(|(alg_expr, name, _)| {
+            length_field = LengthField::Expr(alg_expr.and_then(|expr| expr.try_take_usable_expr()));
+
+            option_name = Some(name);
+        });
+
+        let mut condition = None;
+        if cond.len() > 0 {
+            let nums: Vec<u64> = cond.iter().map(|(_, num)| *num).collect();
+            condition = Some(UsableCmpExpr {
+                field_name: cond[0].0.clone(),
+                nums,
+            })
+        }
+
+        Ok(Self {
+            protocol_name,
+            field_list,
+            field_pos_map,
+            length_field,
+            option_name,
+            condition,
         })
     }
 }

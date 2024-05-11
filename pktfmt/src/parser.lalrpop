@@ -72,8 +72,9 @@ extern {
 // Note: a lalrpop macro must end with ;.
 // An Option<T> can be turned into an iterator Iterator<item = T>.
 List<E>: Vec<E> = 
-    <v0: (<E> ",")*> <e: E?> => 
-        v0.into_iter().chain(e).collect();
+    <v0: (<E> ",")*> <e: E?> => {
+        v0.into_iter().chain(e).collect()
+};
 
 pub Num: u64 = {
     "num" => u64::from_str(<>).unwrap()
@@ -204,6 +205,42 @@ pub Packet: Packet = {
             header_len, 
             payload_len, 
             packet_len
+        ).map_err(|(err, span)| {            
+            let error = Error::Ast{err, span};
+            ParseError::User{ error }
+        })
+    }
+}
+
+CondTuple: (String, u64) = {
+    <name: "ident"> "==" <num: Num> => (String::from_str(name).unwrap(), num)
+}
+
+CondList: Vec<(String, u64)> = {
+    <mut cond_list: (<CondTuple> "||")*> <last_cond: CondTuple> => {
+        cond_list.push(last_cond);
+        cond_list
+    }
+}
+
+Condition: Vec<(String, u64)> = {
+    "cond" "=" <CondList> => <>
+}
+
+pub Message: Message = {
+    "message" <name: "ident"> "{"
+        <header: Header>
+        <header_len: ("," <HeaderLen>)?>
+        <cond: ("," <Condition>)?>
+        ","?
+    "}" =>? {
+        let (field_list, field_pos_map) = header;
+        Message::new(
+            String::from_str(name).unwrap(), 
+            field_list, 
+            field_pos_map, 
+            header_len, 
+            cond.unwrap_or(Vec::new())
         ).map_err(|(err, span)| {            
             let error = Error::Ast{err, span};
             ParseError::User{ error }
