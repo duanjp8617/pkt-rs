@@ -163,26 +163,26 @@ AlgExpr: Box<AlgExpr> = {
     AddExpr => <>
 }
 
-HeaderLen: (Box<AlgExpr>, String, (usize, usize)) = {
+HeaderLen: (Option<Box<AlgExpr>>, String, (usize, usize)) = {
     <l: @L> "header_len" "="  "HeaderLen" "{"
-        "option_name" "=" <option_name: "ident"> ","
-        "expr" "=" <expr: AlgExpr> ","?
+        "option_name" "=" <option_name: "ident">
+        <expr: ("," "expr" "=" <AlgExpr>)?> ","?
     "}" <r: @R> => {
         (expr, String::from_str(option_name).unwrap(), (l, r))
     }
 }
 
-PayloadLen: (Box<AlgExpr>, (usize, usize)) = {
+PayloadLen: (Option<Box<AlgExpr>>, (usize, usize)) = {
     <l: @L> "payload_len" "=" "PayloadLen" "{"
-        "expr" "=" <expr: AlgExpr> ","?
+        <expr: ("expr" "=" <AlgExpr>)?> ","?
     "}" <r: @R> => {
         (expr, (l, r))
     }
 }
 
-PacketLen: (Box<AlgExpr>, (usize, usize)) = {
+PacketLen: (Option<Box<AlgExpr>>, (usize, usize)) = {
     <l: @L> "packet_len" "=" "PacketLen" "{"
-        "expr" "=" <expr: AlgExpr> ","?
+        <expr: ("expr" "=" <AlgExpr>)?> ","?
     "}" <r: @R> => {
         (expr, (l, r))
     }

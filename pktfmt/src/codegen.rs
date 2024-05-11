@@ -939,7 +939,7 @@ impl<'a> LengthSetMethod<'a> {
 trait FieldAccessMethod {
     fn field_list(&self) -> &Vec<(String, Field)>;
     fn field_pos_map(&self) -> &HashMap<String, (BitPos, usize)>;
-    fn length_exprs(&self) -> &Vec<Option<UsableAlgExpr>>;
+    fn length_fields(&self) -> &Vec<LengthField>;
 
     fn fixed_header_len(&self) -> u64 {
         let (field_name, field) = self.field_list().last().unwrap();
@@ -974,11 +974,11 @@ trait FieldAccessMethod {
     }
 
     fn get_length_gen(&self, target_slice: &str, output: &mut dyn Write) {
-        self.length_exprs()
+        self.length_fields()
             .iter()
             .enumerate()
-            .for_each(|(expr_idx, expr_opt)| {
-                expr_opt.as_ref().map(|expr| {
+            .for_each(|(idx, length_field)| {
+                length_field.try_get_expr().map(|expr| {
                     let (start, field_idx) = self.field_pos_map().get(expr.field_name()).unwrap();
                     let (_, field) = &self.field_list()[*field_idx];
 
@@ -987,21 +987,17 @@ trait FieldAccessMethod {
                         start: *start,
                         expr,
                     }
-                    .code_gen(
-                        Packet::LENGTH_FIELD_NAMES[expr_idx],
-                        target_slice,
-                        output,
-                    );
+                    .code_gen(LENGTH_FIELD_NAMES[idx], target_slice, output);
                 });
             });
     }
 
     fn set_length_gen(&self, target_slice: &str, write_value: &str, output: &mut dyn Write) {
-        self.length_exprs()
+        self.length_fields()
             .iter()
             .enumerate()
-            .for_each(|(expr_idx, expr_opt)| {
-                expr_opt.as_ref().map(|expr| {
+            .for_each(|(idx, length_field)| {
+                length_field.try_get_expr().map(|expr| {
                     let (start, field_idx) = self.field_pos_map().get(expr.field_name()).unwrap();
                     let (_, field) = &self.field_list()[*field_idx];
 
@@ -1011,7 +1007,7 @@ trait FieldAccessMethod {
                         expr,
                     }
                     .code_gen(
-                        Packet::LENGTH_FIELD_NAMES[expr_idx],
+                        LENGTH_FIELD_NAMES[idx],
                         target_slice,
                         write_value,
                         output,
@@ -1035,8 +1031,8 @@ macro_rules! impl_field_access_method {
                     &self.field_pos_map
                 }
 
-                fn length_exprs(&self) -> &::std::vec::Vec<Option<$crate::ast::UsableAlgExpr>> {
-                    &self.length_exprs
+                fn length_fields(&self) -> &::std::vec::Vec<$crate::ast::LengthField> {
+                    &self.length_fields
                 }
             }
         )*
@@ -1388,7 +1384,7 @@ let data = &self.buf.chunk()[..{header_len_name}];
 pub fn parse(buf: T) -> Result<{packet_struct_name}<T>, T> {{
 let chunk_len = buf.chunk().len();
 if chunk_len < {header_len_name} {{
-    return Err(buf);
+return Err(buf);
 }}
 let packet = Self::parse_unchecked(buf);
 "
@@ -1400,39 +1396,30 @@ let packet = Self::parse_unchecked(buf);
 
         // if we have defined a header length expression, we need more checks to ensure that
         // the header length has the correct format
-        self.packet().length_exprs[0].as_ref().map(|_| {
+        let header_len_var = if self.packet().length_fields[HEADER_LEN_IDX].is_defined() {
             // the header_len of the packet must be larger than the fixed header length
             guards.push(format!("packet.header_len()<{header_len_name}"));
             guards.push(format!("packet.header_len()>chunk_len"));
-        });
+            "packet.header_len()"
+        } else {
+            &header_len_name
+        };
 
-        // add format check conditions for payload length,
-        // make ensure that the packet fits within the buffer
-        self.packet().length_exprs[1].as_ref().map(|_| {
-            if self.packet().length_exprs[0].is_some() {
-                // header length is defined, use the `header_len` method
-                guards.push(format!(
-                    "packet.payload_len()+packet.header_len()>packet.buf.remaining()"
-                ));
-            } else {
-                guards.push(format!(
-                    "packet.payload_len()+{header_len_name}>packet.buf.remaining()"
-                ));
-            }
-        });
-
-        // add format check conditions for packet length,
-        // make sure that the header fits within the packet,
-        // and that the packet fits within the buffer
-        self.packet().length_exprs()[2].as_ref().map(|_| {
-            if self.packet().length_exprs[0].is_some() {
-                // header length is defined, use the `header_len` method
-                guards.push(format!("packet.packet_len()<packet.header_len()"));
-            } else {
-                guards.push(format!("packet.packet_len()<{header_len_name}"));
-            }
+        if self.packet().length_fields[PAYLOAD_LEN_IDX].is_defined() {
+            // add format check conditions for payload length,
+            // make ensure that the packet fits within the buffer
+            guards.push(format!(
+                "packet.payload_len()+{header_len_var}>packet.buf.remaining()"
+            ));
+        } else if self.packet().length_fields()[PACKET_LEN_IDX].is_defined() {
+            // add format check conditions for packet length,
+            // make sure that the header fits within the packet,
+            // and that the packet fits within the buffer
+            guards.push(format!("packet.packet_len()<{header_len_var}"));
             guards.push(format!("packet.packet_len()>packet.buf.remaining()"));
-        });
+        } else {
+            // Do nothing
+        }
 
         // we need to insert format checks depending on weather
         // the packet has variable length fields
@@ -1479,13 +1466,13 @@ pub fn payload(self)->T{{
         )
         .unwrap();
 
-        // we have variable payload length
-        let header_len_var = if self.packet().length_exprs[0].is_some() {
-            "self.header_len()"
-        } else {
-            &header_len_name
-        };
-        if self.packet().length_exprs[1].is_some() {
+        if self.packet().length_fields[PAYLOAD_LEN_IDX].is_defined() {
+            // we have variable payload length
+            let header_len_var = if self.packet().length_fields[HEADER_LEN_IDX].is_defined() {
+                "self.header_len()"
+            } else {
+                &header_len_name
+            };
             write!(
                 output,
                 "assert!({header_len_var}+self.payload_len()<=self.buf.remaining());
@@ -1493,10 +1480,8 @@ let trim_size = self.buf.remaining()-{header_len_var}-self.payload_len();
 "
             )
             .unwrap();
-        }
-
-        // we have variable packet length
-        if self.packet().length_exprs[2].is_some() {
+        } else if self.packet().length_fields[PACKET_LEN_IDX].is_defined() {
+            // we have variable packet length
             write!(
                 output,
                 "assert!(self.packet_len()<=self.buf.remaining());
@@ -1504,9 +1489,11 @@ let trim_size = self.buf.remaining()-self.packet_len();
 "
             )
             .unwrap();
+        } else {
+            // Do nothing
         }
 
-        let header_len_var = if self.packet().length_exprs[0].is_some() {
+        let header_len_var = if self.packet().length_fields[HEADER_LEN_IDX].is_defined() {
             // Here, we have variable header length, so we must save the length
             // to a local variable before we release the buffer
             write!(output, "let header_len = self.header_len();\n").unwrap();
@@ -1518,7 +1505,9 @@ let trim_size = self.buf.remaining()-self.packet_len();
 
         // release the internal buffer from the packet
         write!(output, "let mut buf = self.release();\n").unwrap();
-        if self.packet().length_exprs[1].is_some() || self.packet().length_exprs[2].is_some() {
+        if self.packet().length_fields[PAYLOAD_LEN_IDX].is_defined()
+            || self.packet().length_fields[PACKET_LEN_IDX].is_defined()
+        {
             // if we have variable packet length, we are gona need to trim off the trailing bytes
             // beyond the end of the packet
             write!(
@@ -1555,12 +1544,12 @@ pub fn prepend_header<HT: AsRef<[u8]>>(mut buf: T, header: &{}<HT>) -> {packet_s
         .unwrap();
 
         // if we have variable payload length, we save it to a local variable
-        if self.packet().length_exprs[1].is_some() {
+        if self.packet().length_fields[PAYLOAD_LEN_IDX].is_defined() {
             write!(output, "let payload_len = buf.remaining();\n").unwrap();
         }
 
         // here, we record the name of the header length variable
-        let header_len_var = if self.packet().length_exprs[0].is_some() {
+        let header_len_var = if self.packet().length_fields[HEADER_LEN_IDX].is_defined() {
             // add a guard condition to make sure that the header_len is larger
             // than the fixed header length
             write!(output, "assert!(header.header_len()>={header_len_name});\n",).unwrap();
@@ -1578,24 +1567,28 @@ pub fn prepend_header<HT: AsRef<[u8]>>(mut buf: T, header: &{}<HT>) -> {packet_s
         )
         .unwrap();
 
-        if self.packet().length_exprs[1].is_none() && self.packet().length_exprs[2].is_none() {
+        if !self.packet().length_fields[PAYLOAD_LEN_IDX].is_defined()
+            && !self.packet().length_fields[PACKET_LEN_IDX].is_defined()
+        {
             // if we do not have variable payload length or packet length,
             // we can construct a packet variable and return it
             write!(output, "{packet_struct_name}::parse_unchecked(buf)\n",).unwrap();
         } else {
-            let adjust_packet_length = if self.packet().length_exprs[1].is_some() {
-                "pkt.set_payload_len(payload_len);\n"
-            } else if self.packet().length_exprs[2].is_some() {
-                "pkt.set_packet_len(pkt.buf.remaining());\n"
+            let adjust_packet_length = if self.packet().length_fields[PAYLOAD_LEN_IDX].is_defined()
+            {
+                "pkt.set_payload_len(payload_len);"
+            } else if self.packet().length_fields[PACKET_LEN_IDX].is_defined() {
+                "pkt.set_packet_len(pkt.buf.remaining());"
             } else {
-                ""
+                panic!()
             };
 
             // create a mutable packet variable
             write!(
                 output,
                 "let mut pkt = {packet_struct_name}::parse_unchecked(buf);
-{adjust_packet_length}pkt
+{adjust_packet_length}
+pkt
 }}
 ",
             )
@@ -1610,7 +1603,7 @@ pub fn prepend_header<HT: AsRef<[u8]>>(mut buf: T, header: &{}<HT>) -> {packet_s
             output,
             "#[inline]
 pub fn {option_name}(&self)->&[u8]{{
-    &self.buf.chunk()[{}..self.header_len()]
+&self.buf.chunk()[{}..self.header_len()]
 }}
 ",
             self.header_impl.header_len_name()
@@ -1623,7 +1616,7 @@ pub fn {option_name}(&self)->&[u8]{{
             output,
             "#[inline]
 pub fn {option_name}_mut(&mut self)->&mut [u8]{{
-    &mut self.buf.chunk_mut()[{}..self.header_len()]
+&mut self.buf.chunk_mut()[{}..self.header_len()]
 }}
 ",
             self.header_impl.header_len_name()

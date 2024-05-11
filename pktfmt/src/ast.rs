@@ -578,76 +578,96 @@ impl UsableAlgExpr {
     }
 }
 
-pub enum LengthInfo {
+#[derive(Debug, Clone)]
+pub enum LengthField {
     // The packet does not have a variable
     // length field/
     None,
-    // The packet has a variable length field,
-    // but no expression is provided to calculate
-    // the length field. The users should manually
-    // implement getter and setter for the length field.
-    NoExpr,
-    // The packet has a variable length field and 
-    // a corresponding expression is defined for this field.
-    // An optional maximum value is provided for the length field.
-    Expr {
-        expr: UsableAlgExpr,
-        max: Option<u64>,
-    },
+    Expr(Option<UsableAlgExpr>),
 }
+
+impl LengthField {
+    // Check whether the length field has been defined.
+    // If not defined, the packet contains no field for
+    // calculating the length.
+    pub fn is_defined(&self) -> bool {
+        match self {
+            Self::None => false,
+            _ => true,
+        }
+    }
+
+    // Try to acquire a `UsableAlgExpr` from the length field.
+    // If the length field is not defined, or if the defined length
+    // field contains no expression for length calculation, it all 
+    // returns `None`. 
+    pub fn try_get_expr(&self) -> Option<&UsableAlgExpr> {
+        match self {
+            Self::Expr(expr) => expr.as_ref(),
+            _ => None,
+        }
+    }
+}
+
+pub(crate) const LENGTH_FIELD_NAMES: &'static [&'static str] =
+    &["header_len", "payload_len", "packet_len"];
+pub(crate) const HEADER_LEN_IDX: usize = 0;
+pub(crate) const PAYLOAD_LEN_IDX: usize = 1;
+pub(crate) const PACKET_LEN_IDX: usize = 2;
 
 #[derive(Debug, Clone)]
 pub struct Packet {
     pub protocol_name: String,
     pub field_list: Vec<(String, Field)>,
     pub field_pos_map: HashMap<String, (BitPos, usize)>,
-    pub length_exprs: Vec<Option<UsableAlgExpr>>,
+    pub length_fields: Vec<LengthField>,
     pub option_name: Option<String>,
 }
 
 impl Packet {
-    pub(crate) const LENGTH_FIELD_NAMES: &'static [&'static str] =
-        &["header_len", "payload_len", "packet_len"];
-
     /// We should perform checks to ensure that the length fields
     /// are correctly defined, but for now, we ignore it.
     pub fn new(
         protocol_name: String,
         field_list: Vec<(String, Field)>,
         field_pos_map: HashMap<String, (BitPos, usize)>,
-        header_len: Option<(Box<AlgExpr>, String, (usize, usize))>,
-        payload_len: Option<(Box<AlgExpr>, (usize, usize))>,
-        packet_len: Option<(Box<AlgExpr>, (usize, usize))>,
+        header_len: Option<(Option<Box<AlgExpr>>, String, (usize, usize))>,
+        payload_len: Option<(Option<Box<AlgExpr>>, (usize, usize))>,
+        packet_len: Option<(Option<Box<AlgExpr>>, (usize, usize))>,
     ) -> Result<Self, (Error, (usize, usize))> {
         // TODO:
         // 1. make sure that the field used for length computation
         // is not generated, its `repr` is the same as `arg` and `repr`
         // is not `ByteSlice`.
-        // 2. make sure that the bit size of the field does not exceed
-        // `USIZE_BYTES * 8`.
-        // 3. make sure that the identifier contained in the length expression
+        // 2. make sure that the identifier contained in the length expression
         // corresponds to an existing field name
-        // 4. make sure that when the field is the max value,
-        // the length expression computation does not overflow.
-        let mut length_exprs = vec![None, None, None];
+        // 3. make sure that when the field is the max value,
+        // the length expression computation does not overflow
+        // 4. the max value of the length field must be smaller than a pre-defined
+        // constant!
+        let mut length_fields = vec![LengthField::None, LengthField::None, LengthField::None];
         let mut option_name = None;
 
         header_len.map(|(alg_expr, name, _)| {
-            length_exprs[0] = Some(alg_expr.try_take_usable_expr().unwrap());
+            length_fields[HEADER_LEN_IDX] =
+                LengthField::Expr(alg_expr.and_then(|expr| expr.try_take_usable_expr()));
+
             option_name = Some(name);
         });
         payload_len.map(|(alg_expr, _)| {
-            length_exprs[1] = Some(alg_expr.try_take_usable_expr().unwrap());
+            length_fields[PAYLOAD_LEN_IDX] =
+                LengthField::Expr(alg_expr.and_then(|expr| expr.try_take_usable_expr()));
         });
         packet_len.map(|(alg_expr, _)| {
-            length_exprs[2] = Some(alg_expr.try_take_usable_expr().unwrap());
+            length_fields[PACKET_LEN_IDX] =
+                LengthField::Expr(alg_expr.and_then(|expr| expr.try_take_usable_expr()));
         });
 
         Ok(Self {
             protocol_name,
             field_list,
             field_pos_map,
-            length_exprs,
+            length_fields,
             option_name,
         })
     }
