@@ -34,8 +34,7 @@ impl<T: Write> Drop for HeadTailWriter<T> {
 }
 
 // Append corresponding read method that honors the network endianess to the
-// input `writer`.
-// We use the `byteorder` crate just like `smoltcp` here.
+// input `writer`. We use the `byteorder` crate just like `smoltcp` here.
 fn network_endian_read<T: Write>(writer: T, bit_len: u64) -> HeadTailWriter<T> {
     let byte_len = byte_len(bit_len);
     match byte_len {
@@ -78,8 +77,7 @@ fn byte_len(bit_len: u64) -> u64 {
     }
 }
 
-// Generate bit mask with all ones from `low`-th bit
-// to the `high`-th bit.
+// Generate bit mask with all ones from `low`-th bit to the `high`-th bit.
 fn ones_mask(mut low: u64, high: u64) -> String {
     assert!(low <= high && high < 64);
 
@@ -107,8 +105,7 @@ fn ones_mask(mut low: u64, high: u64) -> String {
     format!("{:#x}", res) + &s
 }
 
-// Generate bit mask with all zeros from `low`-th bit
-// to the `high`-th bit.
+// Generate bit mask with all zeros from `low`-th bit to the `high`-th bit.
 fn zeros_mask(mut low: u64, high: u64) -> String {
     assert!(low <= high && high < 64);
 
@@ -201,8 +198,8 @@ struct FieldGetMethod<'a> {
 }
 
 impl<'a> FieldGetMethod<'a> {
-    // Generate a get method to access the field with name `field_name` from the buffer slice
-    // `target_slice`.
+    // Generate a get method to access the field with name `field_name` from the
+    // buffer slice `target_slice`.
     // The generated method is written to `output`.
     fn code_gen(&self, field_name: &str, target_slice: &str, mut output: &mut dyn Write) {
         if self.field.gen {
@@ -228,8 +225,8 @@ impl<'a> FieldGetMethod<'a> {
     // Generae a code piece that read the field from the `target_slice` into a
     // `repr`-typed value.
     //
-    // Note: this method does not handle the condition that the `repr` is `U8` and the
-    // field crosses the byte boundary.
+    // Note: this method does not handle the condition that the `repr` is `U8` and
+    // the field crosses the byte boundary.
     fn read_field(&self, target_slice: &str, mut output: &mut dyn Write) {
         // The ending `BitPos` of the current header field.
         let end = self.start.next_pos(self.field.bit);
@@ -376,7 +373,8 @@ impl<'a> FieldGetMethod<'a> {
     // Generae a code piece that read the field from the `target_slice` into
     // a `repr`-typed value.
     //
-    // Note: this is the top-level method that combines `read_field` and `read_field_cross_byte`.
+    // Note: this is the top-level method that combines `read_field` and
+    // `read_field_cross_byte`.
     fn read_repr(&self, target_slice: &str, output: &mut dyn Write) {
         let end = self.start.next_pos(self.field.bit);
         if self.field.bit <= 8 && self.start.byte_pos != end.byte_pos {
@@ -529,8 +527,8 @@ impl<'a> FieldSetMethod<'a> {
     // | rest bits | |write_value    |
     // 3. write to the interested area on the `target_slice`.
     //
-    // Note: this method does not handle the condition that the `repr` is `U8` and the
-    // field crosses the byte boundary.
+    // Note: this method does not handle the condition that the `repr` is `U8` and
+    // the field crosses the byte boundary.
     //
     // Also note: the `write_value` only contains valid bits on the field area,
     // the rest of the bits are all zeroed out.
@@ -652,7 +650,8 @@ impl<'a> FieldSetMethod<'a> {
                             // 1. Read the byte containing the rest of the bits ("{}[{}]").
                             // 2. Remove the extra bits that belong to the field area ("{}[{}]&{}").
                             // 3. Convert the value to `repr` type ("({}[{}]&{}) as {})")
-                            // 4. Left shift to make room for the field area ("(({}[{}]&{}) as {}) << {}")
+                            // 4. Left shift to make room for the field area ("(({}[{}]&{}) as {})
+                            //    << {}")
                             write!(
                                 let_assign.get_writer(),
                                 "(({target_slice}[{}]&{}) as {}) << {}",
@@ -782,8 +781,8 @@ impl<'a> FieldSetMethod<'a> {
         }
     }
 
-    // Generate a code piece for writing an input value `write_value` of type `arg` to the field
-    // area stored on `target_slice`.
+    // Generate a code piece for writing an input value `write_value` of type `arg`
+    // to the field area stored on `target_slice`.
     fn write_as_arg(&self, target_slice: &str, write_value: &str, output: &mut dyn Write) {
         match &self.field.arg {
             Arg::BuiltinTypes(defined_arg) if *defined_arg != self.field.repr => {
@@ -1161,7 +1160,6 @@ impl<'a> HeaderImpl<'a> {
                 .get_length_gen("self.buf.as_ref()", impl_block.get_writer());
         }
 
-        // Generate set methods
         {
             let mut impl_block = impl_block(
                 "T:AsMut<[u8]>",
@@ -1274,7 +1272,7 @@ impl<'a> PacketImpl<'a> {
         {
             let mut impl_block = impl_block("T:Buf", &self.packet_struct_name(), "T", &mut output);
 
-            // Generate `parse` and `parse_unchecked` methods.
+            // Generate the `parse_unchecked` methods.
             StructDefinition::parse_unchecked(impl_block.get_writer());
 
             // Generate the `buf`, `header` and `release` methods.
@@ -1376,8 +1374,8 @@ let packet = Self::parse_unchecked(buf);
         // we will generate format check conditions in this array
         let mut guards = Vec::new();
 
-        // if we have defined a header length expression, we need more checks to ensure that
-        // the header length has the correct format
+        // if we have defined a header length expression, we need more checks to ensure
+        // that the header length has the correct format
         let header_len_var = if self.packet().length_fields[HEADER_LEN_IDX].is_defined() {
             // the header_len of the packet must be larger than the fixed header length
             guards.push(format!("packet.header_len()<{header_len_name}"));
@@ -1490,8 +1488,8 @@ let trim_size = self.buf.remaining()-self.packet_len();
         if self.packet().length_fields[PAYLOAD_LEN_IDX].is_defined()
             || self.packet().length_fields[PACKET_LEN_IDX].is_defined()
         {
-            // if we have variable packet length, we are gona need to trim off the trailing bytes
-            // beyond the end of the packet
+            // if we have variable packet length, we are gona need to trim off the trailing
+            // bytes beyond the end of the packet
             write!(
                 output,
                 "if trim_size > 0 {{
@@ -1616,35 +1614,74 @@ impl<'a> MessageImpl<'a> {
         Self { message }
     }
 
-    // pub fn code_gen(&self, mut output: &mut dyn Write) {
-    //     // Generate message struct definition.
-    //     let message_struct_gen = StructDefinition {
-    //         struct_name: &self.message_struct_name(),
-    //         derives: &["Debug"],
-    //     };
-    //     message_struct_gen.code_gen(output);
-    //     writeln!(output).unwrap();
+    pub fn code_gen(&self, mut output: &mut dyn Write) {
+        // Generate message struct definition.
+        let message_struct_gen = StructDefinition {
+            struct_name: &self.message_struct_name(),
+            derives: &["Debug"],
+        };
+        message_struct_gen.code_gen(output);
 
-    //     // Generate packet base methods.
-    //     {
-    //         let mut impl_block = impl_block(
-    //             "T:AsRef<[u8]>",
-    //             &self.message_struct_name(),
-    //             "T",
-    //             &mut output,
-    //         );
-    //         parse_unchecked(impl_block.get_writer());
-    //         // self.header_impl.parse_unchecked(impl_block.get_writer());
-    //         // self.buf_method(impl_block.get_writer());
-    //         // self.release_method(impl_block.get_writer());
-    //         // self.header_method(impl_block.get_writer());
+        // Generate packet base methods.
+        {
+            let mut impl_block = impl_block(
+                "T:AsRef<[u8]>",
+                &self.message_struct_name(),
+                "T",
+                &mut output,
+            );
 
-    //         writeln!(impl_block.get_writer()).unwrap();
-    //     }
-    // }
+            // Generate the `parse_unchecked` and `buf_slice` method.
+            StructDefinition::parse_unchecked(impl_block.get_writer());
+            // self.parse(impl_block.get_writer());
+
+            // Generate the `buf_slice` method.
+            Self::buf_slice(impl_block.get_writer());
+
+            // Generate get methods for various header fields.
+            self.message
+                .get_method_gen("self.buf.as_ref()", impl_block.get_writer());
+
+            // Generate get methods for length fields if there are any.
+            self.message
+                .get_length_gen("self.buf.as_ref()", impl_block.get_writer());
+        }
+
+        {
+            let mut impl_block = impl_block(
+                "T:AsMut<[u8]>",
+                &self.message_struct_name(),
+                "T",
+                &mut output,
+            );
+
+            // Generate set methods for various header fields.
+            self.message
+                .set_method_gen("self.buf.as_mut()", "value", impl_block.get_writer());
+
+            // Generate set methods for length fields if there are any.
+            self.message
+                .set_length_gen("self.buf.as_mut()", "value", impl_block.get_writer());
+
+            // self.write_to(impl_block.get_writer());
+        }
+    }
 
     fn message_struct_name(&self) -> String {
         format!("{}Message", self.message.protocol_name)
+    }
+
+    // Return an imutable slice of the contained `buf`.
+    fn buf_slice(output: &mut dyn Write) {
+        write!(
+            output,
+            "#[inline]
+pub fn buf(&self) -> &[u8]{{
+self.buf.as_ref()
+}}
+"
+        )
+        .unwrap();
     }
 }
 
