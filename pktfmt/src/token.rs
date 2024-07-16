@@ -1,6 +1,6 @@
 // The error type for the tokenizer is taken from lalrpop.
-// The error type needs to remember the starting position of the erroneous token
-// as well as the error code to facilitate error reporting.
+// `location`:  the starting posittion of the erroneous token.
+// `code`: the error code that facilitates error reporting.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Error {
     pub location: usize,
@@ -22,6 +22,7 @@ pub enum ErrorCode {
     UnclosedCodeSegment,
 }
 
+// A helper that returns an error result.
 fn error<T>(c: ErrorCode, l: usize) -> Result<T, Error> {
     Err(Error {
         location: l,
@@ -121,15 +122,16 @@ pub enum Token<'input> {
     Doc(&'input str),
 }
 
-// lalrpop ParseError only implements std::fmt::Display if
-// L, T and E all implement std::fmt::Display.
-// So it's better to implement Display for the Token.
+// lalrpop ParseError only implements std::fmt::Display if L, T and E all
+// implement std::fmt::Display. So it's better to implement Display for the
+// Token.
 impl<'input> std::fmt::Display for Token<'input> {
     fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(fmt, "{:?}", self)
     }
 }
 
+// A static table that translates keyword to Token.
 const KEYWORDS: &[(&str, Token)] = &[
     ("packet", Token::Packet),
     ("message", Token::Message),
@@ -160,9 +162,12 @@ const BUILTIN_TYPES: &[&str] = &["u8", "u16", "u32", "u64", "bool"];
 const BOOLEAN_VALUES: &[&str] = &["true", "false"];
 
 pub struct Tokenizer<'input> {
+    // the input string slice
     text: &'input str,
+
     // the input char stream
     chars: std::str::CharIndices<'input>,
+
     // the current head of the stream
     head: Option<(usize, char)>,
 }
@@ -175,7 +180,8 @@ impl<'input> Tokenizer<'input> {
         Self { text, chars, head }
     }
 
-    // Peek the stream head.
+    // Peek the stream head without consuming it. The stream head is:
+    // Some(char_index, char) or None if the stream has been fully consumed.
     fn peek(&self) -> Option<(usize, char)> {
         self.head
     }
@@ -186,6 +192,7 @@ impl<'input> Tokenizer<'input> {
         self.head
     }
 
+    // Keep consuming the stream if `f` evaluates to true.
     fn take_while<F>(&mut self, mut f: F) -> Option<(usize, char)>
     where
         F: FnMut(char) -> bool,
@@ -201,6 +208,7 @@ impl<'input> Tokenizer<'input> {
         self.peek()
     }
 
+    // Keep consuming the stream if `f` evaluates to false.
     fn take_until<F>(&mut self, mut f: F) -> Option<(usize, char)>
     where
         F: FnMut(char) -> bool,
@@ -208,8 +216,7 @@ impl<'input> Tokenizer<'input> {
         self.take_while(|c| !f(c))
     }
 
-    // Check whether the current stream head is the last
-    // character of the stream.
+    // Check whether the current stream head is the last character of the stream.
     fn is_last_char(&self) -> bool {
         self.head
             .map(|_| {
@@ -219,44 +226,38 @@ impl<'input> Tokenizer<'input> {
             .unwrap_or(false)
     }
 
-    // Match the stream agaist the input word, until the
-    // last character of the word is found.
-    // Return the byteoffset of the last character of a word.
-    // This method does not consume the last character from the input stream.
+    // Match the `word` from the stream.
+    // Return the index of the last `word` character from the stream.
+    // The stream stops on the last character, and does not consume it.
     fn match_word(&mut self, word: &str) -> Option<usize> {
         // make sure that the input word is not empty
         assert!(word.len() > 0);
 
-        let mut word_chars = word.chars().peekable();
-        let mut match_last = false;
-        self.take_while(|c| {
-            let expected = word_chars.next().unwrap();
-
-            if expected != c {
-                return false;
-            } else {
-                match word_chars.peek() {
-                    Some(_) => {
-                        return true;
-                    }
-                    None => {
-                        match_last = true;
-                        return false;
-                    }
-                }
+        // a peekable interator of word
+        let mut word_peekable = word.chars().peekable();
+        let mut last_index = 0;
+        while let Some(expect) = word_peekable.next() {
+            // early return if char does not match
+            let (index, curr) = self.peek()?;
+            if expect != curr {
+                return None;
             }
-        });
 
-        if match_last {
-            self.peek().map(|(offset, _)| offset)
-        } else {
-            None
+            // find a matched char
+            last_index = index;
+            if word_peekable.peek().is_none() {
+                break;
+            } else {
+                self.consume_and_peek();
+            }
         }
+
+        Some(last_index)
     }
 
     // Search for the last character of a code segment.
     // A code segment looks like "%%<code...>%%".
-    // It will make the stream stay on the closing '%' symbol.
+    // The stream will stop at the closing '%' symbol.
     fn search_for_end_of_code_segment(&mut self) -> Option<usize> {
         loop {
             self.take_until(|c| c == '%')?;
@@ -272,9 +273,8 @@ impl<'input> Tokenizer<'input> {
     }
 
     // Search for a complete doc line.
-    // It ends either on the first '\n' character, or the last character
-    // of the stream.
-    // It returns the byte offset of the ending character.
+    // It ends either on the first '\n' character, or the last character of the
+    // stream. It returns the index of the ending character.
     fn search_for_doc_line(&mut self) -> Option<usize> {
         match self.match_word("///") {
             Some(_) => loop {
@@ -290,21 +290,22 @@ impl<'input> Tokenizer<'input> {
         }
     }
 
-    // Given an initial doc line ended at the 'ending_pos',
-    // search for all the subsequent doc lines.
-    // We first consume the whitespaces after the current doc line.
-    // Then we try to consume the next doc line. If we succeed, we update
-    // the 'ending_pos' to point to the last character of the new doc line.
-    // If we fail, the caller can recover position of the ending doc line
-    // using 'ending_pos'.
+    // Given an initial doc line ended at the 'ending_pos', search for all the
+    // subsequent doc lines.
+    // `ending_pos` serves as a search state, it records the ending position of the
+    // last doc line.
+    // The function caller should use the `ending_pos` to get the ending doc line.
     fn search_for_subsequent_docs(
         &mut self,
         ending_pos: &mut (Option<(usize, char)>, std::str::CharIndices<'input>),
     ) {
         loop {
+            // consume the whitespaces after the current doc line
             match self.take_while(|c| c.is_whitespace()) {
                 Some((_, '/')) => match self.search_for_doc_line() {
+                    // find a starting symbol '/', try to consume the next doc line
                     Some(_) => {
+                        // suceed, update the search state
                         ending_pos.0 = self.head;
                         ending_pos.1 = self.chars.clone();
                     }
@@ -318,6 +319,7 @@ impl<'input> Tokenizer<'input> {
     fn next_token(&mut self) -> Option<Result<(usize, Token<'input>, usize), Error>> {
         loop {
             match self.peek() {
+                // arms that produce token with a single character
                 Some((idx, '+')) => {
                     self.consume_and_peek();
                     return Some(Ok((idx, Token::Plus, idx + 1)));
@@ -358,6 +360,7 @@ impl<'input> Tokenizer<'input> {
                     self.consume_and_peek();
                     return Some(Ok((idx, Token::Comma, idx + 1)));
                 }
+                // arms that produce either a single character token, or a two character token
                 Some((idx, '=')) => match self.consume_and_peek() {
                     Some((next_idx, '=')) => {
                         self.consume_and_peek();
@@ -394,18 +397,21 @@ impl<'input> Tokenizer<'input> {
                         return Some(Ok((idx, Token::Lt, idx + 1)));
                     }
                 },
+                // arm that produces a two character token
                 Some((idx, '|')) => match self.consume_and_peek() {
                     Some((next_idx, '|')) => {
                         self.consume_and_peek();
                         return Some(Ok((idx, Token::Or, next_idx + 1)));
                     }
                     _ => {
-                        continue;
+                        return Some(error(ErrorCode::InvalidToken, idx));
                     }
                 },
+                // doc string and comment
                 Some((idx, '/')) => match self.consume_and_peek() {
                     Some((_, '/')) => match self.consume_and_peek() {
                         Some((_, '/')) => match self.take_until(|c| c == '\n') {
+                            // find consecutive doc lines
                             Some(_) => {
                                 let mut ending_pos = (self.head, self.chars.clone());
                                 self.search_for_subsequent_docs(&mut ending_pos);
@@ -429,9 +435,8 @@ impl<'input> Tokenizer<'input> {
                                 )))
                             }
                         },
-                        // The next arm handles single line comment starting
-                        // with "//"
                         _ => match self.take_until(|c| c == '\n') {
+                            // consume the comment line
                             Some(_) => {
                                 self.consume_and_peek();
                                 continue;
@@ -443,11 +448,13 @@ impl<'input> Tokenizer<'input> {
                 },
                 Some((idx, '&')) => match self.consume_and_peek() {
                     Some((next_idx, '&')) => {
+                        // the "&&" symbol
                         self.consume_and_peek();
                         return Some(Ok((idx, Token::And, next_idx + 1)));
                     }
                     _ => match self.match_word("[u8]") {
                         Some(next_idx) => {
+                            // the "&[u8]" symbol
                             self.consume_and_peek();
                             return Some(Ok((
                                 idx,
@@ -460,6 +467,7 @@ impl<'input> Tokenizer<'input> {
                         }
                     },
                 },
+                // the code segment token
                 Some((idx, '%')) => match self.consume_and_peek() {
                     Some((_, '%')) => {
                         return self
@@ -478,6 +486,7 @@ impl<'input> Tokenizer<'input> {
                         return Some(error(ErrorCode::InvalidToken, idx));
                     }
                 },
+                // key word token
                 Some((idx, c)) if identifier_start(c) => {
                     let next_idx = self
                         .take_while(identifier_follow_up)
@@ -504,6 +513,7 @@ impl<'input> Tokenizer<'input> {
                         .unwrap_or(Token::Ident(token_str));
                     return Some(Ok((idx, tok, next_idx)));
                 }
+                // number token
                 Some((idx, c)) if num_start(c) => {
                     let next_idx = self
                         .take_while(identifier_follow_up)
@@ -513,10 +523,12 @@ impl<'input> Tokenizer<'input> {
                     let token_str = &self.text[idx..next_idx];
                     return Some(Ok((idx, Token::Num(token_str), next_idx)));
                 }
+                // consume the white spaces
                 Some((_, c)) if c.is_whitespace() => {
                     self.take_while(|c| c.is_whitespace());
                     continue;
                 }
+                // invalid token error
                 Some((idx, _)) => {
                     return Some(error(ErrorCode::InvalidToken, idx));
                 }
