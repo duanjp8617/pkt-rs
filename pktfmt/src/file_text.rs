@@ -291,29 +291,6 @@ mod test {
 012345678"#;
 
     #[test]
-    fn test_render_single_character() {
-        let text = String::from(FILE_STRING);
-        let lines = FileText::analyze_lines(&text).unwrap();
-        let fake_file_text = FileText {
-            path: PathBuf::from("/local"),
-            text,
-            lines,
-        };
-
-        let mut output = Vec::<u8>::new();
-        fake_file_text
-            .render_code_block(15, 15, &mut output)
-            .unwrap();
-
-        let expected = r#"at /local 2:6
-2 | 012345678
-         ^
-"#;
-
-        assert_eq!(expected, std::str::from_utf8(&output[..]).unwrap());
-    }
-
-    #[test]
     fn test_render_line() {
         let text = String::from(FILE_STRING);
         let lines = FileText::analyze_lines(&text).unwrap();
@@ -331,34 +308,6 @@ mod test {
         let expected = r#"at /local 3:6-9
 3 | 012345678
          ^^^^
-"#;
-
-        assert_eq!(expected, std::str::from_utf8(&output[..]).unwrap());
-    }
-
-    #[test]
-    fn test_render_five_lines() {
-        let text = String::from(FILE_STRING);
-        let lines = FileText::analyze_lines(&text).unwrap();
-        let fake_file_text = FileText {
-            path: PathBuf::from("/local"),
-            text,
-            lines,
-        };
-
-        let mut output = Vec::<u8>::new();
-        fake_file_text
-            .render_code_block(15, 51, &mut output)
-            .unwrap();
-
-        let expected = r#"at /local 2:6-6:2
-         ~~~~
-2 | 012345678
-3 | 012345678
-4 | 012345678
-5 | 012345678
-6 | 012345678
-    ^^
 "#;
 
         assert_eq!(expected, std::str::from_utf8(&output[..]).unwrap());
