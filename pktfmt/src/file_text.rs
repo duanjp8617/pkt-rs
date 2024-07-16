@@ -26,8 +26,8 @@ pub struct FileText {
 impl FileText {
     /// A source file that can render code blocks in the terminal.
     ///
-    /// This is similar  to the FileText implementation in lalrpop,
-    /// except that it does not accept files containing multi-byte characters.
+    /// This is similar  to the FileText implementation in lalrpop, except that
+    /// it does not accept files containing multi-byte characters.
     pub fn new<P: AsRef<Path>>(p: P) -> Result<Self, Error> {
         let mut f = File::open(p.as_ref())?;
         let mut text = String::new();
@@ -41,48 +41,12 @@ impl FileText {
         })
     }
 
+    /// Return the file text as a string slice
     pub fn text(&self) -> &str {
         &self.text
     }
 
-    // calculate the offset of each line in the input file
-    fn analyze_lines(text: &str) -> Result<Vec<(usize, usize)>, Error> {
-        // we start by collecting the starting indexes of each line
-        let line_idxes = std::iter::once(Ok(0))
-            .chain(text.char_indices().filter_map(|(offset, c)| {
-                if c.len_utf8() != 1 {
-                    // find a char larger than 1 byte,
-                    // abort the iteration by returning an Error
-                    return Some(Err(Error::MultByteChar(c)));
-                }
-
-                if c == '\n' {
-                    Some(Ok(offset + 1))
-                } else {
-                    None
-                }
-            }))
-            .collect::<Result<Vec<_>, Error>>()?;
-
-        // we then collect the offsets of each line
-        let lines = line_idxes
-            .iter()
-            .enumerate()
-            .filter_map(|(idx, line_idx)| {
-                if idx + 1 < line_idxes.len() {
-                    Some((*line_idx, line_idxes[idx + 1] - 1))
-                } else {
-                    None
-                }
-            })
-            .chain(std::iter::once((*line_idxes.last().unwrap(), text.len())))
-            .collect();
-
-        Ok(lines)
-    }
-
-    /// Render the code block starting at byte offset `start`, and ending
-    /// at byte offset `end`
+    /// Render the code block from byte index `start` to `end`.
     pub fn render_code_block(
         &self,
         start: usize,
@@ -108,8 +72,9 @@ impl FileText {
         if start_line_idx == end_line_idx {
             if start != end {
                 writeln!(out, "-{}", end - self.lines[end_line_idx].0 + 1)?;
+            } else {
+                writeln!(out, "")?;
             }
-            writeln!(out, "")?;
 
             self.highlight_line(start, end, out)?;
         } else {
@@ -125,6 +90,43 @@ impl FileText {
         Ok(())
     }
 
+    // get the start and end byte indexes of each line, return it as a tuple vector
+    fn analyze_lines(text: &str) -> Result<Vec<(usize, usize)>, Error> {
+        // collect the starting indexes of each line
+        let line_idxes = std::iter::once(Ok(0))
+            .chain(text.char_indices().filter_map(|(offset, c)| {
+                if c.len_utf8() != 1 {
+                    // find a char larger than 1 byte,
+                    // abort the iteration by returning an Error
+                    return Some(Err(Error::MultByteChar(c)));
+                }
+
+                if c == '\n' {
+                    Some(Ok(offset + 1))
+                } else {
+                    None
+                }
+            }))
+            .collect::<Result<Vec<_>, Error>>()?;
+
+        // combine the starting index with the ending index of each line
+        let lines = line_idxes
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, line_idx)| {
+                if idx + 1 < line_idxes.len() {
+                    Some((*line_idx, line_idxes[idx + 1] - 1))
+                } else {
+                    None
+                }
+            })
+            .chain(std::iter::once((*line_idxes.last().unwrap(), text.len())))
+            .collect();
+
+        Ok(lines)
+    }
+
+    // convert byte index to line index by searching through the tuple vector
     pub fn line_idx(&self, byte_offset: usize) -> usize {
         self.lines
             .binary_search_by(|(start, end)| {
@@ -139,6 +141,7 @@ impl FileText {
             .expect("invalid byte offset")
     }
 
+    // render a single line from `start` to `end`
     fn highlight_line(&self, start: usize, end: usize, out: &mut dyn Write) -> Result<(), Error> {
         let line_idx = self.line_idx(start);
         let line_num_str = (line_idx + 1).to_string();
@@ -160,13 +163,14 @@ impl FileText {
         Ok(())
     }
 
+    // Render a code block with multiple lines from `start` to `end`.
     // Render at most 6 lines.
-    // If start - end > 5, only the first 3 lines and the last 3 lines
-    // will be rendered, the lines in the middle will be omitted.
+    // If start - end > 5, only the first 3 lines and the last 3 lines will be
+    // rendered, the lines in the middle will be omitted.
     fn highlight_block(&self, start: usize, end: usize, out: &mut dyn Write) -> Result<(), Error> {
         let start_lidx = self.line_idx(start);
         let end_lidx = self.line_idx(end);
-        let end_line_num = (end_lidx).to_string();
+        let end_line_num = (end_lidx + 1).to_string();
 
         // Print the starting symbols.
         keep_write(
@@ -273,5 +277,149 @@ mod test {
         assert_eq!("", &content[lines[4].0..lines[4].1]);
         assert_eq!("7890", &content[lines[5].0..lines[5].1]);
         assert_eq!("", &content[lines[6].0..lines[6].1]);
+    }
+
+    const FILE_STRING: &str = r#"012345678
+012345678
+012345678
+012345678
+012345678
+012345678
+012345678
+012345678
+012345678
+012345678"#;
+
+    #[test]
+    fn test_render_single_character() {
+        let text = String::from(FILE_STRING);
+        let lines = FileText::analyze_lines(&text).unwrap();
+        let fake_file_text = FileText {
+            path: PathBuf::from("/local"),
+            text,
+            lines,
+        };
+
+        let mut output = Vec::<u8>::new();
+        fake_file_text
+            .render_code_block(15, 15, &mut output)
+            .unwrap();
+
+        let expected = r#"at /local 2:6
+2 | 012345678
+         ^
+"#;
+
+        assert_eq!(expected, std::str::from_utf8(&output[..]).unwrap());
+    }
+
+    #[test]
+    fn test_render_line() {
+        let text = String::from(FILE_STRING);
+        let lines = FileText::analyze_lines(&text).unwrap();
+        let fake_file_text = FileText {
+            path: PathBuf::from("/local"),
+            text,
+            lines,
+        };
+
+        let mut output = Vec::<u8>::new();
+        fake_file_text
+            .render_code_block(25, 28, &mut output)
+            .unwrap();
+
+        let expected = r#"at /local 3:6-9
+3 | 012345678
+         ^^^^
+"#;
+
+        assert_eq!(expected, std::str::from_utf8(&output[..]).unwrap());
+    }
+
+    #[test]
+    fn test_render_five_lines() {
+        let text = String::from(FILE_STRING);
+        let lines = FileText::analyze_lines(&text).unwrap();
+        let fake_file_text = FileText {
+            path: PathBuf::from("/local"),
+            text,
+            lines,
+        };
+
+        let mut output = Vec::<u8>::new();
+        fake_file_text
+            .render_code_block(15, 51, &mut output)
+            .unwrap();
+
+        let expected = r#"at /local 2:6-6:2
+         ~~~~
+2 | 012345678
+3 | 012345678
+4 | 012345678
+5 | 012345678
+6 | 012345678
+    ^^
+"#;
+
+        assert_eq!(expected, std::str::from_utf8(&output[..]).unwrap());
+    }
+
+    #[test]
+    fn test_render_six_lines() {
+        let text = String::from(FILE_STRING);
+        let lines = FileText::analyze_lines(&text).unwrap();
+        let fake_file_text = FileText {
+            path: PathBuf::from("/local"),
+            text,
+            lines,
+        };
+
+        let mut output = Vec::<u8>::new();
+        fake_file_text
+            .render_code_block(15, 67, &mut output)
+            .unwrap();
+
+        let expected = r#"at /local 2:6-7:8
+         ~~~~
+2 | 012345678
+3 | 012345678
+4 | 012345678
+5 | 012345678
+6 | 012345678
+7 | 012345678
+    ^^^^^^^^
+"#;
+
+        assert_eq!(expected, std::str::from_utf8(&output[..]).unwrap());
+    }
+
+    #[test]
+    fn test_render_more_than_six_lines() {
+        let text = String::from(FILE_STRING);
+        let lines = FileText::analyze_lines(&text).unwrap();
+        let fake_file_text = FileText {
+            path: PathBuf::from("/local"),
+            text,
+            lines,
+        };
+
+        let mut output = Vec::<u8>::new();
+        fake_file_text
+            .render_code_block(15, 97, &mut output)
+            .unwrap();
+
+        let expected = r#"at /local 2:6-10:8
+          ~~~~
+ 2 | 012345678
+ 3 | 012345678
+ 4 | 012345678
+......
+ 8 | 012345678
+ 9 | 012345678
+10 | 012345678
+     ^^^^^^^^
+"#;
+
+        assert_eq!(expected, std::str::from_utf8(&output[..]).unwrap());
     }
 }
