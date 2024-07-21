@@ -1,6 +1,7 @@
-// The error type for the tokenizer is taken from lalrpop.
-// `location`:  the starting posittion of the erroneous token.
-// `code`: the error code that facilitates error reporting.
+/// An error type for the tokenizer, which is taken from lalrpop.
+///
+/// `location`:  the starting posittion of the erroneous token.
+/// `code`: the error code that facilitates error reporting.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Error {
     pub location: usize,
@@ -16,6 +17,7 @@ impl std::fmt::Display for Error {
     }
 }
 
+/// The tokenizer error code.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ErrorCode {
     InvalidToken,
@@ -30,6 +32,7 @@ fn error<T>(c: ErrorCode, l: usize) -> Result<T, Error> {
     })
 }
 
+/// The token type that is generated from the tokenizer.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Token<'input> {
     // top-level keyword
@@ -161,6 +164,7 @@ const BUILTIN_TYPES: &[&str] = &["u8", "u16", "u32", "u64", "bool"];
 
 const BOOLEAN_VALUES: &[&str] = &["true", "false"];
 
+/// The tokenizer for the pktfmt script.
 pub struct Tokenizer<'input> {
     // the input string slice
     text: &'input str,
@@ -173,6 +177,7 @@ pub struct Tokenizer<'input> {
 }
 
 impl<'input> Tokenizer<'input> {
+    /// Create a new tokenizer from the input string slice.
     pub fn new(text: &'input str) -> Self {
         let mut chars = text.char_indices();
         let head = chars.next();
@@ -551,6 +556,9 @@ fn num_start(c: char) -> bool {
     '0' <= c && c <= '9'
 }
 
+// The iterator implementation for the tokenizer.
+// The item type consists of (L, T, R), where L and R represent the starting and
+// ending indexes of the token, T is the  token type.
 impl<'input> Iterator for Tokenizer<'input> {
     type Item = Result<(usize, Token<'input>, usize), Error>;
 

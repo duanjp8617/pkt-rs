@@ -97,3 +97,9 @@ macro_rules! return_err {
         return Err(<$err_ty>::$arm($($args),+))
     }
 }
+
+macro_rules! return_err_1 {
+    ($arg: expr) => {
+        return Err($arg)
+    };
+}

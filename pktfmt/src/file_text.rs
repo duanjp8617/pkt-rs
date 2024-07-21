@@ -16,6 +16,10 @@ quick_error! {
     }
 }
 
+/// A source file that can render code blocks in the terminal.
+///
+/// This is similar  to the FileText implementation in lalrpop, except that
+/// it does not accept files containing multi-byte characters.
 #[derive(Debug)]
 pub struct FileText {
     path: PathBuf,
@@ -24,10 +28,7 @@ pub struct FileText {
 }
 
 impl FileText {
-    /// A source file that can render code blocks in the terminal.
-    ///
-    /// This is similar  to the FileText implementation in lalrpop, except that
-    /// it does not accept files containing multi-byte characters.
+    /// Create a new `FileText` from a file path.
     pub fn new<P: AsRef<Path>>(p: P) -> Result<Self, Error> {
         let mut f = File::open(p.as_ref())?;
         let mut text = String::new();

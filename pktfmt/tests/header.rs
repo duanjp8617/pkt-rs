@@ -18,15 +18,4 @@ fn print_header() {
     // packet.header_base_gen(&mut buf);
 
     println!("{}", std::str::from_utf8(&buf[..]).unwrap());
-    let bytes = [0, 1];
-    u16::from_be_bytes(&bytes[..]);
-    u32::from_be_bytes(&bytes[..]);
-}
-
-#[test]
-fn fuck() {
-    let f = vec![1, 2, 3];
-    let f_ref = &f;
-    drop(f);
-    println!("{}", f_ref[0]);
 }
