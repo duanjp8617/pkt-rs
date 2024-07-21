@@ -2,93 +2,6 @@ use std::fmt;
 
 use crate::ast_new::Error;
 
-/// The built-in types of pktfmt script, representing values of `repr` and
-/// `arg`.
-///
-/// The meaning of each arm and how it is translated to rust type are as
-/// follows:
-///
-/// `Self::U8/16/32/64` -> `u8/16/32/64` primitive types.
-///
-/// `Self::ByteSlice` -> `&[u8]` byte slice type.
-///
-/// `[Self::Bool]` -> `bool` type.
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
-pub enum BuiltinTypes {
-    U8,
-    U16,
-    U32,
-    U64,
-    ByteSlice,
-    Bool,
-}
-
-impl BuiltinTypes {
-    /// Convert `BuiltinTypes` to `String`.
-    pub fn to_string(&self) -> String {
-        match self {
-            BuiltinTypes::U8 => "u8".to_string(),
-            BuiltinTypes::U16 => "u16".to_string(),
-            BuiltinTypes::U32 => "u32".to_string(),
-            BuiltinTypes::U64 => "u64".to_string(),
-            BuiltinTypes::ByteSlice => "&[u8]".to_string(),
-            BuiltinTypes::Bool => "bool".to_string(),
-        }
-    }
-}
-
-impl From<&str> for BuiltinTypes {
-    fn from(value: &str) -> Self {
-        match value {
-            "u8" => Self::U8,
-            "u16" => Self::U16,
-            "u32" => Self::U32,
-            "u64" => Self::U64,
-            "&[u8]" => Self::ByteSlice,
-            "bool" => Self::Bool,
-            _ => panic!("can not convert to BuiltinTypes"),
-        }
-    }
-}
-
-/// The ast type for `arg`, it can be either `BuiltinTypes`, or a `String`.
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub enum Arg {
-    BuiltinTypes(BuiltinTypes),
-    Code(String),
-}
-
-impl Arg {
-    /// Convert `Arg` to `String`.
-    pub fn to_string(&self) -> String {
-        match self {
-            Arg::BuiltinTypes(bt) => bt.to_string(),
-            Arg::Code(code_str) => code_str.to_string(),
-        }
-    }
-}
-
-/// The ast type for `default`.
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub enum DefaultVal {
-    /// the default value if  `repr` type is `U8/16/32/64`
-    Num(u64),
-    /// the default value if `repr` type is `u8` and `arg` type is `Bool`
-    Bool(bool),
-    /// the default value if `repr` type is `ByteSlice`
-    Bytes(Vec<u8>),
-}
-
-impl fmt::Display for DefaultVal {
-    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Num(n) => write!(fmt, "{}", n),
-            Self::Bool(b) => write!(fmt, "{}", b),
-            Self::Bytes(v) => write!(fmt, "{} Bytes", v.len()),
-        }
-    }
-}
-
 /// The ast type constructed when parsing `Field` definition.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Field {
@@ -274,6 +187,93 @@ Details: bit > 0 should always holds. If bit > 64, then bit % 8 == 0 must hold."
                     return_err_1!(Error::field(reason))
                 }
             },
+        }
+    }
+}
+
+/// The built-in types of pktfmt script, representing values of `repr` and
+/// `arg`.
+///
+/// The meaning of each arm and how it is translated to rust type are as
+/// follows:
+///
+/// `Self::U8/16/32/64` -> `u8/16/32/64` primitive types.
+///
+/// `Self::ByteSlice` -> `&[u8]` byte slice type.
+///
+/// `[Self::Bool]` -> `bool` type.
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum BuiltinTypes {
+    U8,
+    U16,
+    U32,
+    U64,
+    ByteSlice,
+    Bool,
+}
+
+impl BuiltinTypes {
+    /// Convert `BuiltinTypes` to `String`.
+    pub fn to_string(&self) -> String {
+        match self {
+            BuiltinTypes::U8 => "u8".to_string(),
+            BuiltinTypes::U16 => "u16".to_string(),
+            BuiltinTypes::U32 => "u32".to_string(),
+            BuiltinTypes::U64 => "u64".to_string(),
+            BuiltinTypes::ByteSlice => "&[u8]".to_string(),
+            BuiltinTypes::Bool => "bool".to_string(),
+        }
+    }
+}
+
+impl From<&str> for BuiltinTypes {
+    fn from(value: &str) -> Self {
+        match value {
+            "u8" => Self::U8,
+            "u16" => Self::U16,
+            "u32" => Self::U32,
+            "u64" => Self::U64,
+            "&[u8]" => Self::ByteSlice,
+            "bool" => Self::Bool,
+            _ => panic!("can not convert to BuiltinTypes"),
+        }
+    }
+}
+
+/// The ast type for `arg`, it can be either `BuiltinTypes`, or a `String`.
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum Arg {
+    BuiltinTypes(BuiltinTypes),
+    Code(String),
+}
+
+impl Arg {
+    /// Convert `Arg` to `String`.
+    pub fn to_string(&self) -> String {
+        match self {
+            Arg::BuiltinTypes(bt) => bt.to_string(),
+            Arg::Code(code_str) => code_str.to_string(),
+        }
+    }
+}
+
+/// The ast type for `default`.
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum DefaultVal {
+    /// the default value if  `repr` type is `U8/16/32/64`
+    Num(u64),
+    /// the default value if `repr` type is `u8` and `arg` type is `Bool`
+    Bool(bool),
+    /// the default value if `repr` type is `ByteSlice`
+    Bytes(Vec<u8>),
+}
+
+impl fmt::Display for DefaultVal {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Num(n) => write!(fmt, "{}", n),
+            Self::Bool(b) => write!(fmt, "{}", b),
+            Self::Bytes(v) => write!(fmt, "{} Bytes", v.len()),
         }
     }
 }
