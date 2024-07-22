@@ -1,10 +1,13 @@
 use std::io::Write;
 
+use crate::utils::Error as ParserError;
+
 use super::field::{Arg, BuiltinTypes, Field};
+use super::Error;
 
 // length is parsed in this way
 // payload_packet_len: payload_len | packet_len
-// rule1: header_len (, payload_packet_len)? (,)? 
+// rule1: header_len (, payload_packet_len)? (,)?
 //  header_len | header_len, payload_len | header_len, packet_len
 // rule2: payload_packet_len (,)?
 /// payload_len | packet_len
@@ -24,6 +27,28 @@ pub enum LengthField {
 }
 
 impl LengthField {
+    // convert a parsed algorithmic expression to `LengthField`, signal an error if
+    // the algorithm is too complex for conversion this is the actual
+    // constructor used by the parser
+    pub(crate) fn alg_expr_to_length_field(
+        alg_expr_with_pos: &Option<(AlgExpr, (usize, usize))>,
+    ) -> Result<LengthField, ParserError> {
+        match alg_expr_with_pos {
+            Some((expr, (l, r))) => expr
+                .try_take_usable_expr()
+                .map(|expr| LengthField::Expr(expr))
+                .ok_or(ParserError::AstNew {
+                    // the algorithmic expression is too complex for conversion
+                    err: Error::length(
+                        "expression is too complex, only simple one is supported".to_string(),
+                    ),
+                    span: (*l, *r),
+                }),
+            // the length field is present in the source file, but the expression is not defined
+            None => Ok(LengthField::Undefined),
+        }
+    }
+
     /// Check whether the length field appears in the packet.
     pub fn appear(&self) -> bool {
         match self {
@@ -219,7 +244,7 @@ impl AlgExpr {
     }
 
     // try to convert expression to `UsableAlgExpr`
-    pub(crate) fn try_take_usable_expr(&self) -> Option<UsableAlgExpr> {
+    pub fn try_take_usable_expr(&self) -> Option<UsableAlgExpr> {
         match self {
             AlgExpr::Binary(left, op, right) => match (&(**left), op, &(**right)) {
                 (AlgExpr::Binary(_, _, _), AlgOp::Add, AlgExpr::Num(other)) => {
@@ -262,7 +287,7 @@ impl AlgExpr {
 }
 
 // Check whether a field can be used in a length expression.
-pub(crate) fn check_valid_length_expr(field: &Field) -> bool {
+pub fn check_valid_length_expr(field: &Field) -> bool {
     // A field can only be used in a length expression
     // if the repr is not a byte slice and that the arg
     // is the same as the repr.

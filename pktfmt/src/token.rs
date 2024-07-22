@@ -35,27 +35,12 @@ fn error<T>(c: ErrorCode, l: usize) -> Result<T, Error> {
 /// The token type that is generated from the tokenizer.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Token<'input> {
-    // top-level keyword
+    // top-level keywords
     Packet,
-    Message,
-    IterGroup,
 
-    // packet keyword
+    // header definition keywords
     Header,
-    HeaderLenIdent,
-    HeaderLen,
-    PayloadLenIdent,
-    PayloadLen,
-    PacketLenIdent,
-    PacketLen,
-
-    // message keyword
-    Cond,
-
-    // iter group keyword
-    Messages,
-
-    // Field keyword
+    // Field definition
     Field,
     Bit,
     Repr,
@@ -63,13 +48,30 @@ pub enum Token<'input> {
     Default,
     Gen,
 
-    // HeaderField keyworld
-    Expr,
-    Min,
-    Max,
+    // length definition keywords
+    Length,
+    HeaderLen,
+    PayloadLen,
+    PacketLen,
+    // Algorithic
+    Plus,
+    Minus,
+    Mult,
+    Div,
 
-    // Variable Field keyword
-    OptionName,
+    // condition definition keywords
+    Cond,
+    // Comparison
+    Eq,
+    Neq,
+    Gt,
+    Ge,
+    Lt,
+    Le,
+    // Logical
+    Not,
+    And,
+    Or,
 
     // Identifiers
     Ident(&'input str),
@@ -79,25 +81,6 @@ pub enum Token<'input> {
 
     // Boolean value, true, false
     BooleanValue(&'input str),
-
-    // Comparison
-    Eq,
-    Neq,
-    Gt,
-    Ge,
-    Lt,
-    Le,
-
-    // Logical
-    Not,
-    And,
-    Or,
-
-    // Algorithic
-    Plus,
-    Minus,
-    Mult,
-    Div,
 
     // Brackets
     LParen,
@@ -137,27 +120,18 @@ impl<'input> std::fmt::Display for Token<'input> {
 // A static table that translates keyword to Token.
 const KEYWORDS: &[(&str, Token)] = &[
     ("packet", Token::Packet),
-    ("message", Token::Message),
-    ("iter_group", Token::IterGroup),
     ("header", Token::Header),
-    ("header_len", Token::HeaderLenIdent),
-    ("HeaderLen", Token::HeaderLen),
-    ("payload_len", Token::PayloadLenIdent),
-    ("PayloadLen", Token::PayloadLen),
-    ("packet_len", Token::PacketLenIdent),
-    ("PacketLen", Token::PacketLen),
-    ("cond", Token::Cond),
-    ("messages", Token::Messages),
     ("Field", Token::Field),
     ("bit", Token::Bit),
     ("repr", Token::Repr),
     ("arg", Token::Arg),
     ("default", Token::Default),
     ("gen", Token::Gen),
-    ("expr", Token::Expr),
-    ("min", Token::Min),
-    ("max", Token::Max),
-    ("option_name", Token::OptionName),
+    ("length", Token::Length),
+    ("header_len", Token::HeaderLen),
+    ("payload_len", Token::PayloadLen),
+    ("packet_len", Token::PacketLen),
+    ("cond", Token::Cond),
 ];
 
 const BUILTIN_TYPES: &[&str] = &["u8", "u16", "u32", "u64", "bool"];
@@ -775,11 +749,11 @@ mod test {
     #[test]
     fn key_word1() {
         test(
-            r#"packet message iter_group"#,
+            r#"packet length packet_len"#,
             vec![
-                ("~~~~~~                   ", Token::Packet),
-                ("       ~~~~~~~           ", Token::Message),
-                ("               ~~~~~~~~~~", Token::IterGroup),
+                ("~~~~~~                  ", Token::Packet),
+                ("       ~~~~~~           ", Token::Length),
+                ("              ~~~~~~~~~~", Token::PacketLen),
             ],
         );
     }
@@ -787,12 +761,12 @@ mod test {
     #[test]
     fn key_word2() {
         test(
-            r#"expr min max option_name"#,
+            r#"Field repr arg payload_len"#,
             vec![
-                ("~~~~                    ", Token::Expr),
-                ("     ~~~                ", Token::Min),
-                ("         ~~~            ", Token::Max),
-                ("             ~~~~~~~~~~~", Token::OptionName),
+                ("~~~~~                     ", Token::Field),
+                ("      ~~~~                ", Token::Repr),
+                ("           ~~~            ", Token::Arg),
+                ("               ~~~~~~~~~~~", Token::PayloadLen),
             ],
         );
     }

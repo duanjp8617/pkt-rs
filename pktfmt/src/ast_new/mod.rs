@@ -37,29 +37,30 @@ pub struct Packet {
 //         // 1. make sure that the field used for length computation
 //         // is not generated, its `repr` is the same as `arg` and `repr`
 //         // is not `ByteSlice`.
-//         // 2. make sure that the identifier contained in the length expression
-//         // corresponds to an existing field name
+//         // 2. make sure that the identifier contained in the length
+// expression         // corresponds to an existing field name
 //         // 3. make sure that when the field is the max value,
 //         // the length expression computation does not overflow
-//         // 4. the max value of the length field must be smaller than a pre-defined
-//         // constant!
-//         let mut length_fields = vec![LengthField::None, LengthField::None, LengthField::None];
-//         let mut option_name = None;
+//         // 4. the max value of the length field must be smaller than a
+// pre-defined         // constant!
+//         let mut length_fields = vec![LengthField::None, LengthField::None,
+// LengthField::None];         let mut option_name = None;
 
 //         header_len.map(|(alg_expr, name, _)| {
 //             length_fields[HEADER_LEN_IDX] =
-//                 LengthField::Expr(alg_expr.and_then(|expr| expr.try_take_usable_expr()));
+//                 LengthField::Expr(alg_expr.and_then(|expr|
+// expr.try_take_usable_expr()));
 
 //             option_name = Some(name);
 //         });
 //         payload_len.map(|(alg_expr, _)| {
 //             length_fields[PAYLOAD_LEN_IDX] =
-//                 LengthField::Expr(alg_expr.and_then(|expr| expr.try_take_usable_expr()));
-//         });
+//                 LengthField::Expr(alg_expr.and_then(|expr|
+// expr.try_take_usable_expr()));         });
 //         packet_len.map(|(alg_expr, _)| {
 //             length_fields[PACKET_LEN_IDX] =
-//                 LengthField::Expr(alg_expr.and_then(|expr| expr.try_take_usable_expr()));
-//         });
+//                 LengthField::Expr(alg_expr.and_then(|expr|
+// expr.try_take_usable_expr()));         });
 
 //         Ok(Self {
 //             protocol_name,
@@ -74,21 +75,25 @@ pub struct Packet {
 /// An enum type to describe where the error is generated.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ErrorPos {
+    NumValue,
     FieldDef,
     HeaderDef,
+    LengthDef,
 }
 
 impl fmt::Display for ErrorPos {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::FieldDef => write!(fmt, "invalid Field definition"),
-            Self::HeaderDef => write!(fmt, "invalid Header definition"),
+            Self::NumValue => write!(fmt, "invalid number value"),
+            Self::FieldDef => write!(fmt, "invalid field definition"),
+            Self::HeaderDef => write!(fmt, "invalid header definition"),
+            Self::LengthDef => write!(fmt, "invalid packet length definition"),
         }
     }
 }
 
 /// The ast-related error when parsing the pktfmt script.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Error {
     pos: ErrorPos,
     reason: String,
@@ -103,7 +108,15 @@ impl fmt::Display for Error {
 }
 
 impl Error {
-    /// Return an field definition error.
+    /// Return a number value error.
+    pub fn num_value(reason: String) -> Self {
+        Self {
+            pos: ErrorPos::NumValue,
+            reason,
+        }
+    }
+
+    /// Return a field definition error.
     pub fn field(reason: String) -> Self {
         Self {
             pos: ErrorPos::FieldDef,
@@ -114,7 +127,15 @@ impl Error {
     /// Return an header definition error.
     pub fn header(reason: String) -> Self {
         Self {
-            pos: ErrorPos::FieldDef,
+            pos: ErrorPos::HeaderDef,
+            reason,
+        }
+    }
+
+    /// Return a packet length definition error.
+    pub fn length(reason: String) -> Self {
+        Self {
+            pos: ErrorPos::LengthDef,
             reason,
         }
     }

@@ -10,7 +10,7 @@ pub const USIZE_BYTES: u64 = 8;
 pub mod ast;
 pub mod ast_new;
 
-pub mod codegen;
+// pub mod codegen;
 pub mod file_text;
 pub mod token;
 

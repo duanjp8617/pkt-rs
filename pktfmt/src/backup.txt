@@ -3,9 +3,7 @@ use std::collections::HashMap;
 
 use lalrpop_util::ParseError;
 
-use crate::ast_new::{
-    Field, BuiltinTypes, Arg, DefaultVal, BitPos, check_header_list, AlgOp, AlgExpr
-};
+use crate::ast::*;
 use crate::file_text::FileText;
 use crate::utils::{Spanned, Error};
 use crate::token::Token;
@@ -120,28 +118,10 @@ Arg: Arg = {
     <s: "code"> => Arg::Code((&s[2..(s.len()-2)]).to_string())
 }
 
-Byte: u8  = {
-    <l: @L> <num: "num"> <r: @R> =>? {
-        let num = u64::from_str(num).unwrap();
-        if num > 255 {
-            let err = crate::ast_new::Error::num_value("byte value can not exceed 255".into());
-            let error = Error::AstNew{err, span: (l, r)};
-            Err(ParseError::User{ error })
-        }
-        else {
-            Ok(num as u8)
-        }
-    }
-}
-
-ByteArray: Vec<u8> = {
-    "[" <List<Byte>> "]" => <>
-}
-
 DefaultVal: DefaultVal = {
-     Num => DefaultVal::Num(<>),
-     Bool => DefaultVal::Bool(<>),
-     ByteArray => DefaultVal::Bytes(<>)
+    Num => DefaultVal::Num(<>),
+    Bool => DefaultVal::Bool(<>),
+    "code" => DefaultVal::Code(<>.to_string())
 }
 
 pub Field: Field = {
@@ -154,7 +134,7 @@ pub Field: Field = {
         ","?
     "}" <r: @R> =>? {
         Field::new(bit, repr, arg, default, gen).map_err(|err| {
-            let error = Error::AstNew {err, span: (l, r)};
+            let error = Error::Ast {err, span: (l, r)};
             ParseError::User{ error }
         })
     }
@@ -171,7 +151,7 @@ pub Header: (Vec<(String, Field)>, HashMap<String, (BitPos, usize)>) = {
         <header_list: List<NamedField>>
     "]" <r: @R> =>? {
         check_header_list(header_list, (l, r)).map_err(|(err, span)|{
-            let error = Error::AstNew{err, span};
+            let error = Error::Ast{err, span};
             ParseError::User{ error }
         })
     }
@@ -201,4 +181,88 @@ AlgBaseExpr: Box<AlgExpr> = {
 
 AlgExpr: Box<AlgExpr> = {
     AddExpr => <>
+}
+
+HeaderLen: (Option<Box<AlgExpr>>, String, (usize, usize)) = {
+    <l: @L> "header_len" "="  "HeaderLen" "{"
+        "option_name" "=" <option_name: "ident">
+        <expr: ("," "expr" "=" <AlgExpr>)?> ","?
+    "}" <r: @R> => {
+        (expr, String::from_str(option_name).unwrap(), (l, r))
+    }
+}
+
+PayloadLen: (Option<Box<AlgExpr>>, (usize, usize)) = {
+    <l: @L> "payload_len" "=" "PayloadLen" "{"
+        <expr: ("expr" "=" <AlgExpr>)?> ","?
+    "}" <r: @R> => {
+        (expr, (l, r))
+    }
+}
+
+PacketLen: (Option<Box<AlgExpr>>, (usize, usize)) = {
+    <l: @L> "packet_len" "=" "PacketLen" "{"
+        <expr: ("expr" "=" <AlgExpr>)?> ","?
+    "}" <r: @R> => {
+        (expr, (l, r))
+    }
+}
+
+pub Packet: Packet = {
+    "packet" <name: "ident"> "{"
+        <header: Header>
+        <header_len: ("," <HeaderLen>)?>
+        <payload_len: ("," <PayloadLen>)?>
+        <packet_len: ("," <PacketLen>)?>
+        ","?
+    "}" =>? {
+        let (field_list, field_pos_map) = header;
+        Packet::new(
+            String::from_str(name).unwrap(), 
+            field_list, 
+            field_pos_map, 
+            header_len, 
+            payload_len, 
+            packet_len
+        ).map_err(|(err, span)| {            
+            let error = Error::Ast{err, span};
+            ParseError::User{ error }
+        })
+    }
+}
+
+CondTuple: (String, u64) = {
+    <name: "ident"> "==" <num: Num> => (String::from_str(name).unwrap(), num)
+}
+
+CondList: Vec<(String, u64)> = {
+    <mut cond_list: (<CondTuple> "||")*> <last_cond: CondTuple> => {
+        cond_list.push(last_cond);
+        cond_list
+    }
+}
+
+Condition: Vec<(String, u64)> = {
+    "cond" "=" <CondList> => <>
+}
+
+pub Message: Message = {
+    "message" <name: "ident"> "{"
+        <header: Header>
+        <header_len: ("," <HeaderLen>)?>
+        <cond: ("," <Condition>)?>
+        ","?
+    "}" =>? {
+        let (field_list, field_pos_map) = header;
+        Message::new(
+            String::from_str(name).unwrap(), 
+            field_list, 
+            field_pos_map, 
+            header_len, 
+            cond.unwrap_or(Vec::new())
+        ).map_err(|(err, span)| {            
+            let error = Error::Ast{err, span};
+            ParseError::User{ error }
+        })
+    }
 }

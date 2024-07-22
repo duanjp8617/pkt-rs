@@ -2,6 +2,7 @@
 use std::io::Write;
 
 use crate::ast::Error as AstError;
+use crate::ast_new::Error as AstNewError;
 use crate::file_text::FileText;
 use crate::token::Error as TokenError;
 
@@ -29,6 +30,9 @@ quick_error! {
             from()
         }
         Ast{err: AstError, span: (usize, usize)} {
+            display("{}", err)
+        }
+        AstNew{err: AstNewError, span: (usize, usize)} {
             display("{}", err)
         }
         Lalrpop(err_str: String) {
@@ -66,29 +70,29 @@ pub fn render_error(file_text: &FileText, error: Error, out: &mut dyn Write) {
     // print error summary, then render error location
     match error {
         Error::Token(ref err) => {
-            writeln!(out, "error: token error").unwrap();
-
+            writeln!(out, "token error").unwrap();
             file_text
                 .render_code_block(err.location, err.location, out)
                 .unwrap();
         }
-        Error::Ast { ref err, ref span } => {
-            write!(out, "error: ").unwrap();
-            match err {
-                AstError::InvalidField(_) => writeln!(out, "invalid Field definition").unwrap(),
-                AstError::InvalidHeader(_) => writeln!(out, "invalid Header definition").unwrap(),
-            };
-
+        Error::Ast { err: _, ref span } => {
+            write!(out, "ast error").unwrap();
+            file_text
+                .render_code_block(span.0, span.1 - 1, out)
+                .unwrap();
+        }
+        Error::AstNew { err: _, ref span } => {
+            write!(out, "ast error").unwrap();
             file_text
                 .render_code_block(span.0, span.1 - 1, out)
                 .unwrap();
         }
         Error::Lalrpop(_) => {
-            writeln!(out, "error: lalrpop error").unwrap();
+            writeln!(out, "lalrpop parse error").unwrap();
         }
     }
     // print error details
-    writeln!(out, "note: {}", error).unwrap();
+    writeln!(out, "{error}").unwrap();
 }
 
 // A quick way to return an error defined by quick_err macro
