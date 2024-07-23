@@ -1,71 +1,111 @@
+use std::collections::HashMap;
 use std::io::Write;
 
-use crate::utils::Error as ParserError;
-
 use super::field::{Arg, BuiltinTypes, Field};
+use super::header::BitPos;
 use super::Error;
 
-// length is parsed in this way
-// payload_packet_len: payload_len | packet_len
-// rule1: header_len (, payload_packet_len)? (,)?
-//  header_len | header_len, payload_len | header_len, packet_len
-// rule2: payload_packet_len (,)?
-/// payload_len | packet_len
-
-/// The ast type constructed when parsing length list.
-#[derive(Debug, Clone)]
-pub enum LengthField {
-    /// The packet has no such length field
-    None,
-
-    /// The packet has the length field, but the calculating expression is not
-    /// defined
-    Undefined,
-
-    /// The packet has the length field calculated from the `UsableAlgExpr`
-    Expr(UsableAlgExpr),
+// the algorithmic operations used in the parser
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum AlgOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
 }
 
-impl LengthField {
-    // convert a parsed algorithmic expression to `LengthField`, signal an error if
-    // the algorithm is too complex for conversion this is the actual
-    // constructor used by the parser
-    pub(crate) fn alg_expr_to_length_field(
-        alg_expr_with_pos: &Option<(AlgExpr, (usize, usize))>,
-    ) -> Result<LengthField, ParserError> {
-        match alg_expr_with_pos {
-            Some((expr, (l, r))) => expr
-                .try_take_usable_expr()
-                .map(|expr| LengthField::Expr(expr))
-                .ok_or(ParserError::AstNew {
-                    // the algorithmic expression is too complex for conversion
-                    err: Error::length(
-                        "expression is too complex, only simple one is supported".to_string(),
-                    ),
-                    span: (*l, *r),
-                }),
-            // the length field is present in the source file, but the expression is not defined
-            None => Ok(LengthField::Undefined),
+// the general-purpose algorithmic expression used by the parser
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum AlgExpr {
+    Num(u64),
+    Ident(String),
+    Binary(Box<AlgExpr>, AlgOp, Box<AlgExpr>),
+}
+
+impl AlgExpr {
+    // length error x: algorithmic expression is too complex
+    pub fn try_take_usable_alg_expr(&self) -> Result<UsableAlgExpr, Error> {
+        self.try_take_all_types().ok_or(Error::field(format!(
+            "the form of the algorithmic expression is too complex, only simple ones are supported"
+        )))
+    }
+
+    fn try_take_all_types(&self) -> Option<UsableAlgExpr> {
+        match self {
+            AlgExpr::Binary(left, op, right) => match (&(**left), op, &(**right)) {
+                (AlgExpr::Binary(_, _, _), AlgOp::Add, AlgExpr::Num(other)) => {
+                    match left.try_take_simple_type()? {
+                        UsableAlgExpr::SimpleMult(s, num) => {
+                            Some(UsableAlgExpr::MultAdd(s, num, *other))
+                        }
+                        _ => None,
+                    }
+                }
+                (AlgExpr::Num(other), AlgOp::Add, AlgExpr::Binary(_, _, _)) => {
+                    match right.try_take_simple_type()? {
+                        UsableAlgExpr::SimpleMult(s, num) => {
+                            Some(UsableAlgExpr::MultAdd(s, num, *other))
+                        }
+                        _ => None,
+                    }
+                }
+                (AlgExpr::Binary(_, _, _), AlgOp::Mul, AlgExpr::Num(other)) => {
+                    match left.try_take_simple_type()? {
+                        UsableAlgExpr::SimpleAdd(s, num) => {
+                            Some(UsableAlgExpr::AddMult(s, num, *other))
+                        }
+                        _ => None,
+                    }
+                }
+                (AlgExpr::Num(other), AlgOp::Mul, AlgExpr::Binary(_, _, _)) => {
+                    match right.try_take_simple_type()? {
+                        UsableAlgExpr::SimpleAdd(s, num) => {
+                            Some(UsableAlgExpr::AddMult(s, num, *other))
+                        }
+                        _ => None,
+                    }
+                }
+                _ => self.try_take_simple_type(),
+            },
+            _ => self.try_take_simple_type(),
         }
     }
 
-    /// Check whether the length field appears in the packet.
-    pub fn appear(&self) -> bool {
+    fn try_take_simple_type(&self) -> Option<UsableAlgExpr> {
         match self {
-            Self::None => false,
-            _ => true,
-        }
-    }
-
-    /// Try to acquire a `UsableAlgExpr` from the length field.
-    ///
-    /// The method returns `None` if the length field does not appear, or the
-    /// length field expression is not defined.
-    pub fn try_get_expr(&self) -> Option<&UsableAlgExpr> {
-        match self {
-            Self::Expr(expr) => Some(expr),
+            AlgExpr::Ident(s) => Some(UsableAlgExpr::IdentOnly(s.clone())),
+            AlgExpr::Binary(left, op, right) => match (&(**left), op, &(**right)) {
+                (AlgExpr::Num(num), AlgOp::Add, AlgExpr::Ident(s)) => {
+                    Some(UsableAlgExpr::SimpleAdd(s.clone(), *num))
+                }
+                (AlgExpr::Ident(s), AlgOp::Add, AlgExpr::Num(num)) => {
+                    Some(UsableAlgExpr::SimpleAdd(s.clone(), *num))
+                }
+                (AlgExpr::Num(num), AlgOp::Mul, AlgExpr::Ident(s)) => {
+                    Some(UsableAlgExpr::SimpleMult(s.clone(), *num))
+                }
+                (AlgExpr::Ident(s), AlgOp::Mul, AlgExpr::Num(num)) => {
+                    Some(UsableAlgExpr::SimpleMult(s.clone(), *num))
+                }
+                _ => None,
+            },
             _ => None,
         }
+    }
+}
+
+// Check whether a field can be used in a length expression.
+pub fn check_valid_length_expr(field: &Field) -> bool {
+    // A field can only be used in a length expression
+    // if the repr is not a byte slice and that the arg
+    // is the same as the repr.
+    if field.repr != BuiltinTypes::ByteSlice {
+        match field.arg {
+            Arg::BuiltinTypes(arg) => field.repr == arg,
+            _ => false,
+        }
+    } else {
+        false
     }
 }
 
@@ -203,100 +243,66 @@ impl UsableAlgExpr {
     }
 }
 
-// the algorithmic operations used in the parser
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub(crate) enum AlgOp {
-    Add,
-    Sub,
-    Mul,
-    Div,
+// length is parsed in this way
+// payload_packet_len: payload_len | packet_len
+// rule1: header_len (, payload_packet_len)? (,)?
+//  header_len | header_len, payload_len | header_len, packet_len
+// rule2: payload_packet_len (,)?
+/// payload_len | packet_len
+
+/// The ast type constructed when parsing length list.
+#[derive(Debug, Clone)]
+pub enum LengthField {
+    /// The packet has no such length field
+    None,
+
+    /// The packet has the length field, but the calculating expression is not
+    /// defined
+    Undefined,
+
+    /// The packet has the length field calculated from the `UsableAlgExpr`
+    Expr(UsableAlgExpr),
 }
 
-// the general-purpose algorithmic expression used by the parser
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub(crate) enum AlgExpr {
-    Num(u64),
-    Ident(String),
-    Binary(Box<AlgExpr>, AlgOp, Box<AlgExpr>),
-}
+impl LengthField {
+    pub fn from_option(expr_option: Option<UsableAlgExpr>) -> Self {
+        match expr_option {
+            Some(expr) => Self::Expr(expr),
+            None => Self::Undefined,
+        }
+    }
 
-impl AlgExpr {
-    fn try_take_simple_type(&self) -> Option<UsableAlgExpr> {
+    pub fn check_length_list(
+        length_list: &Vec<Self>,
+        field_list: &Vec<(String, Field)>,
+        field_position: &HashMap<String, (BitPos, usize)>,
+    ) -> Result<(), Error> {
+        match (&length_list[0], &length_list[1], &length_list[2]) {
+            // length field is not defined, ok
+            (LengthField::None, LengthField::None, LengthField::None) => Ok(()),
+            (single_length_field, LengthField::None, LengthField::None)
+            | (LengthField::None, single_length_field, LengthField::None)
+            | (LengthField::None, LengthField::None, single_length_field) => Ok(()),
+            _ => Ok(()),
+        }
+    }
+
+    /// Check whether the length field appears in the packet.
+    pub fn appear(&self) -> bool {
         match self {
-            AlgExpr::Ident(s) => Some(UsableAlgExpr::IdentOnly(s.clone())),
-            AlgExpr::Binary(left, op, right) => match (&(**left), op, &(**right)) {
-                (AlgExpr::Num(num), AlgOp::Add, AlgExpr::Ident(s)) => {
-                    Some(UsableAlgExpr::SimpleAdd(s.clone(), *num))
-                }
-                (AlgExpr::Ident(s), AlgOp::Add, AlgExpr::Num(num)) => {
-                    Some(UsableAlgExpr::SimpleAdd(s.clone(), *num))
-                }
-                (AlgExpr::Num(num), AlgOp::Mul, AlgExpr::Ident(s)) => {
-                    Some(UsableAlgExpr::SimpleMult(s.clone(), *num))
-                }
-                (AlgExpr::Ident(s), AlgOp::Mul, AlgExpr::Num(num)) => {
-                    Some(UsableAlgExpr::SimpleMult(s.clone(), *num))
-                }
-                _ => None,
-            },
+            Self::None => false,
+            _ => true,
+        }
+    }
+
+    /// Try to acquire a `UsableAlgExpr` from the length field.
+    ///
+    /// The method returns `None` if the length field does not appear, or the
+    /// length field expression is not defined.
+    pub fn try_get_expr(&self) -> Option<&UsableAlgExpr> {
+        match self {
+            Self::Expr(expr) => Some(expr),
             _ => None,
         }
-    }
-
-    // try to convert expression to `UsableAlgExpr`
-    pub fn try_take_usable_expr(&self) -> Option<UsableAlgExpr> {
-        match self {
-            AlgExpr::Binary(left, op, right) => match (&(**left), op, &(**right)) {
-                (AlgExpr::Binary(_, _, _), AlgOp::Add, AlgExpr::Num(other)) => {
-                    match left.try_take_simple_type()? {
-                        UsableAlgExpr::SimpleMult(s, num) => {
-                            Some(UsableAlgExpr::MultAdd(s, num, *other))
-                        }
-                        _ => None,
-                    }
-                }
-                (AlgExpr::Num(other), AlgOp::Add, AlgExpr::Binary(_, _, _)) => {
-                    match right.try_take_simple_type()? {
-                        UsableAlgExpr::SimpleMult(s, num) => {
-                            Some(UsableAlgExpr::MultAdd(s, num, *other))
-                        }
-                        _ => None,
-                    }
-                }
-                (AlgExpr::Binary(_, _, _), AlgOp::Mul, AlgExpr::Num(other)) => {
-                    match left.try_take_simple_type()? {
-                        UsableAlgExpr::SimpleAdd(s, num) => {
-                            Some(UsableAlgExpr::AddMult(s, num, *other))
-                        }
-                        _ => None,
-                    }
-                }
-                (AlgExpr::Num(other), AlgOp::Mul, AlgExpr::Binary(_, _, _)) => {
-                    match right.try_take_simple_type()? {
-                        UsableAlgExpr::SimpleAdd(s, num) => {
-                            Some(UsableAlgExpr::AddMult(s, num, *other))
-                        }
-                        _ => None,
-                    }
-                }
-                _ => self.try_take_simple_type(),
-            },
-            _ => self.try_take_simple_type(),
-        }
-    }
-}
-
-// Check whether a field can be used in a length expression.
-pub fn check_valid_length_expr(field: &Field) -> bool {
-    // A field can only be used in a length expression
-    // if the repr is not a byte slice and that the arg
-    // is the same as the repr.
-    if field.repr != BuiltinTypes::ByteSlice {
-        match field.arg {
-            Arg::BuiltinTypes(arg) => field.repr == arg,
-            _ => false,
-        }
-    } else {
-        false
     }
 }

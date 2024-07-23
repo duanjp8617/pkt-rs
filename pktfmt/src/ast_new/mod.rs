@@ -4,6 +4,9 @@ use std::io::{Read, Write};
 
 use crate::utils::Spanned;
 
+mod number;
+pub use number::*;
+
 mod field;
 pub use field::*;
 
@@ -75,7 +78,7 @@ pub struct Packet {
 /// An enum type to describe where the error is generated.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ErrorPos {
-    NumValue,
+    NumberError,
     FieldDef,
     HeaderDef,
     LengthDef,
@@ -84,7 +87,7 @@ pub enum ErrorPos {
 impl fmt::Display for ErrorPos {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::NumValue => write!(fmt, "invalid number value"),
+            Self::NumberError => write!(fmt, "invalid number"),
             Self::FieldDef => write!(fmt, "invalid field definition"),
             Self::HeaderDef => write!(fmt, "invalid header definition"),
             Self::LengthDef => write!(fmt, "invalid packet length definition"),
@@ -108,15 +111,13 @@ impl fmt::Display for Error {
 }
 
 impl Error {
-    /// Return a number value error.
-    pub fn num_value(reason: String) -> Self {
+    pub fn num_error(reason: String) -> Self {
         Self {
-            pos: ErrorPos::NumValue,
+            pos: ErrorPos::NumberError,
             reason,
         }
     }
 
-    /// Return a field definition error.
     pub fn field(reason: String) -> Self {
         Self {
             pos: ErrorPos::FieldDef,
@@ -124,7 +125,6 @@ impl Error {
         }
     }
 
-    /// Return an header definition error.
     pub fn header(reason: String) -> Self {
         Self {
             pos: ErrorPos::HeaderDef,
@@ -132,7 +132,6 @@ impl Error {
         }
     }
 
-    /// Return a packet length definition error.
     pub fn length(reason: String) -> Self {
         Self {
             pos: ErrorPos::LengthDef,

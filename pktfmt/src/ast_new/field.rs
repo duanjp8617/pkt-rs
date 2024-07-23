@@ -31,8 +31,7 @@ impl Field {
             // 1. bit size 0 is not allowed.
             // 2. if bit size > 64, then bit size must be aligned to 8.
 
-            // build the error reason, followed by a explanation of why the error is
-            // triggered
+            // field error 1: invalid bit
             let reason = format!(
                 "invalid bit {}
 Details: bit > 0 should always holds. If bit > 64, then bit % 8 == 0 must hold.",
@@ -96,7 +95,12 @@ Details: bit > 0 should always holds. If bit > 64, then bit % 8 == 0 must hold."
             // OK: use &[u8] to override the inferred repr
             Ok(defined_repr)
         } else {
-            let reason = format!("invalid repr {}", defined_repr.to_string());
+            // field error 2: invalid repr
+            let reason = format!(
+                "invalid repr {}, repr should be {}",
+                defined_repr.to_string(),
+                inferred.to_string()
+            );
             return_err_1!(Error::field(reason))
         }
     }
@@ -112,7 +116,12 @@ Details: bit > 0 should always holds. If bit > 64, then bit % 8 == 0 must hold."
                     // Ok: defined arg is bool while bit size is 1
                     Ok(defined_arg)
                 } else {
-                    let reason = format!("invalid arg {}", defined_arg.to_string());
+                    // field error 3: invalid arg
+                    let reason = format!(
+                        "invalid arg {} under repr {}",
+                        defined_arg.to_string(),
+                        repr.to_string()
+                    );
                     return_err_1!(Error::field(reason))
                 }
             }
@@ -153,6 +162,7 @@ Details: bit > 0 should always holds. If bit > 64, then bit % 8 == 0 must hold."
                     // Ok: Arg is is over-written with Bool, default could be bool
                     DefaultVal::Bool(_) => Ok(defined_default),
                     _ => {
+                        // field error 4.1: invalid default
                         let reason = format!(
                             "invalid default {}, should be true or false",
                             defined_default
@@ -166,6 +176,7 @@ Details: bit > 0 should always holds. If bit > 64, then bit % 8 == 0 must hold."
                 // The length of the bytes must be bit / 8.
                 DefaultVal::Bytes(v) if v.len() == (bit / 8) as usize => Ok(defined_default),
                 _ => {
+                    // field error 4.2: invalid default
                     let reason = format!(
                         "invalid default {}, should be {}-byte array",
                         defined_default,
@@ -179,6 +190,7 @@ Details: bit > 0 should always holds. If bit > 64, then bit % 8 == 0 must hold."
                 // The default number must be smaller than 2^bit.
                 DefaultVal::Num(n) if *n < 2_u64.pow(bit as u32) => Ok(defined_default),
                 _ => {
+                    // field error 4.3: invalid default
                     let reason = format!(
                         "invalid default {}, should be number smaller than {}",
                         defined_default,

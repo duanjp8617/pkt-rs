@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use lalrpop_util::ParseError;
 
 use crate::ast_new::{
-    Field, BuiltinTypes, Arg, DefaultVal, BitPos, check_header_list, AlgOp, AlgExpr
+    Field, BuiltinTypes, Arg, DefaultVal, BitPos, check_header_list, AlgOp, AlgExpr, UsableAlgExpr, parse_to_byte_val, LengthField
 };
 use crate::file_text::FileText;
 use crate::utils::{Spanned, Error};
@@ -122,15 +122,10 @@ Arg: Arg = {
 
 Byte: u8  = {
     <l: @L> <num: "num"> <r: @R> =>? {
-        let num = u64::from_str(num).unwrap();
-        if num > 255 {
-            let err = crate::ast_new::Error::num_value("byte value can not exceed 255".into());
-            let error = Error::AstNew{err, span: (l, r)};
-            Err(ParseError::User{ error })
-        }
-        else {
-            Ok(num as u8)
-        }
+        parse_to_byte_val(num).map_err(|err| {
+            let error = Error::AstNew {err, span: (l, r)};
+            ParseError::User{ error }
+        })
     }
 }
 
@@ -199,6 +194,69 @@ AlgBaseExpr: Box<AlgExpr> = {
     "(" <AddExpr> ")" => <>
 }
 
-AlgExpr: Box<AlgExpr> = {
-    AddExpr => <>
+AlgExpr: UsableAlgExpr = {
+    <l: @L> <expr: AddExpr> <r: @R> =>? {
+        expr.try_take_usable_alg_expr().map_err(|err| {
+            let error = Error::AstNew {err, span: (l, r)};
+            ParseError::User{ error }
+        })
+    }
 }
+
+HeaderLenAssign: Option<UsableAlgExpr> = {
+    "header_len" "=" <expr: (AlgExpr)?> => expr
+}
+
+PayloadLenAssign: Option<UsableAlgExpr> = {
+    "payload_len" "=" <expr: (AlgExpr)?> => expr
+}
+
+PacketLenAssign: Option<UsableAlgExpr> = {
+    "packet_len" "=" <expr: (AlgExpr)?> => expr
+}
+
+// (opt, 0) => header_len
+// (opt, 1) => payload_len
+// (opt, 2) => packet_len
+EitherHeaderOrPayloadOrPacket: (Option<UsableAlgExpr>, usize) = {
+    HeaderLenAssign => (<>, 0),
+    PayloadLenAssign => (<>, 1),
+    PacketLenAssign => (<>, 2)
+}
+
+EitherPayloadOrPacket: (Option<UsableAlgExpr>, usize) = {
+    PayloadLenAssign => (<>, 1),
+    PacketLenAssign => (<>, 2)
+}
+
+LengthFieldListSubRule: Vec<LengthField> = {
+    // Length parse 1: only one of the length field is defined
+    <opt: EitherHeaderOrPayloadOrPacket> ","? => {
+        let mut v = vec![LengthField::None, LengthField::None, LengthField::None];
+        v[opt.1] = LengthField::from_option(opt.0);
+        v
+    },
+    // Length parse 2: header length field is defined. one of payload/packet length is defined
+    <header_len_opt: HeaderLenAssign> "," <opt_with_index: EitherPayloadOrPacket> ","? => {
+        let mut v = vec![LengthField::None, LengthField::None, LengthField::None];
+        v[0] =  LengthField::from_option(header_len_opt);
+        v[opt_with_index.1] = LengthField::from_option(opt_with_index.0);
+        v
+    },
+    // Length parse 3: header is optional, both payload and packet length are defined
+    <header_len_opt_opt: (<HeaderLenAssign> ",")?> 
+    <payload_len_opt: PayloadLenAssign> "," <packet_len_opt: PacketLenAssign> ","? => {
+        let mut v = vec![LengthField::None, LengthField::None, LengthField::None];
+        if let Some(header_len_opt) = header_len_opt_opt {
+            v[0] =  LengthField::from_option(header_len_opt);
+        }
+        v[1] =  LengthField::from_option(payload_len_opt);
+        v[2] =  LengthField::from_option(packet_len_opt);
+        v
+    }
+}
+
+LengthFieldList: (Vec<LengthField>, (usize, usize)) = {
+    <l: @L> "header" "=" "[" <list: LengthFieldListSubRule>  "]" <r: @R> => (list, (l, r))
+}
+
