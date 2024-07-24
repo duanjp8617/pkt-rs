@@ -13,7 +13,6 @@ const fn _check_mtu_for_usize() -> bool {
     if std::mem::size_of::<usize>() > std::mem::size_of::<u64>() {
         ((MAX_MTU_IN_BYTES * 2) as usize) < usize::MAX
     } else {
-        //
         MAX_MTU_IN_BYTES * 2 < usize::MAX as u64
     }
 }

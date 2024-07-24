@@ -25,6 +25,19 @@ pub struct Packet {
     pub length_list: Vec<LengthField>,
 }
 
+impl Packet {
+    pub fn new(
+        protocol_name: String,
+        field_list: Vec<(String, Field)>,
+        field_pos_map: HashMap<String, (BitPos, usize)>,
+        length_list: Vec<LengthField>,
+    ) -> Result<Self, Error> {
+        // 
+
+        return Err(Error::length("wtf".to_string()));
+    }
+}
+
 // impl Packet {
 //     /// We should perform checks to ensure that the length fields
 //     /// are correctly defined, but for now, we ignore it.

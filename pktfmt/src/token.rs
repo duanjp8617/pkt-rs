@@ -93,6 +93,9 @@ pub enum Token<'input> {
     // Comma
     Comma,
 
+    // at
+    At,
+
     // Assign
     Assign,
 
@@ -338,6 +341,10 @@ impl<'input> Tokenizer<'input> {
                 Some((idx, ',')) => {
                     self.consume_and_peek();
                     return Some(Ok((idx, Token::Comma, idx + 1)));
+                }
+                Some((idx, '@')) => {
+                    self.consume_and_peek();
+                    return Some(Ok((idx, Token::At, idx + 1)));
                 }
                 // arms that produce either a single character token, or a two character token
                 Some((idx, '=')) => match self.consume_and_peek() {

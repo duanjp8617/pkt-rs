@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use lalrpop_util::ParseError;
 
 use crate::ast_new::{
-    Field, BuiltinTypes, Arg, DefaultVal, BitPos, check_header_list, AlgOp, AlgExpr, UsableAlgExpr, parse_to_byte_val, LengthField
+    Field, BuiltinTypes, Arg, DefaultVal, BitPos, Header, AlgOp, AlgExpr, UsableAlgExpr, parse_to_byte_val, LengthField,
 };
 use crate::file_text::FileText;
 use crate::utils::{Spanned, Error};
@@ -73,6 +73,9 @@ extern {
 
         // comma
         "," => Token::Comma,
+
+        // at
+        "@" => Token::At,
 
         // assign
         "=" => Token::Assign,
@@ -161,11 +164,11 @@ NamedField: (Spanned<String>, Field) = {
     }
 }
 
-pub Header: (Vec<(String, Field)>, HashMap<String, (BitPos, usize)>) = {
+pub Header: Header = {
     <l: @L> "header" "=" "["
         <header_list: List<NamedField>>
     "]" <r: @R> =>? {
-        check_header_list(header_list, (l, r)).map_err(|(err, span)|{
+        Header::new(header_list, (l, r)).map_err(|(err, span)|{
             let error = Error::AstNew{err, span};
             ParseError::User{ error }
         })
@@ -194,37 +197,37 @@ AlgBaseExpr: Box<AlgExpr> = {
     "(" <AddExpr> ")" => <>
 }
 
-AlgExpr: UsableAlgExpr = {
-    <l: @L> <expr: AddExpr> <r: @R> =>? {
+AlgExpr: LengthField = {
+    <l: @L> <expr: AddExpr> <fixed_length_opt: ("@" <Num>)?> <r: @R> =>? {
         expr.try_take_usable_alg_expr().map_err(|err| {
             let error = Error::AstNew {err, span: (l, r)};
             ParseError::User{ error }
-        })
+        }).map(|expr| LengthField::Expr{expr, fixed_length_opt})
     }
 }
 
-HeaderLenAssign: Option<UsableAlgExpr> = {
+HeaderLenAssign: Option<LengthField> = {
     "header_len" "=" <expr: (AlgExpr)?> => expr
 }
 
-PayloadLenAssign: Option<UsableAlgExpr> = {
+PayloadLenAssign: Option<LengthField> = {
     "payload_len" "=" <expr: (AlgExpr)?> => expr
 }
 
-PacketLenAssign: Option<UsableAlgExpr> = {
+PacketLenAssign: Option<LengthField> = {
     "packet_len" "=" <expr: (AlgExpr)?> => expr
 }
 
 // (opt, 0) => header_len
 // (opt, 1) => payload_len
 // (opt, 2) => packet_len
-EitherHeaderOrPayloadOrPacket: (Option<UsableAlgExpr>, usize) = {
+EitherHeaderOrPayloadOrPacket: (Option<LengthField>, usize) = {
     HeaderLenAssign => (<>, 0),
     PayloadLenAssign => (<>, 1),
     PacketLenAssign => (<>, 2)
 }
 
-EitherPayloadOrPacket: (Option<UsableAlgExpr>, usize) = {
+EitherPayloadOrPacket: (Option<LengthField>, usize) = {
     PayloadLenAssign => (<>, 1),
     PacketLenAssign => (<>, 2)
 }
@@ -257,6 +260,8 @@ LengthFieldListSubRule: Vec<LengthField> = {
 }
 
 LengthFieldList: (Vec<LengthField>, (usize, usize)) = {
-    <l: @L> "header" "=" "[" <list: LengthFieldListSubRule>  "]" <r: @R> => (list, (l, r))
+    <l: @L> <list_opt: ("," "header" "=" "[" <LengthFieldListSubRule>  "]")?> <r: @R> => 
+      (list_opt.unwrap_or(vec![LengthField::None, LengthField::None, LengthField::None]), (l, r))
 }
 
+// parse into packet, use a new to construct the packet
