@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use lalrpop_util::ParseError;
 
 use crate::ast_new::{
-    Field, BuiltinTypes, Arg, DefaultVal, BitPos, Header, AlgOp, AlgExpr, UsableAlgExpr, parse_to_byte_val, LengthField,
+    Field, BuiltinTypes, Arg, DefaultVal, BitPos, Header, AlgOp, AlgExpr, UsableAlgExpr, parse_to_byte_val, LengthField, Length, Packet,
 };
 use crate::file_text::FileText;
 use crate::utils::{Spanned, Error};
@@ -221,12 +221,14 @@ PacketLenAssign: Option<LengthField> = {
 // (opt, 0) => header_len
 // (opt, 1) => payload_len
 // (opt, 2) => packet_len
+#[inline]
 EitherHeaderOrPayloadOrPacket: (Option<LengthField>, usize) = {
     HeaderLenAssign => (<>, 0),
     PayloadLenAssign => (<>, 1),
     PacketLenAssign => (<>, 2)
 }
 
+#[inline]
 EitherPayloadOrPacket: (Option<LengthField>, usize) = {
     PayloadLenAssign => (<>, 1),
     PacketLenAssign => (<>, 2)
@@ -260,8 +262,23 @@ LengthFieldListSubRule: Vec<LengthField> = {
 }
 
 LengthFieldList: (Vec<LengthField>, (usize, usize)) = {
-    <l: @L> <list_opt: ("," "header" "=" "[" <LengthFieldListSubRule>  "]")?> <r: @R> => 
-      (list_opt.unwrap_or(vec![LengthField::None, LengthField::None, LengthField::None]), (l, r))
+    <l: @L> "length" "=" "[" <list: LengthFieldListSubRule> "]" <r: @R> => 
+      (list, (l, r))
 }
 
 // parse into packet, use a new to construct the packet
+pub Packet: Packet = {
+    "packet" <name: "ident"> "{"
+        <header: Header>
+        <length_fields_with_pos_opt: ("," <LengthFieldList>)?>
+        ","?
+    "}" =>? {
+        let (length_fields, span) = length_fields_with_pos_opt.unwrap_or((vec![LengthField::None, LengthField::None, LengthField::None], (0,0)));
+        let length = Length::from_packet_length(length_fields, &header).map_err(|err| {            
+            let error = Error::AstNew{err, span};
+            ParseError::User{ error }
+        })?;
+
+        Ok(Packet{protocol_name: name.to_string(), header, length})
+    }
+}

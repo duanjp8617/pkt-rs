@@ -17,12 +17,11 @@ mod length;
 pub use length::*;
 
 /// The top level ast type for the packet definition
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Packet {
     pub protocol_name: String,
-    pub field_list: Vec<(String, Field)>,
-    pub field_position: HashMap<String, (BitPos, usize)>,
-    pub length_list: Vec<LengthField>,
+    pub header: Header,
+    pub length: Length,
 }
 
 impl Packet {
@@ -32,7 +31,7 @@ impl Packet {
         field_pos_map: HashMap<String, (BitPos, usize)>,
         length_list: Vec<LengthField>,
     ) -> Result<Self, Error> {
-        // 
+        //
 
         return Err(Error::length("wtf".to_string()));
     }

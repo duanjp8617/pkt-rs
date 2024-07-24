@@ -7,6 +7,7 @@ use super::header::Header;
 use super::number::MAX_MTU_IN_BYTES;
 use super::Error;
 
+#[derive(Debug)]
 pub struct Length {
     length_fields: Vec<LengthField>,
 }
@@ -259,25 +260,7 @@ impl LengthField {
             _ => None,
         }
     }
-
-    // fn check_header_len(&self, field: &Field, header_len_in_bytes: u64) ->
-    // Result<(), Error> {     Ok(())
-    // }
 }
-
-// pub fn packet_check_length_list(
-//     length_list: &Vec<LengthField>,
-//     field_list: &Vec<(String, Field)>,
-//     field_position: &HashMap<String, (BitPos, usize)>,
-// ) -> Result<(), Error> {
-//     match (&length_list[0], &length_list[1], &length_list[2]) {
-//         // length field is not defined, ok
-//         (LengthField::None, LengthField::None, LengthField::None) => Ok(()),
-//         (headder_len, LengthField::None, LengthField::None) => {
-//             header_len
-//         }
-//     }
-// }
 
 /// An enum type that only represents a subset of the general-purpose
 /// algorithmic expressions.

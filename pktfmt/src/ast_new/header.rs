@@ -17,6 +17,7 @@ const RESERVED_FIELD_NAMES: &[&str] = &["header_len", "payload_len", "packet_len
 ///
 /// `field_position`: a hashmap that maps the field name to the bit position and
 /// field list index
+#[derive(Debug)]
 pub struct Header {
     header_len_in_bytes: usize,
     field_list: Vec<(String, Field)>,
