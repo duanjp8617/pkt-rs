@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::ast_new::Error;
+use super::Error;
 
 /// The ast type constructed when parsing `Field` definition.
 #[derive(Debug, Clone, Eq, PartialEq)]

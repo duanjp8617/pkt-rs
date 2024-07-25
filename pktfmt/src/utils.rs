@@ -2,7 +2,6 @@
 use std::io::Write;
 
 use crate::ast::Error as AstError;
-use crate::ast_new::Error as AstNewError;
 use crate::file_text::FileText;
 use crate::token::Error as TokenError;
 
@@ -30,9 +29,6 @@ quick_error! {
             from()
         }
         Ast{err: AstError, span: (usize, usize)} {
-            display("{}", err)
-        }
-        AstNew{err: AstNewError, span: (usize, usize)} {
             display("{}", err)
         }
         Lalrpop(err_str: String) {
@@ -76,12 +72,6 @@ pub fn render_error(file_text: &FileText, error: Error, out: &mut dyn Write) {
                 .unwrap();
         }
         Error::Ast { err: _, ref span } => {
-            write!(out, "ast error").unwrap();
-            file_text
-                .render_code_block(span.0, span.1 - 1, out)
-                .unwrap();
-        }
-        Error::AstNew { err: _, ref span } => {
             write!(out, "ast error").unwrap();
             file_text
                 .render_code_block(span.0, span.1 - 1, out)

@@ -3,7 +3,7 @@ use std::collections::HashMap;
 
 use lalrpop_util::ParseError;
 
-use crate::ast_new::{
+use crate::ast::{
     Field, BuiltinTypes, Arg, DefaultVal, BitPos, Header, AlgOp, AlgExpr, UsableAlgExpr, parse_to_byte_val, LengthField, Length, Packet,
 };
 use crate::file_text::FileText;
@@ -126,7 +126,7 @@ Arg: Arg = {
 Byte: u8  = {
     <l: @L> <num: "num"> <r: @R> =>? {
         parse_to_byte_val(num).map_err(|err| {
-            let error = Error::AstNew {err, span: (l, r)};
+            let error = Error::Ast {err, span: (l, r)};
             ParseError::User{ error }
         })
     }
@@ -152,7 +152,7 @@ pub Field: Field = {
         ","?
     "}" <r: @R> =>? {
         Field::new(bit, repr, arg, default, gen).map_err(|err| {
-            let error = Error::AstNew {err, span: (l, r)};
+            let error = Error::Ast {err, span: (l, r)};
             ParseError::User{ error }
         })
     }
@@ -169,7 +169,7 @@ pub Header: Header = {
         <header_list: List<NamedField>>
     "]" <r: @R> =>? {
         Header::new(header_list, (l, r)).map_err(|(err, span)|{
-            let error = Error::AstNew{err, span};
+            let error = Error::Ast{err, span};
             ParseError::User{ error }
         })
     }
@@ -200,7 +200,7 @@ AlgBaseExpr: Box<AlgExpr> = {
 AlgExpr: LengthField = {
     <l: @L> <expr: AddExpr> <fixed_length_opt: ("@" <Num>)?> <r: @R> =>? {
         expr.try_take_usable_alg_expr().map_err(|err| {
-            let error = Error::AstNew {err, span: (l, r)};
+            let error = Error::Ast {err, span: (l, r)};
             ParseError::User{ error }
         }).map(|expr| LengthField::Expr{expr, fixed_length_opt})
     }
@@ -266,16 +266,17 @@ LengthFieldList: (Vec<LengthField>, (usize, usize)) = {
       (list, (l, r))
 }
 
-// parse into packet, use a new to construct the packet
 pub Packet: Packet = {
     "packet" <name: "ident"> "{"
         <header: Header>
         <length_fields_with_pos_opt: ("," <LengthFieldList>)?>
         ","?
     "}" =>? {
-        let (length_fields, span) = length_fields_with_pos_opt.unwrap_or((vec![LengthField::None, LengthField::None, LengthField::None], (0,0)));
+        let (length_fields, span) = length_fields_with_pos_opt.unwrap_or(
+            (vec![LengthField::None, LengthField::None, LengthField::None], (0,0))
+        );
         let length = Length::from_packet_length(length_fields, &header).map_err(|err| {            
-            let error = Error::AstNew{err, span};
+            let error = Error::Ast{err, span};
             ParseError::User{ error }
         })?;
 
