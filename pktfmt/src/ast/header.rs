@@ -165,7 +165,7 @@ impl Header {
 /// BitPos records the starting and ending position of a header field.
 ///
 /// An example of the header field position:
-/// ```
+/// ```text
 /// byte position:  0               1
 /// bit position:   0 1 2 3 4 5 6 7 0 1 2  3  4  5  6  7
 /// global bit pos: 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15

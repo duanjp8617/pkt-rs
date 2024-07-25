@@ -71,7 +71,7 @@ pub fn render_error(file_text: &FileText, error: Error, out: &mut dyn Write) {
                 .unwrap();
         }
         Error::Ast { err: _, ref span } => {
-            write!(out, "ast error").unwrap();
+            writeln!(out, "ast error").unwrap();
             file_text
                 .render_code_block(span.0, span.1 - 1, out)
                 .unwrap();

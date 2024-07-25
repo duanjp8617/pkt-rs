@@ -37,7 +37,7 @@ impl Field {
             return_err!(Error::field(
                 1,
                 format!(
-"invalid bit {}, bit > 0 should always holds. If bit > 64, then bit % 8 == 0 must hold.", bit)
+"invalid bit {}, bit value must satisfy: bit > 0 && (bit <= 64 | bit % 8 == 0) ", bit)
             ))
         }
 
