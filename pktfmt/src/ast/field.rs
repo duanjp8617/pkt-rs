@@ -15,11 +15,13 @@ pub struct Field {
 impl Field {
     /// Create a new `Field` object from the parsed input.
     ///
-    /// This method performs error checks as follow:
-    /// 1. if a subfield is defined, we check whether it is correct using the
-    ///    current parsed information and the inferred subfield value.
-    /// 2. if a subfield is not defined, infer it with the current parsed
-    ///    information.
+    /// Except for the `bit`, all the subfields can be optional.
+    ///
+    /// 1. If a subfield is defined, we check whether it with the inferred
+    ///    subfield value.
+    ///
+    /// 2. if a subfield is not defined, we infer it with the available parsing
+    ///    informatin.
     pub fn new(
         bit: u64,
         repr: Option<BuiltinTypes>,
@@ -31,13 +33,12 @@ impl Field {
             // 1. bit size 0 is not allowed.
             // 2. if bit size > 64, then bit size must be aligned to 8.
 
-            // field error 1: invalid bit
-            let reason = format!(
-                "invalid bit {}
-Details: bit > 0 should always holds. If bit > 64, then bit % 8 == 0 must hold.",
-                bit
-            );
-            return_err_1!(Error::field(reason))
+            // field error 1
+            return_err!(Error::field(
+                1,
+                format!(
+"invalid bit {}, bit > 0 should always holds. If bit > 64, then bit % 8 == 0 must hold.", bit)
+            ))
         }
 
         let repr = match repr {
@@ -69,7 +70,7 @@ Details: bit > 0 should always holds. If bit > 64, then bit % 8 == 0 must hold."
     }
 
     // Infer repr from bit if repf is not defined
-    pub(crate) fn infer_repr(bit: u64) -> BuiltinTypes {
+    fn infer_repr(bit: u64) -> BuiltinTypes {
         if bit <= 8 {
             BuiltinTypes::U8
         } else if bit <= 16 {
@@ -95,13 +96,15 @@ Details: bit > 0 should always holds. If bit > 64, then bit % 8 == 0 must hold."
             // OK: use &[u8] to override the inferred repr
             Ok(defined_repr)
         } else {
-            // field error 2: invalid repr
-            let reason = format!(
-                "invalid repr {}, repr should be {}",
-                defined_repr.to_string(),
-                inferred.to_string()
-            );
-            return_err_1!(Error::field(reason))
+            // field error 2
+            return_err!(Error::field(
+                2,
+                format!(
+                    "invalid repr {}, repr should be {}",
+                    defined_repr.to_string(),
+                    inferred.to_string()
+                )
+            ))
         }
     }
 
@@ -116,13 +119,15 @@ Details: bit > 0 should always holds. If bit > 64, then bit % 8 == 0 must hold."
                     // Ok: defined arg is bool while bit size is 1
                     Ok(defined_arg)
                 } else {
-                    // field error 3: invalid arg
-                    let reason = format!(
-                        "invalid arg {} under repr {}",
-                        defined_arg.to_string(),
-                        repr.to_string()
-                    );
-                    return_err_1!(Error::field(reason))
+                    // field error 3
+                    return_err!(Error::field(
+                        3,
+                        format!(
+                            "invalid arg {} under repr {}",
+                            defined_arg.to_string(),
+                            repr.to_string()
+                        )
+                    ))
                 }
             }
             // Ok: defined arg is code
@@ -162,12 +167,14 @@ Details: bit > 0 should always holds. If bit > 64, then bit % 8 == 0 must hold."
                     // Ok: Arg is is over-written with Bool, default could be bool
                     DefaultVal::Bool(_) => Ok(defined_default),
                     _ => {
-                        // field error 4.1: invalid default
-                        let reason = format!(
-                            "invalid default {}, should be true or false",
-                            defined_default
-                        );
-                        return_err_1!(Error::field(reason))
+                        // field error 4
+                        return_err!(Error::field(
+                            4,
+                            format!(
+                                "invalid default {} for boolean arg, should be true or false",
+                                defined_default
+                            )
+                        ))
                     }
                 }
             }
@@ -176,13 +183,15 @@ Details: bit > 0 should always holds. If bit > 64, then bit % 8 == 0 must hold."
                 // The length of the bytes must be bit / 8.
                 DefaultVal::Bytes(v) if v.len() == (bit / 8) as usize => Ok(defined_default),
                 _ => {
-                    // field error 4.2: invalid default
-                    let reason = format!(
-                        "invalid default {}, should be {}-byte array",
-                        defined_default,
-                        bit / 8
-                    );
-                    return_err_1!(Error::field(reason))
+                    // field error 5
+                    return_err!(Error::field(
+                        5,
+                        format!(
+                            "invalid default {} byte slice repr, should be {}-byte array",
+                            defined_default,
+                            bit / 8
+                        )
+                    ))
                 }
             },
             _ => match &defined_default {
@@ -190,13 +199,15 @@ Details: bit > 0 should always holds. If bit > 64, then bit % 8 == 0 must hold."
                 // The default number must be smaller than 2^bit.
                 DefaultVal::Num(n) if *n < 2_u64.pow(bit as u32) => Ok(defined_default),
                 _ => {
-                    // field error 4.3: invalid default
-                    let reason = format!(
-                        "invalid default {}, should be number smaller than {}",
-                        defined_default,
-                        2_u64.pow(bit as u32)
-                    );
-                    return_err_1!(Error::field(reason))
+                    // field error 6
+                    return_err!(Error::field(
+                        6,
+                        format!(
+                            "invalid default {} for number repr, should be number smaller than {}",
+                            defined_default,
+                            2_u64.pow(bit as u32)
+                        )
+                    ))
                 }
             },
         }

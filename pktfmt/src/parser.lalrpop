@@ -1,12 +1,10 @@
 use std::str::FromStr;
-use std::collections::HashMap;
 
 use lalrpop_util::ParseError;
 
 use crate::ast::{
-    Field, BuiltinTypes, Arg, DefaultVal, BitPos, Header, AlgOp, AlgExpr, UsableAlgExpr, parse_to_byte_val, LengthField, Length, Packet,
+    Field, BuiltinTypes, Arg, DefaultVal, Header, AlgOp, AlgExpr, parse_to_byte_val, LengthField, Length, Packet,
 };
-use crate::file_text::FileText;
 use crate::utils::{Spanned, Error};
 use crate::token::Token;
 
@@ -280,6 +278,6 @@ pub Packet: Packet = {
             ParseError::User{ error }
         })?;
 
-        Ok(Packet{protocol_name: name.to_string(), header, length})
+        Ok(Packet::new(name, header, length))
     }
 }

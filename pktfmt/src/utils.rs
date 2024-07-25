@@ -5,8 +5,7 @@ use crate::ast::Error as AstError;
 use crate::file_text::FileText;
 use crate::token::Error as TokenError;
 
-// A special wrapper type for that records the location
-// of the contained item
+/// A special wrapper type for that records the location of the contained item
 pub struct Spanned<T> {
     pub item: T,
     // span is a non-inclusive range
@@ -85,14 +84,7 @@ pub fn render_error(file_text: &FileText, error: Error, out: &mut dyn Write) {
     writeln!(out, "{error}").unwrap();
 }
 
-// A quick way to return an error defined by quick_err macro
 macro_rules! return_err {
-    ($err_ty: ty, $arm: ident, $($args: expr),+) => {
-        return Err(<$err_ty>::$arm($($args),+))
-    }
-}
-
-macro_rules! return_err_1 {
     ($arg: expr) => {
         return Err($arg)
     };

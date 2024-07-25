@@ -1,36 +1,44 @@
-use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::io::Write;
 
-use super::field::{Arg, BuiltinTypes, Field};
+use super::field::{Arg, BuiltinTypes};
 use super::header::Header;
 use super::number::MAX_MTU_IN_BYTES;
 use super::Error;
 
+const LENGTH_FIELDS: &[&str; 3] = &["header_len", "payload_len", "packet_len"];
+
+/// The ast type constructed when parsing `length` list from the pktfmt script.
 #[derive(Debug)]
 pub struct Length {
     length_fields: Vec<LengthField>,
 }
 
 impl Length {
+    /// Get the header length field.
     pub fn header_len(&self) -> &LengthField {
         &self.length_fields[0]
     }
 
+    /// Get the payload length field.
     pub fn payload_len(&self) -> &LengthField {
         &self.length_fields[1]
     }
 
+    /// Get the packet length field.
     pub fn packet_len(&self) -> &LengthField {
         &self.length_fields[2]
     }
 }
 
 impl Length {
+    /// Create a new `Length` object from the parsed input.
     pub fn from_packet_length(
         length_fields: Vec<LengthField>,
         header: &Header,
     ) -> Result<Self, Error> {
+        // `length_fields` is created by the parser, its length is guaranteed to be 3.
+
         let res = Self { length_fields };
         match (res.header_len(), res.payload_len(), res.packet_len()) {
             (LengthField::None, LengthField::None, LengthField::None) => {
@@ -59,8 +67,8 @@ impl Length {
                 res.check_length_field(header, 2)?;
             }
             _ => {
-                // length error 1: invalid length format
-                return_err_1!(Error::length("invalid length format".to_string()))
+                // length error 1
+                return_err!(Error::length(1, "invalid packet length format".to_string()))
             }
         }
         Ok(res)
@@ -73,37 +81,42 @@ impl Length {
         match Self::check_length_field_basic(header, length_field)? {
             Some((field_bit, expr, fixed_length_opt)) => match fixed_length_opt {
                 Some(fixed_length) => {
-                    // only header_len can be associated with a fixed length, this implies that
-                    // assert!(index == 0);
-                    // we do the following checks:
-
                     if index != 0 {
-                        // length error 1.1:
-                        return_err_1!(Error::length(
-                            "invalid fixed length, it can not be associated with payload_len or packet_len".to_string()
+                        // only header_len can be associated with a fixed length,
+                        // length error 2:
+                        return_err!(Error::length(
+                            2,
+                            format!(
+                                "invalid fixed length, it can not be associated with {}",
+                                LENGTH_FIELDS[index]
+                            )
                         ))
                     }
 
-                    // 1: fixed_length <= MAX_MTU_IN_BYTES && fixed_length >= header_len_in_bytes,
-                    // if fail, generate:
-                    // length error 3: invalid fixed length
                     if fixed_length > MAX_MTU_IN_BYTES
                         || (fixed_length as usize) < header.header_len_in_bytes()
                     {
-                        return_err_1!(Error::length(format!(
-                            "invalid fixed length {}",
-                            fixed_length
-                        )))
+                        // length error 3
+                        return_err!(Error::length(
+                            3,
+                            format!(
+                                "invalid fixed length {}, it should be in the range [{}, {}]",
+                                fixed_length,
+                                header.header_len_in_bytes(),
+                                MAX_MTU_IN_BYTES
+                            )
+                        ))
                     }
 
-                    // 2: the fixed_length must fall within the range of the expr as function,
-                    // if fail, generate:
-                    // length error 4: fixed length can not be derived
                     if let None = expr.reverse_exec(fixed_length) {
-                        return_err_1!(Error::length(format!(
+                        // length error 4
+                        return_err!(Error::length(
+                            4,
+                            format!(
                             "fixed length {} can not be derived from the length field expression",
                             fixed_length
-                        )))
+                        )
+                        ))
                     }
 
                     Ok(())
@@ -113,37 +126,42 @@ impl Length {
                     // of the header/payload/packet_len, we perform the
                     // following checks
 
-                    // 1: make sure that the max length is valid, if fail, generate the following 2
-                    // errors:
-                    // the max field value
                     let x_max = 2_u64.pow(u32::try_from(field_bit).unwrap()) - 1;
-                    // length error 4: the max length can not be calculated for the max field value
-                    let max_length = expr.exec(x_max).ok_or(Error::length(format!(
-                        "the max length can not be calculated for the max field value {}",
-                        x_max
-                    )))?;
+                    // length error 5
+                    let max_length = expr.exec(x_max).ok_or(Error::length(
+                        5,
+                        format!(
+                            "the max length can not be calculated for {} using the max field value {}",
+                            LENGTH_FIELDS[index],
+                            x_max
+                        ),
+                    ))?;
                     if max_length > MAX_MTU_IN_BYTES {
-                        // length error 5: max length exceeds MTU limit
-                        return_err_1!(Error::length(format!(
-                            "max length {} exceeds MTU limit",
-                            max_length
-                        )))
+                        // length error 6
+                        return_err!(Error::length(
+                            6,
+                            format!(
+                                "max length {} of {} exceeds MTU limit",
+                                max_length, LENGTH_FIELDS[index]
+                            )
+                        ))
                     }
 
                     if index == 0 || index == 2 {
-                        // 2: if length field denotes header_len or packet_len,
+                        // if length field denotes header_len or packet_len,
                         // then we make sure that the fixed header length can be
                         // derived from the length expression. if fail, generate
                         // the following error:
-
                         let header_len = header.header_len_in_bytes() as u64;
                         if let None = expr.reverse_exec(header_len) {
-                            // length error 6: header length can not be derived from the length
-                            // field expression
-                            return_err_1!(Error::length(format!(
-                                "header length {} can not be derived from the length field expression",
-                                header_len
-                            )))
+                            // length error 7
+                            return_err!(Error::length(
+                                7,
+                                format!(
+                                    "header length {} can not be derived from the {} expression",
+                                    header_len, LENGTH_FIELDS[index]
+                                )
+                            ))
                         }
                     }
 
@@ -174,19 +192,16 @@ impl Length {
                 fixed_length_opt,
             } => {
                 // make sure that the field name contained in the expr correspond to a field
-                // in the header
-                // if it fails, we generate:
-                // length error 1: invalid expression field name
+                // in the header, if it fails, we generate:
+                // length error 8
                 let name = expr.field_name();
-                let (field, _) = header.field(name).ok_or(Error::length(format!(
-                    "invalid length expression field name {}",
-                    name
-                )))?;
+                let (field, _) = header.field(name).ok_or(Error::length(
+                    8,
+                    format!("invalid length expression field name {}", name),
+                ))?;
 
-                // make sure that the field repr is valid, it can not be byteslice
-                // A field can only be used in a length expression
-                // if the repr is not a byte slice and that the arg
-                // is the same as the repr.
+                // A field can only be used in a length expression if the repr is not a byte
+                // slice and that the arg is the same as the repr.
                 match field.arg {
                     Arg::BuiltinTypes(arg)
                         if (field.repr != BuiltinTypes::ByteSlice) && (field.repr == arg) =>
@@ -197,11 +212,11 @@ impl Length {
                         Ok(Some((field.bit, expr, *fixed_length_opt)))
                     }
                     _ => {
-                        // length error 2: invalid expression field
-                        Err(Error::length(format!(
-                            "invalid length expression field {:?}",
-                            field
-                        )))
+                        // length error 9
+                        Err(Error::length(
+                            9,
+                            format!("invalid length expression field {:?}", field),
+                        ))
                     }
                 }
             }
@@ -232,13 +247,6 @@ pub enum LengthField {
 }
 
 impl LengthField {
-    pub fn from_option(expr_option: Option<Self>) -> Self {
-        match expr_option {
-            Some(inner) => inner,
-            None => Self::Undefined,
-        }
-    }
-
     /// Check whether the length field appears in the packet.
     pub fn appear(&self) -> bool {
         match self {
@@ -258,6 +266,13 @@ impl LengthField {
                 fixed_length_opt: _,
             } => Some(expr),
             _ => None,
+        }
+    }
+
+    pub(crate) fn from_option(expr_option: Option<Self>) -> Self {
+        match expr_option {
+            Some(inner) => inner,
+            None => Self::Undefined,
         }
     }
 }
@@ -398,7 +413,7 @@ impl UsableAlgExpr {
 
 // the algorithmic operations used in the parser
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub enum AlgOp {
+pub(crate) enum AlgOp {
     Add,
     Sub,
     Mul,
@@ -407,7 +422,7 @@ pub enum AlgOp {
 
 // the general-purpose algorithmic expression used by the parser
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub enum AlgExpr {
+pub(crate) enum AlgExpr {
     Num(u64),
     Ident(String),
     Binary(Box<AlgExpr>, AlgOp, Box<AlgExpr>),
@@ -415,10 +430,13 @@ pub enum AlgExpr {
 
 impl AlgExpr {
     // length error x: algorithmic expression is too complex
-    pub fn try_take_usable_alg_expr(&self) -> Result<UsableAlgExpr, Error> {
-        self.try_take_all_types().ok_or(Error::field(format!(
+    pub(crate) fn try_take_usable_alg_expr(&self) -> Result<UsableAlgExpr, Error> {
+        self.try_take_all_types().ok_or(Error::field(
+            10,
+            format!(
             "the form of the algorithmic expression is too complex, only simple ones are supported"
-        )))
+        ),
+        ))
     }
 
     fn try_take_all_types(&self) -> Option<UsableAlgExpr> {
@@ -482,20 +500,5 @@ impl AlgExpr {
             },
             _ => None,
         }
-    }
-}
-
-// Check whether a field can be used in a length expression.
-pub fn check_valid_length_expr(field: &Field) -> bool {
-    // A field can only be used in a length expression
-    // if the repr is not a byte slice and that the arg
-    // is the same as the repr.
-    if field.repr != BuiltinTypes::ByteSlice {
-        match field.arg {
-            Arg::BuiltinTypes(arg) => field.repr == arg,
-            _ => false,
-        }
-    } else {
-        false
     }
 }

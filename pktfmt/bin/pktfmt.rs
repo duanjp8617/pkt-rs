@@ -1,4 +1,4 @@
-use pktfmt::*;
+
 
 fn main() {
     // let f = file_text::FileText::new("/home/djp/pkt-rs/pktcc/tests/field1.pktfmt").unwrap();

@@ -1,8 +1,4 @@
-use std::collections::HashMap;
 use std::fmt;
-use std::io::{Read, Write};
-
-use crate::utils::Spanned;
 
 mod number;
 pub use number::*;
@@ -16,93 +12,60 @@ pub use header::*;
 mod length;
 pub use length::*;
 
-/// The top level ast type for the packet definition
+/// The top level ast type for the `packet`` definition
 #[derive(Debug)]
 pub struct Packet {
-    pub protocol_name: String,
-    pub header: Header,
-    pub length: Length,
+    protocol_name: String,
+    header: Header,
+    length: Length,
 }
 
 impl Packet {
-    pub fn new(
-        protocol_name: String,
-        field_list: Vec<(String, Field)>,
-        field_pos_map: HashMap<String, (BitPos, usize)>,
-        length_list: Vec<LengthField>,
-    ) -> Result<Self, Error> {
-        //
+    pub fn new(protocol_name: &str, header: header::Header, length: length::Length) -> Self {
+        Self {
+            protocol_name: protocol_name.to_string(),
+            header,
+            length,
+        }
+    }
 
-        return Err(Error::length("wtf".to_string()));
+    pub fn protocol_name(&self) -> &str {
+        &self.protocol_name
+    }
+
+    pub fn header(&self) -> &Header {
+        &self.header
+    }
+
+    pub fn length(&self) -> &Length {
+        &self.length
     }
 }
 
-// impl Packet {
-//     /// We should perform checks to ensure that the length fields
-//     /// are correctly defined, but for now, we ignore it.
-//     pub fn new(
-//         protocol_name: String,
-//         field_list: Vec<(String, Field)>,
-//         field_pos_map: HashMap<String, (BitPos, usize)>,
-//         header_len: Option<(Option<Box<AlgExpr>>, String, (usize, usize))>,
-//         payload_len: Option<(Option<Box<AlgExpr>>, (usize, usize))>,
-//         packet_len: Option<(Option<Box<AlgExpr>>, (usize, usize))>,
-//     ) -> Result<Self, (Error, (usize, usize))> {
-//         // TODO:
-//         // 1. make sure that the field used for length computation
-//         // is not generated, its `repr` is the same as `arg` and `repr`
-//         // is not `ByteSlice`.
-//         // 2. make sure that the identifier contained in the length
-// expression         // corresponds to an existing field name
-//         // 3. make sure that when the field is the max value,
-//         // the length expression computation does not overflow
-//         // 4. the max value of the length field must be smaller than a
-// pre-defined         // constant!
-//         let mut length_fields = vec![LengthField::None, LengthField::None,
-// LengthField::None];         let mut option_name = None;
-
-//         header_len.map(|(alg_expr, name, _)| {
-//             length_fields[HEADER_LEN_IDX] =
-//                 LengthField::Expr(alg_expr.and_then(|expr|
-// expr.try_take_usable_expr()));
-
-//             option_name = Some(name);
-//         });
-//         payload_len.map(|(alg_expr, _)| {
-//             length_fields[PAYLOAD_LEN_IDX] =
-//                 LengthField::Expr(alg_expr.and_then(|expr|
-// expr.try_take_usable_expr()));         });
-//         packet_len.map(|(alg_expr, _)| {
-//             length_fields[PACKET_LEN_IDX] =
-//                 LengthField::Expr(alg_expr.and_then(|expr|
-// expr.try_take_usable_expr()));         });
-
-//         Ok(Self {
-//             protocol_name,
-//             field_list,
-//             field_pos_map,
-//             length_fields,
-//             option_name,
-//         })
-//     }
-// }
-
-/// An enum type to describe where the error is generated.
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub enum ErrorPos {
+// An enum type to describe the type of the error
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ErrorType {
+    // 1 errors
     NumberError,
+    // 6 errors
     FieldDef,
+    // 5 errors
     HeaderDef,
+    // 10 errors
     LengthDef,
 }
 
+// Record the error type and error index.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ErrorPos(ErrorType, usize);
+
 impl fmt::Display for ErrorPos {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::NumberError => write!(fmt, "invalid number"),
-            Self::FieldDef => write!(fmt, "invalid field definition"),
-            Self::HeaderDef => write!(fmt, "invalid header definition"),
-            Self::LengthDef => write!(fmt, "invalid packet length definition"),
+        match self.0 {
+            ErrorType::NumberError => write!(fmt, "number error {}", self.1),
+            ErrorType::FieldDef => write!(fmt, "field error {}", self.1),
+            ErrorType::HeaderDef => write!(fmt, "header error {}", self.1),
+            ErrorType::LengthDef => write!(fmt, "length error {}", self.1),
         }
     }
 }
@@ -118,35 +81,35 @@ impl std::error::Error for Error {}
 
 impl fmt::Display for Error {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(fmt, "{:?}:\n{}", self.pos, self.reason)
+        write!(fmt, "{}:\n{}", self.pos, self.reason)
     }
 }
 
 impl Error {
-    pub fn num_error(reason: String) -> Self {
+    pub fn num_error(index: usize, reason: String) -> Self {
         Self {
-            pos: ErrorPos::NumberError,
+            pos: ErrorPos(ErrorType::NumberError, index),
             reason,
         }
     }
 
-    pub fn field(reason: String) -> Self {
+    pub fn field(index: usize, reason: String) -> Self {
         Self {
-            pos: ErrorPos::FieldDef,
+            pos: ErrorPos(ErrorType::FieldDef, index),
             reason,
         }
     }
 
-    pub fn header(reason: String) -> Self {
+    pub fn header(index: usize, reason: String) -> Self {
         Self {
-            pos: ErrorPos::HeaderDef,
+            pos: ErrorPos(ErrorType::HeaderDef, index),
             reason,
         }
     }
 
-    pub fn length(reason: String) -> Self {
+    pub fn length(index: usize, reason: String) -> Self {
         Self {
-            pos: ErrorPos::LengthDef,
+            pos: ErrorPos(ErrorType::LengthDef, index),
             reason,
         }
     }

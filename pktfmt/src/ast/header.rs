@@ -8,8 +8,11 @@ use super::Error;
 
 const RESERVED_FIELD_NAMES: &[&str] = &["header_len", "payload_len", "packet_len"];
 
-/// An object that represent the fixed-length header defined by the pktfmt
-/// script.
+/// The ast type constructed when parsing `header` list from the pktfmt script.
+///
+/// **Member fields:**
+///
+/// `header_len_in_byets`: the length of the fixe header in bytes
 ///
 /// `field_list`: an list that preserves the order of the header fields, with
 /// each element being the field name and the field object, used for field
@@ -25,18 +28,19 @@ pub struct Header {
 }
 
 impl Header {
-    /// Given a parsed header with a list of fields, check its correctness and
-    /// construct data structures for efficient header field queries.
+    /// Create a new `Header` object from the parsed input.
     ///
-    /// Input arguments:
+    /// **Input args:**
     ///
-    /// `field_list`: a list consists of user-defined header fields.
+    /// `field_list`: the parsed `header` list
     ///
-    /// `header_pos`: the byte indexes of the header list in the original file
+    /// `header_pos`: the byte indexes of the `header`` list in the original
+    /// file
     ///
-    /// Return value:
+    /// **Return value:**
     ///
     /// if succeed: a new `Header` object,
+    ///
     /// if fail: an error and the file indexes that triggers the error.
     pub fn new(
         field_list: Vec<(Spanned<String>, Field)>,
@@ -53,35 +57,47 @@ impl Header {
             .enumerate()
             .map(|(field_idx, (sp_str, field))| {
                 if field_position.get(&sp_str.item).is_some() {
-                    // header error 1: duplicated header field name
-                    let reason = format!("duplicated header field name {}", &sp_str.item);
-                    return_err_1!((Error::header(reason), sp_str.span))
+                    // header error 1
+                    return_err!((
+                        Error::header(1, format!("duplicated header field name {}", &sp_str.item)),
+                        sp_str.span
+                    ))
                 } else if RESERVED_FIELD_NAMES
                     .iter()
                     .find(|reserved| **reserved == &sp_str.item)
                     .is_some()
                 {
-                    // header error 2: invalid header field name
-                    let reason = format!(
-                        "header field name {} is reserved and can't be used",
-                        &sp_str.item
-                    );
-                    return_err_1!((Error::header(reason), sp_str.span))
+                    // header error 2
+                    return_err!((
+                        Error::header(
+                            2,
+                            format!(
+                                "header field name {} is reserved and can't be used",
+                                &sp_str.item
+                            )
+                        ),
+                        sp_str.span
+                    ))
                 } else {
                     // calculate the start and end bit position of the header
                     let start = BitPos::new(global_bit_pos);
                     let end = start.next_pos(field.bit);
 
                     if field.bit > 8 && start.bit_pos != 0 && end.bit_pos != 7 {
-                        // header error 3: mis-aligned header field
+                        // header error 3
                         // If the header field contains multiple bytes, then one of two ends must be
                         // aligned to the byte boudary. In this branch, neither of
                         // the two ends are aligned to the byte boundary, we report an error.
-                        let reason = format!(
+                        return_err!((
+                            Error::header(
+                                3,
+                                format!(
                             "header field {} is not correctly aligned to the byte boundaries",
                             &sp_str.item
-                        );
-                        return_err_1!((Error::header(reason), sp_str.span))
+                        )
+                            ),
+                            sp_str.span
+                        ))
                     } else {
                         global_bit_pos += field.bit;
                         field_position.insert(sp_str.item.clone(), (start, field_idx));
@@ -92,17 +108,30 @@ impl Header {
             .collect::<Result<Vec<_>, (Error, (usize, usize))>>()?;
 
         if global_bit_pos % 8 != 0 {
-            // header error 4.1: invalid header length, not dividable by 8
-            let reason = format!("invalid header bit length {}", global_bit_pos);
-            return_err_1!((Error::header(reason), header_pos))
+            // header error 4
+            return_err!((
+                Error::header(
+                    4,
+                    format!(
+                        "invalid header bit length {}, not dividable by 8",
+                        global_bit_pos
+                    )
+                ),
+                header_pos
+            ))
         } else if global_bit_pos / 8 > MAX_MTU_IN_BYTES {
-            // header error 4.2: invalid header length, too large, exceed max MTU size
-            let reason = format!(
-                "header byte length {} is exceeds the maximum MTU size {}",
-                global_bit_pos / 8,
-                MAX_MTU_IN_BYTES
-            );
-            return_err_1!((Error::header(reason), header_pos))
+            // header error 5
+            return_err!((
+                Error::header(
+                    5,
+                    format!(
+                        "header byte length {} is exceeds the maximum MTU size {}",
+                        global_bit_pos / 8,
+                        MAX_MTU_IN_BYTES
+                    )
+                ),
+                header_pos
+            ))
         } else {
             Ok(Self {
                 header_len_in_bytes: (global_bit_pos / 8) as usize,
@@ -112,18 +141,22 @@ impl Header {
         }
     }
 
+    /// Return an iterator that generates each `Field` and start `BitPos` of
+    /// each `Field`.
     pub fn field_iter(&self) -> impl Iterator<Item = (&Field, BitPos)> {
         self.field_list
             .iter()
             .map(|(name, field)| (field, self.field_position.get(name).unwrap().0))
     }
 
+    /// Given a field name `s`, return the corresponding `Field`.
     pub fn field(&self, s: &'_ str) -> Option<(&Field, BitPos)> {
         let (bit_pos, index) = self.field_position.get(s)?;
 
         Some((&self.field_list[*index].1, *bit_pos))
     }
 
+    /// Get the length of the fixed header in bytes.
     pub fn header_len_in_bytes(&self) -> usize {
         self.header_len_in_bytes
     }
