@@ -144,3 +144,8 @@ fn header_error_3() {
 fn header_error_4() {
     test_parse_error!("header_error_4.pktfmt", parser::PacketParser);
 }
+
+#[test]
+fn length_error_1() {
+    print_parse_result!("length_error_1.pktfmt", parser::PacketParser);
+}

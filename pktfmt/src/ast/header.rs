@@ -6,8 +6,6 @@ use super::field::Field;
 use super::number::MAX_MTU_IN_BYTES;
 use super::Error;
 
-const RESERVED_FIELD_NAMES: &[&str] = &["header_len", "payload_len", "packet_len"];
-
 /// The ast type constructed when parsing `header` list from the pktfmt script.
 ///
 /// **Member fields:**

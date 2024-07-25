@@ -49,7 +49,7 @@ enum ErrorType {
     NumberError,
     // 6 errors
     FieldDef,
-    // 5 errors
+    // 4 errors
     HeaderDef,
     // 10 errors
     LengthDef,
