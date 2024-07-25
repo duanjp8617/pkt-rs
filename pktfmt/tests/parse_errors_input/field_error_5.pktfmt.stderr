@@ -1,0 +1,12 @@
+ast error
+at /home/djp/pkt-rs/pktfmt/tests/parse_errors_input/field_error_5.pktfmt 3:23-8:9
+                          ~~~~~~~
+3 |         fake_field1 = Field {
+4 |             bit = 16,
+5 |             repr = &[u8],
+6 |             arg = &[u8],
+7 |             default = [0,1,2]
+8 |         }
+    ^^^^^^^^^
+field error 5:
+invalid default [0, 1, 2], should be 2-byte array

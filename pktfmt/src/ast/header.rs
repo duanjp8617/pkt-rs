@@ -62,35 +62,19 @@ impl Header {
                         Error::header(1, format!("duplicated header field name {}", &sp_str.item)),
                         sp_str.span
                     ))
-                } else if RESERVED_FIELD_NAMES
-                    .iter()
-                    .find(|reserved| **reserved == &sp_str.item)
-                    .is_some()
-                {
-                    // header error 2
-                    return_err!((
-                        Error::header(
-                            2,
-                            format!(
-                                "header field name {} is reserved and can't be used",
-                                &sp_str.item
-                            )
-                        ),
-                        sp_str.span
-                    ))
                 } else {
                     // calculate the start and end bit position of the header
                     let start = BitPos::new(global_bit_pos);
                     let end = start.next_pos(field.bit);
 
                     if field.bit > 8 && start.bit_pos != 0 && end.bit_pos != 7 {
-                        // header error 3
+                        // header error 2
                         // If the header field contains multiple bytes, then one of two ends must be
                         // aligned to the byte boudary. In this branch, neither of
                         // the two ends are aligned to the byte boundary, we report an error.
                         return_err!((
                             Error::header(
-                                3,
+                                2,
                                 format!(
                             "header field {} is not correctly aligned to the byte boundaries",
                             &sp_str.item
@@ -108,10 +92,10 @@ impl Header {
             .collect::<Result<Vec<_>, (Error, (usize, usize))>>()?;
 
         if global_bit_pos % 8 != 0 {
-            // header error 4
+            // header error 3
             return_err!((
                 Error::header(
-                    4,
+                    3,
                     format!(
                         "invalid header bit length {}, not dividable by 8",
                         global_bit_pos
@@ -120,10 +104,10 @@ impl Header {
                 header_pos
             ))
         } else if global_bit_pos / 8 > MAX_MTU_IN_BYTES {
-            // header error 5
+            // header error 4
             return_err!((
                 Error::header(
-                    5,
+                    4,
                     format!(
                         "header byte length {} is exceeds the maximum MTU size {}",
                         global_bit_pos / 8,

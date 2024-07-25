@@ -1,0 +1,13 @@
+ast error
+at /home/djp/pkt-rs/pktfmt/tests/parse_errors_input/header_error_3.pktfmt 2:5-12:5
+         ~~~~~~~~~~
+ 2 |     header = [
+ 3 |         field_1 = Field {
+ 4 |             bit = 8, 
+......
+10 |             bit = 5, 
+11 |         }
+12 |     ]
+     ^^^^^
+header error 3:
+invalid header bit length 21, not dividable by 8

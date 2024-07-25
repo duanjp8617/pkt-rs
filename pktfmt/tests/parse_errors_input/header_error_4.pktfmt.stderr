@@ -1,0 +1,13 @@
+ast error
+at /home/djp/pkt-rs/pktfmt/tests/parse_errors_input/header_error_4.pktfmt 2:5-12:5
+         ~~~~~~~~~~
+ 2 |     header = [
+ 3 |         field_1 = Field {
+ 4 |             bit = 8, 
+......
+10 |             bit = 8388608, 
+11 |         }
+12 |     ]
+     ^^^^^
+header error 4:
+header byte length 1048578 is exceeds the maximum MTU size 1048575

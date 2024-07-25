@@ -1,0 +1,11 @@
+ast error
+at /home/djp/pkt-rs/pktfmt/tests/parse_errors_input/field_error_4.pktfmt 3:23-7:9
+                          ~~~~~~~
+3 |         fake_field1 = Field {
+4 |             bit = 1, 
+5 |             arg = bool,
+6 |             default = 5
+7 |         }
+    ^^^^^^^^^
+field error 4:
+invalid default 5 for boolean arg, should be true or false

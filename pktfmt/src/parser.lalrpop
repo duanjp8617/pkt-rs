@@ -140,7 +140,7 @@ DefaultVal: DefaultVal = {
      ByteArray => DefaultVal::Bytes(<>)
 }
 
-pub Field: Field = {
+Field: Field = {
     <l: @L> "Field" "{"
         "bit" "=" <bit: Num> 
         <repr: ("," "repr" "=" <BuiltinTypes>)?>
@@ -162,7 +162,7 @@ NamedField: (Spanned<String>, Field) = {
     }
 }
 
-pub Header: Header = {
+Header: Header = {
     <l: @L> "header" "=" "["
         <header_list: List<NamedField>>
     "]" <r: @R> =>? {

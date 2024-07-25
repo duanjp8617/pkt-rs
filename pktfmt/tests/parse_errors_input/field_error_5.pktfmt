@@ -1,0 +1,11 @@
+packet FakeProto {
+    header = [
+        fake_field1 = Field {
+            bit = 16,
+            repr = &[u8],
+            arg = &[u8],
+            default = [0,1,2]
+        }
+    ]
+}
+

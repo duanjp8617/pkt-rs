@@ -1,0 +1,10 @@
+ast error
+at /home/djp/pkt-rs/pktfmt/tests/parse_errors_input/field_error_3.pktfmt 3:23-6:9
+                          ~~~~~~~
+3 |         fake_field1 = Field {
+4 |             bit = 8, 
+5 |             arg = u16,
+6 |         }
+    ^^^^^^^^^
+field error 3:
+invalid arg u16 under repr u8

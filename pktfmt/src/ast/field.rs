@@ -187,7 +187,7 @@ impl Field {
                     return_err!(Error::field(
                         5,
                         format!(
-                            "invalid default {} byte slice repr, should be {}-byte array",
+                            "invalid default {}, should be {}-byte array",
                             defined_default,
                             bit / 8
                         )
@@ -203,7 +203,7 @@ impl Field {
                     return_err!(Error::field(
                         6,
                         format!(
-                            "invalid default {} for number repr, should be number smaller than {}",
+                            "invalid default {} , should be smaller than {}",
                             defined_default,
                             2_u64.pow(bit as u32)
                         )
@@ -296,7 +296,7 @@ impl fmt::Display for DefaultVal {
         match self {
             Self::Num(n) => write!(fmt, "{}", n),
             Self::Bool(b) => write!(fmt, "{}", b),
-            Self::Bytes(v) => write!(fmt, "{} Bytes", v.len()),
+            Self::Bytes(v) => write!(fmt, "{:?}", &v[..]),
         }
     }
 }

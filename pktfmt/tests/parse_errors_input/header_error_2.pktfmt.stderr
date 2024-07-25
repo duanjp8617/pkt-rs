@@ -1,0 +1,6 @@
+ast error
+at /home/djp/pkt-rs/pktfmt/tests/parse_errors_input/header_error_2.pktfmt 6:9-15
+6 |         field_2 = Field {
+            ^^^^^^^
+header error 2:
+header field field_2 is not correctly aligned to the byte boundaries

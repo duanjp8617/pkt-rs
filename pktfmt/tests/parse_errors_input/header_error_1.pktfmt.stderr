@@ -1,0 +1,6 @@
+ast error
+at /home/djp/pkt-rs/pktfmt/tests/parse_errors_input/header_error_1.pktfmt 6:9-19
+6 |         field_name1 = Field {
+            ^^^^^^^^^^^
+header error 1:
+duplicated header field name field_name1

@@ -3,7 +3,7 @@ use std::io::{Write, Read};
 
 use pktfmt::*;
 
-#[allow(dead_code)]
+#[allow(unused_macros)]
 macro_rules! test_parse_error {
     (   
         $file_name: expr,
@@ -34,6 +34,28 @@ macro_rules! test_parse_error {
             f.read_to_string(&mut err_text).unwrap();
 
             assert_eq!(std::str::from_utf8(&out[..]).unwrap(), &err_text);
+        }
+    };
+}
+
+#[allow(unused_macros)]
+macro_rules! print_parse_result {
+    (   
+        $file_name: expr,
+        $parser: ty
+    ) => {
+        {
+            // The test is executed under the crate root directory.
+            let mut program_path = std::env::current_dir().unwrap();
+            program_path.push("tests");
+            program_path.push("parse_errors_input");
+            program_path.push($file_name);
+
+            let file_text = ::pktfmt::file_text::FileText::new(program_path.as_path()).unwrap();
+            let tokenizer = ::pktfmt::token::Tokenizer::new(file_text.text());
+            let parse_res = ::pktfmt::parse_with_error!($parser, tokenizer);
+
+            println!("{:?}", parse_res);
         }
     };
 }
@@ -72,6 +94,53 @@ macro_rules! dump_parse_error {
 
 #[test]
 fn field_error_1() {
-    test_parse_error!("field_error_1", parser::PacketParser);
+    test_parse_error!("field_error_1.pktfmt", parser::PacketParser);
 }
 
+#[test]
+fn field_error_2() {
+    test_parse_error!("field_error_2.pktfmt", parser::PacketParser);
+}
+
+
+#[test]
+fn field_error_3() {
+    test_parse_error!("field_error_3.pktfmt", parser::PacketParser);
+}
+
+
+#[test]
+fn field_error_4() {
+    test_parse_error!("field_error_4.pktfmt", parser::PacketParser);
+}
+
+#[test]
+fn field_error_5() {
+    test_parse_error!("field_error_5.pktfmt", parser::PacketParser);
+}
+
+#[test]
+fn field_error_6() {
+    test_parse_error!("field_error_6.pktfmt", parser::PacketParser);
+}
+
+
+#[test]
+fn header_error_1() {
+    test_parse_error!("header_error_1.pktfmt", parser::PacketParser);
+}
+
+#[test]
+fn header_error_2() {
+    test_parse_error!("header_error_2.pktfmt", parser::PacketParser);
+}
+
+#[test]
+fn header_error_3() {
+    test_parse_error!("header_error_3.pktfmt", parser::PacketParser);
+}
+
+#[test]
+fn header_error_4() {
+    test_parse_error!("header_error_4.pktfmt", parser::PacketParser);
+}
