@@ -91,61 +91,25 @@ macro_rules! dump_parse_error {
     };
 }
 
-
-#[test]
-fn field_error_1() {
-    test_parse_error!("field_error_1.pktfmt", parser::PacketParser);
+#[allow(unused_macros)]
+macro_rules! test_parse_eror_list {
+    (
+        [$($file_name: ident),*],
+        $parser: ty
+    ) => {
+        $(
+            #[test]
+            fn $file_name() {
+                test_parse_error!(concat!(stringify!($file_name), ".pktfmt"), $parser)
+            }
+        )*
+    }
 }
 
-#[test]
-fn field_error_2() {
-    test_parse_error!("field_error_2.pktfmt", parser::PacketParser);
-}
-
-
-#[test]
-fn field_error_3() {
-    test_parse_error!("field_error_3.pktfmt", parser::PacketParser);
-}
-
-
-#[test]
-fn field_error_4() {
-    test_parse_error!("field_error_4.pktfmt", parser::PacketParser);
-}
-
-#[test]
-fn field_error_5() {
-    test_parse_error!("field_error_5.pktfmt", parser::PacketParser);
-}
-
-#[test]
-fn field_error_6() {
-    test_parse_error!("field_error_6.pktfmt", parser::PacketParser);
-}
-
-
-#[test]
-fn header_error_1() {
-    test_parse_error!("header_error_1.pktfmt", parser::PacketParser);
-}
-
-#[test]
-fn header_error_2() {
-    test_parse_error!("header_error_2.pktfmt", parser::PacketParser);
-}
-
-#[test]
-fn header_error_3() {
-    test_parse_error!("header_error_3.pktfmt", parser::PacketParser);
-}
-
-#[test]
-fn header_error_4() {
-    test_parse_error!("header_error_4.pktfmt", parser::PacketParser);
-}
-
-#[test]
-fn length_error_1() {
-    print_parse_result!("length_error_1.pktfmt", parser::PacketParser);
-}
+test_parse_eror_list!(
+    [field_error_1, field_error_2, field_error_3, field_error_4, field_error_5, field_error_6,
+     header_error_1, header_error_2, header_error_3, header_error_4, 
+     length_error_1, length_error_2, length_error_3, length_error_4, length_error_5, length_error_6,
+     length_error_7, length_error_8, length_error_9, length_error_10],
+    parser::PacketParser
+);

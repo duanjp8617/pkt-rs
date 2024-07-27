@@ -1,0 +1,18 @@
+packet FakeProto {
+    header = [
+        field_1 = Field {
+            bit = 8, 
+        },
+        field_2 = Field {
+            bit = 8, 
+        },
+        field_3 = Field {
+            bit = 8, 
+        }
+    ],
+    length = [
+        header_len =field_5*3,
+        payload_len =field_2*3,
+    ]
+}
+

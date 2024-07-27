@@ -79,7 +79,7 @@ impl Length {
     fn check_length_field(&self, header: &Header, index: usize) -> Result<(), Error> {
         let length_field = &self.length_fields[index];
         match Self::check_length_field_basic(header, length_field)? {
-            Some((field_bit, expr, fixed_length_opt)) => match fixed_length_opt {
+            Some((field_bit_size, expr, fixed_length_opt)) => match fixed_length_opt {
                 Some(fixed_length) => {
                     if index != 0 {
                         // only header_len can be associated with a fixed length,
@@ -126,7 +126,7 @@ impl Length {
                     // of the header/payload/packet_len, we perform the
                     // following checks
 
-                    let x_max = 2_u64.pow(u32::try_from(field_bit).unwrap()) - 1;
+                    let x_max = 2_u64.pow(u32::try_from(field_bit_size).unwrap()) - 1;
                     // length error 5
                     let max_length = expr.exec(x_max).ok_or(Error::length(
                         5,
@@ -215,7 +215,7 @@ impl Length {
                         // length error 9
                         Err(Error::length(
                             9,
-                            format!("invalid length expression field {:?}", field),
+                            format!("the field used by length expression is invalid: {:?}", field),
                         ))
                     }
                 }
@@ -429,7 +429,7 @@ pub(crate) enum AlgExpr {
 }
 
 impl AlgExpr {
-    // length error x: algorithmic expression is too complex
+    // length error 10: algorithmic expression is too complex
     pub(crate) fn try_take_usable_alg_expr(&self) -> Result<UsableAlgExpr, Error> {
         self.try_take_all_types().ok_or(Error::field(
             10,

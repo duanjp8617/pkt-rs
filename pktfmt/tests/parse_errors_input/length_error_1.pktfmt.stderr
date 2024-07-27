@@ -1,0 +1,11 @@
+ast error
+at /home/djp/pkt-rs/pktfmt/tests/parse_errors_input/length_error_1.pktfmt 13:5-17:5
+         ~~~~~~~~~~
+13 |     length = [
+14 |         header_len =field_1*3@3,
+15 |         payload_len =,
+16 |         packet_len=
+17 |     ]
+     ^^^^^
+length error 1:
+invalid packet length format

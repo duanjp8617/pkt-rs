@@ -1,0 +1,10 @@
+ast error
+at /home/djp/pkt-rs/pktfmt/tests/parse_errors_input/length_error_9.pktfmt 14:5-17:5
+         ~~~~~~~~~~
+14 |     length = [
+15 |         header_len =field_1*4,
+16 |         payload_len =field_2*3,
+17 |     ]
+     ^^^^^
+length error 9:
+the field used by length expression is invalid: Field { bit: 16, repr: ByteSlice, arg: BuiltinTypes(ByteSlice), default: Bytes([0, 0]), gen: true }
