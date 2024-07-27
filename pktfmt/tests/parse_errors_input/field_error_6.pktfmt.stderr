@@ -7,4 +7,4 @@ at /home/djp/pkt-rs/pktfmt/tests/parse_errors_input/field_error_6.pktfmt 3:23-6:
 6 |         },
     ^^^^^^^^^
 field error 6:
-invalid default 1000 , should be smaller than 16
+invalid default 1000 , should be no larger than 15

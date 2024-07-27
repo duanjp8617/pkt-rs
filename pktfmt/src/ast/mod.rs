@@ -114,3 +114,16 @@ impl Error {
         }
     }
 }
+
+// calculate the max value of `bit` bits for `u64`
+pub(crate) fn max_value(bit: u64) -> Option<u64> {
+    assert!(bit > 0);
+    
+    if bit > 64 {
+        None
+    } else if bit < 64 {
+        Some((1 << bit) - 1)
+    } else {
+        Some(u64::MAX)
+    }
+}

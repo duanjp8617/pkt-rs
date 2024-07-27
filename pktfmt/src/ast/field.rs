@@ -1,6 +1,6 @@
 use std::fmt;
 
-use super::Error;
+use super::{max_value, Error};
 
 /// The ast type constructed when parsing `Field` definition.
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -197,15 +197,15 @@ impl Field {
             _ => match &defined_default {
                 // Ok: repr is u8/u16/u32/u64, default to number.
                 // The default number must be smaller than 2^bit.
-                DefaultVal::Num(n) if *n < 2_u64.pow(bit as u32) => Ok(defined_default),
+                DefaultVal::Num(n) if *n <= max_value(bit).unwrap() => Ok(defined_default),
                 _ => {
                     // field error 6
                     return_err!(Error::field(
                         6,
                         format!(
-                            "invalid default {} , should be smaller than {}",
+                            "invalid default {} , should be no larger than {}",
                             defined_default,
-                            2_u64.pow(bit as u32)
+                            max_value(bit).unwrap()
                         )
                     ))
                 }

@@ -140,7 +140,7 @@ DefaultVal: DefaultVal = {
      ByteArray => DefaultVal::Bytes(<>)
 }
 
-Field: Field = {
+pub Field: Field = {
     <l: @L> "Field" "{"
         "bit" "=" <bit: Num> 
         <repr: ("," "repr" "=" <BuiltinTypes>)?>

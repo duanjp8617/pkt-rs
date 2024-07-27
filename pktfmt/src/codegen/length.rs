@@ -1,20 +1,30 @@
 use std::io::Write;
 
-use crate::ast::{BitPos, Field, UsableAlgExpr};
+use crate::ast::{max_value, BitPos, Field, UsableAlgExpr};
 
 use super::{FieldGetMethod, FieldSetMethod, HeadTailWriter};
 
-pub(crate) struct LengthGetMethod<'a> {
+/// A helper object that generate length get method for length field.
+pub struct LengthGetMethod<'a> {
     field: &'a Field,
     start: BitPos,
     expr: &'a UsableAlgExpr,
 }
 
 impl<'a> LengthGetMethod<'a> {
-    // Generate a get method to access the length field with name
-    // `length_field_name` from the buffer slice `target_slice`.
-    // The generated method is written to `output`.
-    fn code_gen(&self, length_field_name: &str, target_slice: &str, mut output: &mut dyn Write) {
+    pub fn new(field: &'a Field, start: BitPos, expr: &'a UsableAlgExpr) -> Self {
+        Self { field, start, expr }
+    }
+
+    /// Generate a get method to access the length field with name
+    /// `length_field_name` from the buffer slice `target_slice`.
+    /// The generated method is written to `output`.
+    pub fn code_gen(
+        &self,
+        length_field_name: &str,
+        target_slice: &str,
+        mut output: &mut dyn Write,
+    ) {
         // Generate function definition for a length field get method.
         // It will generate:
         // pub fn length_field_name(&self) -> usize {
@@ -48,18 +58,23 @@ impl<'a> LengthGetMethod<'a> {
     }
 }
 
-struct LengthSetMethod<'a> {
+/// A helper object that generate length set method for length field.
+pub struct LengthSetMethod<'a> {
     field: &'a Field,
     start: BitPos,
     expr: &'a UsableAlgExpr,
 }
 
 impl<'a> LengthSetMethod<'a> {
-    // Generate a set method for the length field with name `length_field_name`.
-    // The method will set the length value stored in `write_value` to the field
-    // area stored in `target_slice`.
-    // The generated method is written to `output`.
-    fn code_gen(
+    pub fn new(field: &'a Field, start: BitPos, expr: &'a UsableAlgExpr) -> Self {
+        Self { field, start, expr }
+    }
+
+    /// Generate a set method for the length field with name
+    /// `length_field_name`. The method will set the length value stored in
+    /// `write_value` to the field area stored in `target_slice`.
+    /// The generated method is written to `output`.
+    pub fn code_gen(
         &self,
         length_field_name: &str,
         target_slice: &str,
@@ -80,31 +95,16 @@ impl<'a> LengthSetMethod<'a> {
         // method.
         let mut guards = Vec::new();
 
-        /* Here, the `USIZE_BYTES` is the total byte number of the `usize` type.
-        `usize` is the default argument type for all the length methods, this
-        is designed to facilitate length calculation in rust.
+        // Here, the bit size of the length field is guaranteed to be smaller than that
+        // of usize. In the meantime, the maximum length that can be calculated derived
+        // from the underlying expression is guaranteed to be a value that can fit in
+        // usize as well. So here, we just need to make sure that the input argument is
+        // smaller than the maximum length.
+        guards.push(format!(
+            "{write_value}<={}",
+            self.expr.exec(max_value(self.field.bit).unwrap()).unwrap()
+        ));
 
-        In the parser, we will make sure that, for the field that is used for
-        length calculation, its bit size should not exceed `USIZE_BYTES * 8`.
-        We will have two branches depending on the field bit size:
-
-        1st, if field bit size equals `USIZE_BYTES * 8`, then the only possible
-        way to calculate the maximum length without triggering overflow is to
-        directly return the field value. In this case, we don't need any form of
-        guard condition for the length set method.
-
-        2nd, if the bit size is smaller than `USIZE_BYTES * 8`, we need to make sure that
-        the input value to the header set method is smaller than the maximum expression value
-        produced by the maximum field value. */
-        if self.field.bit < crate::USIZE_BYTES * 8 {
-            // This guard condition corresponds to the 2nd branch.
-            guards.push(format!(
-                "{write_value}<={}",
-                self.expr
-                    .exec((2 as u64).pow(self.field.bit as u32) - 1)
-                    .unwrap()
-            ));
-        }
         let guard_str = self.expr.reverse_exec_guard(write_value);
         if guard_str.len() > 0 {
             // This guard condition ensures that the `write_value`
@@ -113,6 +113,7 @@ impl<'a> LengthSetMethod<'a> {
         }
 
         // If the guard conditions are present, we prepend them to the generated method.
+        // TODO: update code gen
         if guards.len() > 0 {
             let mut assert_writer =
                 HeadTailWriter::new(func_def_writer.get_writer(), "assert!(", ");\n");

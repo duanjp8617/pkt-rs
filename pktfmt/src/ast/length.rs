@@ -3,6 +3,7 @@ use std::io::Write;
 
 use super::field::{Arg, BuiltinTypes};
 use super::header::Header;
+use super::max_value;
 use super::number::MAX_MTU_IN_BYTES;
 use super::Error;
 
@@ -126,7 +127,7 @@ impl Length {
                     // of the header/payload/packet_len, we perform the
                     // following checks
 
-                    let x_max = 2_u64.pow(u32::try_from(field_bit_size).unwrap()) - 1;
+                    let x_max = max_value(field_bit_size).unwrap();
                     // length error 5
                     let max_length = expr.exec(x_max).ok_or(Error::length(
                         5,
@@ -200,6 +201,21 @@ impl Length {
                     format!("invalid length expression field name {}", name),
                 ))?;
 
+                // make sure that the bit size of the field used for length calculation does not
+                // exceeds the size of usize.
+                if field.bit > (std::mem::size_of::<usize>() as u64) * 8 {
+                    // length error 11
+                    return_err!(Error::length(
+                        11,
+                        format!(
+                            "the bit size {} of length field {} exceeds the bit size {} of usize",
+                            field.bit,
+                            name,
+                            (std::mem::size_of::<usize>()) * 8
+                        )
+                    ))
+                }
+
                 // A field can only be used in a length expression if the repr is not a byte
                 // slice and that the arg is the same as the repr.
                 match field.arg {
@@ -215,7 +231,10 @@ impl Length {
                         // length error 9
                         Err(Error::length(
                             9,
-                            format!("the field used by length expression is invalid: {:?}", field),
+                            format!(
+                                "the field used by length expression is invalid: {:?}",
+                                field
+                            ),
                         ))
                     }
                 }
