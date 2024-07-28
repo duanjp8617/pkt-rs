@@ -8,6 +8,9 @@ pub use field::*;
 mod length;
 pub use length::*;
 
+mod packet;
+pub use packet::*;
+
 // A writer object that appends prefix string and prepends suffix string to the
 // underlying content.
 struct HeadTailWriter<T: Write> {
@@ -177,6 +180,87 @@ fn rust_var_as_repr(var_name: &str, repr: BuiltinTypes) -> String {
             format!("{var_name}.as_byte_slice()")
         }
         _ => panic!(),
+    }
+}
+
+trait FieldAccessMethod {
+    fn field_list(&self) -> &Vec<(String, Field)>;
+    fn field_pos_map(&self) -> &HashMap<String, (BitPos, usize)>;
+    fn length_fields(&self) -> &Vec<LengthField>;
+
+    fn fixed_header_len(&self) -> u64 {
+        let (field_name, field) = self.field_list().last().unwrap();
+        let (start, _) = self.field_pos_map().get(field_name).unwrap();
+        let end = start.next_pos(field.bit);
+
+        end.byte_pos + 1
+    }
+
+    fn get_method_gen(&self, target_slice: &str, output: &mut dyn Write) {
+        for (field_name, field) in self.field_list() {
+            let (start, _) = self.field_pos_map().get(field_name).unwrap();
+
+            FieldGetMethod {
+                field,
+                start: *start,
+            }
+            .code_gen(field_name, target_slice, output);
+        }
+    }
+
+    fn set_method_gen(&self, target_slice: &str, write_value: &str, output: &mut dyn Write) {
+        for (field_name, field) in self.field_list() {
+            let (start, _) = self.field_pos_map().get(field_name).unwrap();
+
+            FieldSetMethod {
+                field,
+                start: *start,
+            }
+            .code_gen(field_name, target_slice, write_value, output);
+        }
+    }
+
+    fn get_length_gen(&self, target_slice: &str, output: &mut dyn Write) {
+        self.length_fields()
+            .iter()
+            .enumerate()
+            .for_each(|(idx, length_field)| {
+                length_field.try_get_expr().map(|expr| {
+                    let (start, field_idx) = self.field_pos_map().get(expr.field_name()).unwrap();
+                    let (_, field) = &self.field_list()[*field_idx];
+
+                    LengthGetMethod {
+                        field,
+                        start: *start,
+                        expr,
+                    }
+                    .code_gen(LENGTH_FIELD_NAMES[idx], target_slice, output);
+                });
+            });
+    }
+
+    fn set_length_gen(&self, target_slice: &str, write_value: &str, output: &mut dyn Write) {
+        self.length_fields()
+            .iter()
+            .enumerate()
+            .for_each(|(idx, length_field)| {
+                length_field.try_get_expr().map(|expr| {
+                    let (start, field_idx) = self.field_pos_map().get(expr.field_name()).unwrap();
+                    let (_, field) = &self.field_list()[*field_idx];
+
+                    LengthSetMethod {
+                        field,
+                        start: *start,
+                        expr,
+                    }
+                    .code_gen(
+                        LENGTH_FIELD_NAMES[idx],
+                        target_slice,
+                        write_value,
+                        output,
+                    );
+                });
+            });
     }
 }
 
