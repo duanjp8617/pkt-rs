@@ -1,6 +1,6 @@
 use std::io::{Read, Write};
 
-use crate::ast::BuiltinTypes;
+use crate::ast::{BuiltinTypes, Header, Length, LengthField, Packet};
 
 mod field;
 pub use field::*;
@@ -183,86 +183,90 @@ fn rust_var_as_repr(var_name: &str, repr: BuiltinTypes) -> String {
     }
 }
 
-trait FieldAccessMethod {
-    fn field_list(&self) -> &Vec<(String, Field)>;
-    fn field_pos_map(&self) -> &HashMap<String, (BitPos, usize)>;
-    fn length_fields(&self) -> &Vec<LengthField>;
+// A trait that can help generate all the field access methods.
+trait GenerateFieldAccessMethod {
+    const LENGTH_FIELD_NAMES: &'static [&'static str] =
+        &["header_len", "payload_len", "packet_len"];
 
-    fn fixed_header_len(&self) -> u64 {
-        let (field_name, field) = self.field_list().last().unwrap();
-        let (start, _) = self.field_pos_map().get(field_name).unwrap();
-        let end = start.next_pos(field.bit);
+    fn header(&self) -> &Header;
+    fn length(&self) -> &Length;
 
-        end.byte_pos + 1
-    }
-
-    fn get_method_gen(&self, target_slice: &str, output: &mut dyn Write) {
-        for (field_name, field) in self.field_list() {
-            let (start, _) = self.field_pos_map().get(field_name).unwrap();
-
-            FieldGetMethod {
-                field,
-                start: *start,
-            }
-            .code_gen(field_name, target_slice, output);
-        }
-    }
-
-    fn set_method_gen(&self, target_slice: &str, write_value: &str, output: &mut dyn Write) {
-        for (field_name, field) in self.field_list() {
-            let (start, _) = self.field_pos_map().get(field_name).unwrap();
-
-            FieldSetMethod {
-                field,
-                start: *start,
-            }
-            .code_gen(field_name, target_slice, write_value, output);
-        }
-    }
-
-    fn get_length_gen(&self, target_slice: &str, output: &mut dyn Write) {
-        self.length_fields()
-            .iter()
-            .enumerate()
-            .for_each(|(idx, length_field)| {
-                length_field.try_get_expr().map(|expr| {
-                    let (start, field_idx) = self.field_pos_map().get(expr.field_name()).unwrap();
-                    let (_, field) = &self.field_list()[*field_idx];
-
-                    LengthGetMethod {
-                        field,
-                        start: *start,
-                        expr,
-                    }
-                    .code_gen(LENGTH_FIELD_NAMES[idx], target_slice, output);
-                });
-            });
-    }
-
-    fn set_length_gen(&self, target_slice: &str, write_value: &str, output: &mut dyn Write) {
-        self.length_fields()
-            .iter()
-            .enumerate()
-            .for_each(|(idx, length_field)| {
-                length_field.try_get_expr().map(|expr| {
-                    let (start, field_idx) = self.field_pos_map().get(expr.field_name()).unwrap();
-                    let (_, field) = &self.field_list()[*field_idx];
-
-                    LengthSetMethod {
-                        field,
-                        start: *start,
-                        expr,
-                    }
-                    .code_gen(
-                        LENGTH_FIELD_NAMES[idx],
+    fn header_field_method_gen(
+        &self,
+        target_slice: &str,
+        write_value: Option<&str>,
+        output: &mut dyn Write,
+    ) {
+        for (field_name, field, start) in self.header().field_iter() {
+            match write_value {
+                Some(write_value) => {
+                    FieldSetMethod::new(field, start).code_gen(
+                        field_name,
                         target_slice,
                         write_value,
                         output,
                     );
-                });
-            });
+                }
+                None => {
+                    FieldGetMethod::new(field, start).code_gen(field_name, target_slice, output)
+                }
+            }
+        }
+    }
+
+    fn length_field_method_gen(
+        &self,
+        target_slice: &str,
+        write_value: Option<&str>,
+        output: &mut dyn Write,
+    ) {
+        for index in 0..3 {
+            match self.length().at(index) {
+                LengthField::Expr {
+                    expr,
+                    fixed_length_opt: _,
+                } => {
+                    let (field, start) = self.header().field(expr.field_name()).unwrap();
+                    match write_value {
+                        Some(write_value) => {
+                            LengthSetMethod::new(field, start, expr).code_gen(
+                                Self::LENGTH_FIELD_NAMES[index],
+                                target_slice,
+                                write_value,
+                                output,
+                            );
+                        }
+                        None => {
+                            LengthGetMethod::new(field, start, expr).code_gen(
+                                Self::LENGTH_FIELD_NAMES[index],
+                                target_slice,
+                                output,
+                            );
+                        }
+                    }
+                }
+                _ => {} // do nothing
+            }
+        }
     }
 }
+
+macro_rules! impl_generate_field_access_method {
+    ($($ast_ty: ident),*) => {
+        $(
+            impl $crate::codegen::GenerateFieldAccessMethod for $ast_ty {
+                fn header(&self) -> &$crate::ast::Header {
+                    self.header()
+                }
+
+                fn length(&self) -> &$crate::ast::Length {
+                    self.length()
+                }
+            }
+        )*
+    };
+}
+impl_generate_field_access_method!(Packet);
 
 #[cfg(test)]
 mod tests {

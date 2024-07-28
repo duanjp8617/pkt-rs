@@ -125,10 +125,10 @@ impl Header {
 
     /// Return an iterator that generates each `Field` and start `BitPos` of
     /// each `Field`.
-    pub fn field_iter(&self) -> impl Iterator<Item = (&Field, BitPos)> {
+    pub fn field_iter(&self) -> impl Iterator<Item = (&str, &Field, BitPos)> {
         self.field_list
             .iter()
-            .map(|(name, field)| (field, self.field_position.get(name).unwrap().0))
+            .map(|(name, field)| (&name[..], field, self.field_position.get(name).unwrap().0))
     }
 
     /// Given a field name `s`, return the corresponding `Field`.

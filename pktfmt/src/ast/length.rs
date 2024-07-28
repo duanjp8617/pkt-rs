@@ -16,19 +16,8 @@ pub struct Length {
 }
 
 impl Length {
-    /// Get the header length field.
-    pub fn header_len(&self) -> &LengthField {
-        &self.length_fields[0]
-    }
-
-    /// Get the payload length field.
-    pub fn payload_len(&self) -> &LengthField {
-        &self.length_fields[1]
-    }
-
-    /// Get the packet length field.
-    pub fn packet_len(&self) -> &LengthField {
-        &self.length_fields[2]
+    pub fn at(&self, index: usize) -> &LengthField {
+        &self.length_fields[index]
     }
 }
 
@@ -41,7 +30,7 @@ impl Length {
         // `length_fields` is created by the parser, its length is guaranteed to be 3.
 
         let res = Self { length_fields };
-        match (res.header_len(), res.payload_len(), res.packet_len()) {
+        match (res.at(0), res.at(1), res.at(2)) {
             (LengthField::None, LengthField::None, LengthField::None) => {
                 // no length definition, no check is needed
             }
