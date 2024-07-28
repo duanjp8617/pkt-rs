@@ -575,7 +575,6 @@ impl<'a> FieldSetMethod<'a> {
         output: &mut dyn Write,
     ) {
         let end = self.start.next_pos(self.field.bit);
-        assert!(self.field.bit <= 8 && self.start.byte_pos != end.byte_pos);
 
         // The field will have the following form:
         // 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7

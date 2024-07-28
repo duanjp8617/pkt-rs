@@ -1,6 +1,6 @@
 use std::io::Write;
 
-use crate::ast::Packet;
+use crate::ast::{Arg, DefaultVal, Packet};
 
 use super::{GenerateFieldAccessMethod, HeadTailWriter};
 
@@ -81,6 +81,44 @@ impl<'a> HeaderImpl<'a> {
     // Return the name of the header length const.
     fn header_len_name(&self) -> String {
         self.packet.protocol_name().to_uppercase() + "_HEADER_LEN"
+    }
+
+    fn predefined_header(&self) -> Vec<u8> {
+        let packet = self.packet;
+
+        let mut header_template = Vec::new();
+        header_template.resize(packet.header().header_len_in_bytes(), 0);
+        let target_slice = &mut header_template[..];
+
+        for (_, field, start) in packet.header().field_iter() {
+            match &field.arg {
+                Arg::BuiltinTypes(defined_arg) if *defined_arg != field.repr => {
+                    let start_byte_pos = start.byte_pos as usize;
+                    let default_val = match field.default {
+                        DefaultVal::Bool(b) => b,
+                        _ => panic!(),
+                    };
+
+                    if default_val {
+                        target_slice[start_byte_pos] =
+                            target_slice[start_byte_pos] | (1 << (7 - start.bit_pos))
+                    } else {
+                        target_slice[start_byte_pos] =
+                            target_slice[start_byte_pos] | (!(1 << (7 - start.bit_pos)))
+                    }
+                }
+                _ => {
+                    let end = start.next_pos(field.bit);
+                    if field.bit <= 8 && start.byte_pos != end.byte_pos {
+                        // self.write_field_cross_byte(target_slice, write_value, output);
+                    } else {
+                        // self.write_field(target_slice, write_value, output);
+                    }
+                }
+            }
+        }
+
+        header_template
     }
 
     // Return the name of the header struct.
