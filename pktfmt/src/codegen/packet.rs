@@ -93,7 +93,7 @@ impl<'a> HeaderImpl<'a> {
         for (_, field, start) in packet.header().field_iter() {
             match &field.arg {
                 Arg::BuiltinTypes(defined_arg) if *defined_arg != field.repr => {
-                    let start_byte_pos = start.byte_pos as usize;
+                    let start_byte_pos = start.byte_pos() as usize;
                     let default_val = match field.default {
                         DefaultVal::Bool(b) => b,
                         _ => panic!(),
@@ -101,17 +101,17 @@ impl<'a> HeaderImpl<'a> {
 
                     if default_val {
                         target_slice[start_byte_pos] =
-                            target_slice[start_byte_pos] | (1 << (7 - start.bit_pos))
+                            target_slice[start_byte_pos] | (1 << (7 - u64::from(start.bit_pos())))
                     } else {
-                        target_slice[start_byte_pos] =
-                            target_slice[start_byte_pos] & (!(1 << (7 - start.bit_pos)))
+                        target_slice[start_byte_pos] = target_slice[start_byte_pos]
+                            & (!(1 << (7 - u64::from(start.bit_pos()))))
                     }
                 }
                 _ => {
                     let end = start.next_pos(field.bit);
-                    if field.bit <= 8 && start.byte_pos != end.byte_pos {
-                        let start_byte_pos = start.byte_pos as usize;
-                        let end_byte_pos = end.byte_pos as usize;
+                    if field.bit <= 8 && start.byte_pos() != end.byte_pos() {
+                        let start_byte_pos = start.byte_pos() as usize;
+                        let end_byte_pos = end.byte_pos() as usize;
                         let default_val = match field.default {
                             DefaultVal::Num(b) => b,
                             _ => panic!(),
@@ -130,8 +130,8 @@ impl<'a> HeaderImpl<'a> {
                         // 2. Right shift the `write_value` ("({}>>{})")
                         // 3. Glue them together and write to the area covering the 1st part.
                         target_slice[start_byte_pos] = (target_slice[start_byte_pos]
-                            & (!((1 << (8 - start.bit_pos)) - 1)))
-                            | ((default_val as u8) >> (end.bit_pos as u8 + 1));
+                            & (!((1 << (8 - start.bit_pos())) - 1)))
+                            | ((default_val as u8) >> (end.bit_pos() + 1));
 
                         // The 2nd part ("({}[{}]>>{})") is :
                         // 0 1 2 3 4 5 6 7
@@ -141,8 +141,8 @@ impl<'a> HeaderImpl<'a> {
                         // 2. Left shift the `write_value` ("({}<<{})")
                         // 3. Glue them together and write to the area covering the 2nd part.
                         target_slice[end_byte_pos] = (target_slice[end_byte_pos]
-                            & ((1 << (7 - end.bit_pos)) - 1))
-                            | ((default_val as u8) << (7 - end.bit_pos as u8));
+                            & ((1 << (7 - end.bit_pos())) - 1))
+                            | ((default_val as u8) << (7 - end.bit_pos()));
                     } else {
                         // self.write_field(target_slice, write_value, output);
                         match &field.repr {
@@ -159,8 +159,8 @@ impl<'a> HeaderImpl<'a> {
                                 // The field area contains no extra bits,
                                 // we just write `write_value` to the field
                                 // area.
-                                let target_slice = &mut target_slice[start.byte_pos as usize
-                                    ..(start.byte_pos + field.bit) as usize];
+                                let target_slice = &mut target_slice[start.byte_pos() as usize
+                                    ..(start.byte_pos() + field.bit) as usize];
                                 target_slice.copy_from_slice(&default_val[..]);
                             }
                             BuiltinTypes::U8 => {
@@ -170,7 +170,7 @@ impl<'a> HeaderImpl<'a> {
                                     _ => panic!(),
                                 };
 
-                                let write_target = &mut target_slice[start.byte_pos as usize];
+                                let write_target = &mut target_slice[start.byte_pos() as usize];
                                 if field.bit % 8 == 0 {
                                     // The field has the following form:
                                     // 0 1 2 3 4 5 6 7
@@ -182,12 +182,12 @@ impl<'a> HeaderImpl<'a> {
                                     // extract the rest of the bits through a
                                     // mask.
                                     let mut bit_mask: u8 = 0xff;
-                                    for i in (7 - end.bit_pos as u8)..(8 - start.bit_pos as u8) {
+                                    for i in (7 - end.bit_pos())..(8 - start.bit_pos()) {
                                         bit_mask = bit_mask & (!(1 << i));
                                     }
 
                                     let rest_of_bits =
-                                        target_slice[start.byte_pos as usize] & bit_mask;
+                                        target_slice[start.byte_pos() as usize] & bit_mask;
                                 }
                             }
                             _ => {}

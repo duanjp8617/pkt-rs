@@ -77,8 +77,11 @@ impl<'a> FieldGetMethod<'a> {
                     write!(
                         output,
                         "{target_slice}[{}]&{} != 0",
-                        self.start.byte_pos,
-                        ones_mask(7 - self.start.bit_pos, 7 - self.start.bit_pos)
+                        self.start.byte_pos(),
+                        ones_mask(
+                            7 - u64::from(self.start.bit_pos()),
+                            7 - u64::from(self.start.bit_pos())
+                        )
                     )
                     .unwrap();
                 }
@@ -93,7 +96,7 @@ impl<'a> FieldGetMethod<'a> {
     // `read_field_cross_byte`.
     pub(crate) fn read_repr(&self, target_slice: &str, output: &mut dyn Write) {
         let end = self.start.next_pos(self.field.bit);
-        if self.field.bit <= 8 && self.start.byte_pos != end.byte_pos {
+        if self.field.bit <= 8 && self.start.byte_pos() != end.byte_pos() {
             self.read_field_cross_byte(target_slice, output);
         } else {
             self.read_field(target_slice, output);
@@ -119,16 +122,16 @@ impl<'a> FieldGetMethod<'a> {
                 write!(
                     output,
                     "&{target_slice}[{}..{}]",
-                    self.start.byte_pos,
-                    self.start.byte_pos + byte_len(self.field.bit)
+                    self.start.byte_pos(),
+                    self.start.byte_pos() + byte_len(self.field.bit)
                 )
                 .unwrap();
             }
             BuiltinTypes::U8 => {
                 // Index the actual byte containing the field.
-                let read_byte = format!("{target_slice}[{}]", self.start.byte_pos);
+                let read_byte = format!("{target_slice}[{}]", self.start.byte_pos());
 
-                if end.bit_pos < 7 && self.start.bit_pos > 0 {
+                if end.bit_pos() < 7 && self.start.bit_pos() > 0 {
                     // The field has the following form:
                     // 0 1 2 3 4 5 6 7
                     //   | field |
@@ -138,17 +141,17 @@ impl<'a> FieldGetMethod<'a> {
                     write!(
                         output,
                         "({read_byte}>>{})&{}",
-                        7 - end.bit_pos,
+                        7 - u64::from(end.bit_pos()),
                         ones_mask(0, self.field.bit - 1)
                     )
                     .unwrap();
-                } else if end.bit_pos < 7 {
+                } else if end.bit_pos() < 7 {
                     // The field has the following form:
                     // 0 1 2 3 4 5 6 7
                     // | field |
                     // We only perform right shift.
-                    write!(output, "{read_byte}>>{}", 7 - end.bit_pos).unwrap();
-                } else if self.start.bit_pos > 0 {
+                    write!(output, "{read_byte}>>{}", 7 - end.bit_pos()).unwrap();
+                } else if self.start.bit_pos() > 0 {
                     // The field has the following form:
                     // 0 1 2 3 4 5 6 7
                     //       | field |
@@ -174,19 +177,19 @@ impl<'a> FieldGetMethod<'a> {
                     write!(
                         new.get_writer(),
                         "&{target_slice}[{}..{}]",
-                        self.start.byte_pos,
-                        self.start.byte_pos + byte_len(self.field.bit)
+                        self.start.byte_pos(),
+                        self.start.byte_pos() + byte_len(self.field.bit)
                     )
                     .unwrap();
                 }
 
-                if end.bit_pos < 7 {
+                if end.bit_pos() < 7 {
                     // The field has the form:
                     // 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
                     // |     field           |
                     // We perform a right shift.
-                    write!(output, ">>{}", 7 - end.bit_pos).unwrap();
-                } else if self.start.bit_pos > 0 {
+                    write!(output, ">>{}", 7 - end.bit_pos()).unwrap();
+                } else if self.start.bit_pos() > 0 {
                     // The field has the form:
                     // 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
                     //         |     field           |
@@ -226,10 +229,10 @@ impl<'a> FieldGetMethod<'a> {
         // Finally, we glue the two parts together with bitwise or.
         let read_result = format!(
             "({target_slice}[{}]<<{})|({target_slice}[{}]>>{})",
-            self.start.byte_pos,
-            end.bit_pos + 1,
-            end.byte_pos,
-            7 - end.bit_pos
+            self.start.byte_pos(),
+            end.bit_pos() + 1,
+            end.byte_pos(),
+            7 - end.bit_pos()
         );
 
         if self.field.bit < 8 {
@@ -299,7 +302,7 @@ impl<'a> FieldSetMethod<'a> {
                 //`bit` is 1, `repr` is `U8` and `arg` is bool.
                 // This will write 1 to the field bit if `write_value` is true,
                 // and write 0 to the field bit if `write_value` is false.
-                let start_byte_pos = self.start.byte_pos;
+                let start_byte_pos = self.start.byte_pos();
                 write!(
                     output,
                     "if {write_value} {{
@@ -307,8 +310,14 @@ impl<'a> FieldSetMethod<'a> {
 }} else {{
 {target_slice}[{start_byte_pos}]={target_slice}[{start_byte_pos}]&{}
 }}",
-                    ones_mask(7 - self.start.bit_pos, 7 - self.start.bit_pos),
-                    zeros_mask(7 - self.start.bit_pos, 7 - self.start.bit_pos)
+                    ones_mask(
+                        7 - u64::from(self.start.bit_pos()),
+                        7 - u64::from(self.start.bit_pos())
+                    ),
+                    zeros_mask(
+                        7 - u64::from(self.start.bit_pos()),
+                        u64::from(7 - self.start.bit_pos())
+                    )
                 )
                 .unwrap();
 
@@ -351,7 +360,7 @@ impl<'a> FieldSetMethod<'a> {
     // Note: it combines `write_field` and `write_field_cross_byte`.
     pub(crate) fn write_repr(&self, target_slice: &str, write_value: &str, output: &mut dyn Write) {
         let end = self.start.next_pos(self.field.bit);
-        if self.field.bit <= 8 && self.start.byte_pos != end.byte_pos {
+        if self.field.bit <= 8 && self.start.byte_pos() != end.byte_pos() {
             self.write_field_cross_byte(target_slice, write_value, output);
         } else {
             self.write_field(target_slice, write_value, output);
@@ -396,8 +405,8 @@ impl<'a> FieldSetMethod<'a> {
                     &mut output,
                     &format!(
                         "(&mut {target_slice}[{}..{}]).copy_from_slice(",
-                        self.start.byte_pos,
-                        self.start.byte_pos + byte_len(self.field.bit)
+                        self.start.byte_pos(),
+                        self.start.byte_pos() + byte_len(self.field.bit)
                     ),
                     ");",
                 );
@@ -407,7 +416,7 @@ impl<'a> FieldSetMethod<'a> {
                 let end = self.start.next_pos(self.field.bit);
 
                 // The write target is the byte containing the field.
-                let write_target = format!("{target_slice}[{}]", self.start.byte_pos);
+                let write_target = format!("{target_slice}[{}]", self.start.byte_pos());
 
                 if self.field.bit % 8 == 0 {
                     // The field has the following form:
@@ -420,11 +429,14 @@ impl<'a> FieldSetMethod<'a> {
                     // the rest of the bits through a mask.
                     let rest_of_bits = format!(
                         "({target_slice}[{}]&{})",
-                        self.start.byte_pos,
-                        zeros_mask(7 - end.bit_pos, 7 - self.start.bit_pos)
+                        self.start.byte_pos(),
+                        zeros_mask(
+                            7 - u64::from(end.bit_pos()),
+                            7 - u64::from(self.start.bit_pos())
+                        )
                     );
 
-                    if end.bit_pos == 7 {
+                    if end.bit_pos() == 7 {
                         // The field has the following form:
                         // 0 1 2 3 4 5 6 7
                         //       | field |
@@ -443,7 +455,7 @@ impl<'a> FieldSetMethod<'a> {
                         write!(
                             output,
                             "{write_target}={rest_of_bits}|({write_value}<<{});",
-                            7 - end.bit_pos
+                            7 - u64::from(end.bit_pos())
                         )
                         .unwrap();
                     }
@@ -465,8 +477,8 @@ impl<'a> FieldSetMethod<'a> {
                     write!(
                         field_writer.get_writer(),
                         "&mut {target_slice}[{}..{}],",
-                        self.start.byte_pos,
-                        self.start.byte_pos + byte_len(self.field.bit)
+                        self.start.byte_pos(),
+                        self.start.byte_pos() + byte_len(self.field.bit)
                     )
                     .unwrap();
 
@@ -486,7 +498,7 @@ impl<'a> FieldSetMethod<'a> {
                             ";\n",
                         );
 
-                        if end.bit_pos == 7 {
+                        if end.bit_pos() == 7 {
                             // The field has the form:
                             // 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
                             // |rest bits| |   field         |
@@ -499,8 +511,8 @@ impl<'a> FieldSetMethod<'a> {
                             write!(
                                 let_assign.get_writer(),
                                 "(({target_slice}[{}]&{}) as {}) << {}",
-                                self.start.byte_pos,
-                                ones_mask(8 - self.start.bit_pos, 7),
+                                self.start.byte_pos(),
+                                ones_mask(8 - u64::from(self.start.bit_pos()), 7),
                                 self.field.repr.to_string(),
                                 8 * (byte_len(self.field.bit) - 1),
                             )
@@ -513,8 +525,8 @@ impl<'a> FieldSetMethod<'a> {
                             write!(
                                 let_assign.get_writer(),
                                 "({target_slice}[{}]&{}) as {}",
-                                end.byte_pos,
-                                ones_mask(0, 6 - end.bit_pos),
+                                end.byte_pos(),
+                                ones_mask(0, 6 - u64::from(end.bit_pos())),
                                 self.field.repr.to_string()
                             )
                             .unwrap();
@@ -529,12 +541,12 @@ impl<'a> FieldSetMethod<'a> {
                     write!(
                         field_writer.get_writer(),
                         "&mut {target_slice}[{}..{}],",
-                        self.start.byte_pos,
-                        self.start.byte_pos + byte_len(self.field.bit)
+                        self.start.byte_pos(),
+                        self.start.byte_pos() + byte_len(self.field.bit)
                     )
                     .unwrap();
 
-                    if end.bit_pos == 7 {
+                    if end.bit_pos() == 7 {
                         // The field has the following form:
                         // 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
                         //             |   field         |
@@ -553,7 +565,7 @@ impl<'a> FieldSetMethod<'a> {
                         write!(
                             field_writer.get_writer(),
                             "{REST_OF_FIELD}|({write_value}<<{})",
-                            7 - end.bit_pos
+                            7 - end.bit_pos()
                         )
                         .unwrap();
                     }
@@ -588,12 +600,12 @@ impl<'a> FieldSetMethod<'a> {
         // 1. Read the rest of the bits on the first part ("({}[{}]&{})")
         // 2. Right shift the `write_value` ("({}>>{})")
         // 3. Glue them together and write to the area covering the 1st part.
-        let start_byte_pos = self.start.byte_pos;
+        let start_byte_pos = self.start.byte_pos();
         write!(
             output,
             "{target_slice}[{start_byte_pos}]=({target_slice}[{start_byte_pos}]&{})|({write_value}>>{});\n",
-            zeros_mask(0, 7 - self.start.bit_pos),
-            end.bit_pos + 1
+            zeros_mask(0, 7 - u64::from(self.start.bit_pos())),
+            end.bit_pos() + 1
         )
         .unwrap();
 
@@ -604,12 +616,12 @@ impl<'a> FieldSetMethod<'a> {
         // 1. Read the rest of the bits on the 2nd part ("({}[{}]&{})")
         // 2. Left shift the `write_value` ("({}<<{})")
         // 3. Glue them together and write to the area covering the 2nd part.
-        let end_byte_pos = end.byte_pos;
+        let end_byte_pos = end.byte_pos();
         write!(
             output,
             "{target_slice}[{end_byte_pos}]=({target_slice}[{end_byte_pos}]&{})|({write_value}<<{});",
-            zeros_mask(7 - end.bit_pos, 7),
-            7 - end.bit_pos
+            zeros_mask(7 - u64::from(end.bit_pos()), 7),
+            7 - end.bit_pos()
         )
         .unwrap();
     }

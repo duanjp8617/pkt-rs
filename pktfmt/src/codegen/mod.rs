@@ -350,10 +350,7 @@ mod tests {
             FieldGetMethod,
             read_repr,
             "(self.buf.as_ref()[0]>>2)&0x1f",
-            BitPos {
-                byte_pos: 0,
-                bit_pos: 1,
-            },
+            BitPos::new(0 * 8 + 1),
             "self.buf.as_ref()"
         );
 
@@ -362,10 +359,7 @@ mod tests {
             FieldGetMethod,
             read_repr,
             "self.buf.as_ref()[0]&0x1f",
-            BitPos {
-                byte_pos: 0,
-                bit_pos: 3,
-            },
+            BitPos::new(0 * 8 + 3),
             "self.buf.as_ref()"
         );
 
@@ -374,10 +368,7 @@ mod tests {
             FieldGetMethod,
             read_repr,
             "self.buf.as_ref()[0]>>3",
-            BitPos {
-                byte_pos: 0,
-                bit_pos: 0,
-            },
+            BitPos::new(0 * 8 + 0),
             "self.buf.as_ref()"
         );
 
@@ -386,10 +377,7 @@ mod tests {
             FieldGetMethod,
             read_repr,
             "self.buf.as_ref()[0]",
-            BitPos {
-                byte_pos: 0,
-                bit_pos: 0,
-            },
+            BitPos::new(0 * 8 + 0),
             "self.buf.as_ref()"
         );
 
@@ -398,10 +386,7 @@ mod tests {
             FieldGetMethod,
             read_repr,
             "((self.buf.as_ref()[0]<<1)|(self.buf.as_ref()[1]>>7))&0x7",
-            BitPos {
-                byte_pos: 0,
-                bit_pos: 6,
-            },
+            BitPos::new(0 * 8 + 6),
             "self.buf.as_ref()"
         );
 
@@ -410,10 +395,7 @@ mod tests {
             FieldGetMethod,
             read_repr,
             "(self.buf.as_ref()[0]<<6)|(self.buf.as_ref()[1]>>2)",
-            BitPos {
-                byte_pos: 0,
-                bit_pos: 6,
-            },
+            BitPos::new(0 * 8 + 6),
             "self.buf.as_ref()"
         );
     }
@@ -425,10 +407,7 @@ mod tests {
             FieldGetMethod,
             read_repr,
             "NetworkEndian::read_u16(&self.buf.as_ref()[0..2])>>7",
-            BitPos {
-                byte_pos: 0,
-                bit_pos: 0,
-            },
+            BitPos::new(0 * 8 + 0),
             "self.buf.as_ref()"
         );
 
@@ -437,10 +416,7 @@ mod tests {
             FieldGetMethod,
             read_repr,
             "NetworkEndian::read_u16(&self.buf.as_ref()[0..2])&0x3fff",
-            BitPos {
-                byte_pos: 0,
-                bit_pos: 2,
-            },
+            BitPos::new(0 * 8 + 2),
             "self.buf.as_ref()"
         );
 
@@ -449,10 +425,7 @@ mod tests {
             FieldGetMethod,
             read_repr,
             "NetworkEndian::read_u16(&self.buf.as_ref()[0..2])",
-            BitPos {
-                byte_pos: 0,
-                bit_pos: 0,
-            },
+            BitPos::new(0 * 8 + 0),
             "self.buf.as_ref()"
         );
 
@@ -461,10 +434,7 @@ mod tests {
             FieldGetMethod,
             read_repr,
             "&self.buf.as_ref()[0..2]",
-            BitPos {
-                byte_pos: 0,
-                bit_pos: 0,
-            },
+            BitPos::new(0 * 8 + 0),
             "self.buf.as_ref()"
         );
 
@@ -473,10 +443,7 @@ mod tests {
             FieldGetMethod,
             read_repr,
             "NetworkEndian::read_uint(&self.buf.as_ref()[3..10], 7)>>1",
-            BitPos {
-                byte_pos: 3,
-                bit_pos: 0,
-            },
+            BitPos::new(3 * 8 + 0),
             "self.buf.as_ref()"
         );
 
@@ -485,10 +452,7 @@ mod tests {
             FieldGetMethod,
             read_repr,
             "NetworkEndian::read_u64(&self.buf.as_ref()[3..11])&0xfffffffffffffff",
-            BitPos {
-                byte_pos: 3,
-                bit_pos: 4,
-            },
+            BitPos::new(3 * 8 + 4),
             "self.buf.as_ref()"
         );
 
@@ -497,10 +461,7 @@ mod tests {
             FieldGetMethod,
             read_repr,
             "&self.buf.as_ref()[3..19]",
-            BitPos {
-                byte_pos: 3,
-                bit_pos: 0,
-            },
+            BitPos::new(3 * 8 + 0),
             "self.buf.as_ref()"
         );
     }
@@ -512,10 +473,7 @@ mod tests {
             FieldGetMethod,
             read_as_arg,
             "Ipv4Addr::from_byte_slice(&self.buf.as_ref()[3..7])",
-            BitPos {
-                byte_pos: 3,
-                bit_pos: 0,
-            },
+            BitPos::new(3 * 8 + 0),
             "self.buf.as_ref()"
         );
 
@@ -524,10 +482,7 @@ mod tests {
             FieldGetMethod,
             read_as_arg,
             "self.buf.as_ref()[13]&0x80 != 0",
-            BitPos {
-                byte_pos: 13,
-                bit_pos: 0,
-            },
+            BitPos::new(13 * 8 + 0),
             "self.buf.as_ref()"
         );
     }
@@ -539,10 +494,7 @@ mod tests {
             FieldSetMethod,
             write_repr,
             "self.buf.as_mut()[0]=(self.buf.as_mut()[0]&0x83)|(value<<2);",
-            BitPos {
-                byte_pos: 0,
-                bit_pos: 1,
-            },
+            BitPos::new(0 * 8 + 1),
             "self.buf.as_mut()",
             "value"
         );
@@ -552,10 +504,7 @@ mod tests {
             FieldSetMethod,
             write_repr,
             "self.buf.as_mut()[0]=(self.buf.as_mut()[0]&0xe0)|value;",
-            BitPos {
-                byte_pos: 0,
-                bit_pos: 3,
-            },
+            BitPos::new(0 * 8 + 3),
             "self.buf.as_mut()",
             "value"
         );
@@ -565,10 +514,7 @@ mod tests {
             FieldSetMethod,
             write_repr,
             "self.buf.as_mut()[0]=(self.buf.as_mut()[0]&0x07)|(value<<3);",
-            BitPos {
-                byte_pos: 0,
-                bit_pos: 0,
-            },
+            BitPos::new(0 * 8 + 0),
             "self.buf.as_mut()",
             "value"
         );
@@ -578,10 +524,7 @@ mod tests {
             FieldSetMethod,
             write_repr,
             "self.buf.as_mut()[0]=value;",
-            BitPos {
-                byte_pos: 0,
-                bit_pos: 0,
-            },
+            BitPos::new(0 * 8 + 0),
             "self.buf.as_mut()",
             "value"
         );
@@ -592,10 +535,7 @@ mod tests {
             write_repr,
             "self.buf.as_mut()[0]=(self.buf.as_mut()[0]&0xfc)|(value>>1);
 self.buf.as_mut()[1]=(self.buf.as_mut()[1]&0x7f)|(value<<7);",
-            BitPos {
-                byte_pos: 0,
-                bit_pos: 6,
-            },
+            BitPos::new(0 * 8 + 6),
             "self.buf.as_mut()",
             "value"
         );
@@ -606,10 +546,7 @@ self.buf.as_mut()[1]=(self.buf.as_mut()[1]&0x7f)|(value<<7);",
             write_repr,
             "self.buf.as_mut()[0]=(self.buf.as_mut()[0]&0xfc)|(value>>6);
 self.buf.as_mut()[1]=(self.buf.as_mut()[1]&0x03)|(value<<2);",
-            BitPos {
-                byte_pos: 0,
-                bit_pos: 6,
-            },
+            BitPos::new(0 * 8 + 6),
             "self.buf.as_mut()",
             "value"
         );
@@ -623,10 +560,7 @@ self.buf.as_mut()[1]=(self.buf.as_mut()[1]&0x03)|(value<<2);",
             write_repr,
             "let rest_of_field=(self.buf.as_mut()[1]&0x7f) as u16;
 NetworkEndian::write_u16(&mut self.buf.as_mut()[0..2],rest_of_field|(value<<7));",
-            BitPos {
-                byte_pos: 0,
-                bit_pos: 0,
-            },
+            BitPos::new(0 * 8 + 0),
             "self.buf.as_mut()",
             "value"
         );
@@ -637,10 +571,7 @@ NetworkEndian::write_u16(&mut self.buf.as_mut()[0..2],rest_of_field|(value<<7));
             write_repr,
             "let rest_of_field=((self.buf.as_mut()[0]&0xc0) as u16) << 8;
 NetworkEndian::write_u16(&mut self.buf.as_mut()[0..2],rest_of_field|value);",
-            BitPos {
-                byte_pos: 0,
-                bit_pos: 2,
-            },
+            BitPos::new(0 * 8 + 2),
             "self.buf.as_mut()",
             "value"
         );
@@ -650,10 +581,7 @@ NetworkEndian::write_u16(&mut self.buf.as_mut()[0..2],rest_of_field|value);",
             FieldSetMethod,
             write_repr,
             "NetworkEndian::write_u16(&mut self.buf.as_mut()[0..2],value);",
-            BitPos {
-                byte_pos: 0,
-                bit_pos: 0,
-            },
+            BitPos::new(0 * 8 + 0),
             "self.buf.as_mut()",
             "value"
         );
@@ -663,10 +591,7 @@ NetworkEndian::write_u16(&mut self.buf.as_mut()[0..2],rest_of_field|value);",
             FieldSetMethod,
             write_repr,
             "(&mut self.buf.as_mut()[0..2]).copy_from_slice(value);",
-            BitPos {
-                byte_pos: 0,
-                bit_pos: 0,
-            },
+            BitPos::new(0 * 8 + 0),
             "self.buf.as_mut()",
             "value"
         );
@@ -677,10 +602,7 @@ NetworkEndian::write_u16(&mut self.buf.as_mut()[0..2],rest_of_field|value);",
             write_repr,
             "let rest_of_field=(self.buf.as_mut()[9]&0x1) as u64;
 NetworkEndian::write_uint(&mut self.buf.as_mut()[3..10],rest_of_field|(value<<1),7);",
-            BitPos {
-                byte_pos: 3,
-                bit_pos: 0,
-            },
+            BitPos::new(3 * 8 + 0),
             "self.buf.as_mut()",
             "value"
         );
@@ -691,10 +613,7 @@ NetworkEndian::write_uint(&mut self.buf.as_mut()[3..10],rest_of_field|(value<<1)
             write_repr,
             "let rest_of_field=((self.buf.as_mut()[3]&0xf0) as u64) << 56;
 NetworkEndian::write_u64(&mut self.buf.as_mut()[3..11],rest_of_field|value);",
-            BitPos {
-                byte_pos: 3,
-                bit_pos: 4,
-            },
+            BitPos::new(3 * 8 + 4),
             "self.buf.as_mut()",
             "value"
         );
@@ -704,10 +623,7 @@ NetworkEndian::write_u64(&mut self.buf.as_mut()[3..11],rest_of_field|value);",
             FieldSetMethod,
             write_repr,
             "(&mut self.buf.as_mut()[3..19]).copy_from_slice(value);",
-            BitPos {
-                byte_pos: 3,
-                bit_pos: 0,
-            },
+            BitPos::new(3 * 8 + 0),
             "self.buf.as_mut()",
             "value"
         );
@@ -721,10 +637,7 @@ NetworkEndian::write_u64(&mut self.buf.as_mut()[3..11],rest_of_field|value);",
             write_as_arg,
             "let value = value.as_byte_slice();
 (&mut self.buf.as_mut()[3..7]).copy_from_slice(value);",
-            BitPos {
-                byte_pos: 3,
-                bit_pos: 0,
-            },
+            BitPos::new(3 * 8 + 0),
             "self.buf.as_mut()",
             "value"
         );
@@ -738,10 +651,7 @@ self.buf.as_mut()[13]=self.buf.as_mut()[13]|0x80
 } else {
 self.buf.as_mut()[13]=self.buf.as_mut()[13]&0x7f
 }",
-            BitPos {
-                byte_pos: 13,
-                bit_pos: 0,
-            },
+            BitPos::new(13 * 8 + 0),
             "self.buf.as_mut()",
             "value"
         );
@@ -753,10 +663,7 @@ self.buf.as_mut()[13]=self.buf.as_mut()[13]&0x7f
             "assert!(value <= 0x7ffffffff);
 let rest_of_field=(self.buf.as_mut()[7]&0x1f) as u64;
 NetworkEndian::write_uint(&mut self.buf.as_mut()[3..8],rest_of_field|(value<<5),5);",
-            BitPos {
-                byte_pos: 3,
-                bit_pos: 0,
-            },
+            BitPos::new(3 * 8 + 0),
             "self.buf.as_mut()",
             "value"
         );

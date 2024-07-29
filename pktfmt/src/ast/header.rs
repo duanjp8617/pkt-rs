@@ -158,23 +158,31 @@ impl Header {
 /// ending position of the header field. This range is includsive by default.
 #[derive(Clone, Copy, Eq, PartialEq, Debug)]
 pub struct BitPos {
-    pub byte_pos: u64,
-    pub bit_pos: u64,
+    byte_pos: u64,
+    bit_pos: u8,
 }
 
 impl BitPos {
     pub(crate) fn new(global_bit_pos: u64) -> Self {
         Self {
             byte_pos: global_bit_pos / 8,
-            bit_pos: global_bit_pos % 8,
+            bit_pos: (global_bit_pos % 8) as u8,
         }
     }
 
     pub(crate) fn to_global_pos(&self) -> u64 {
-        self.byte_pos * 8 + self.bit_pos
+        self.byte_pos * 8 + (self.bit_pos as u64)
     }
 
     pub(crate) fn next_pos(&self, len: u64) -> Self {
         Self::new(self.to_global_pos() + len - 1)
+    }
+
+    pub(crate) fn byte_pos(&self) -> u64 {
+        self.byte_pos
+    }
+
+    pub(crate) fn bit_pos(&self) -> u8 {
+        self.bit_pos
     }
 }
