@@ -166,7 +166,7 @@ impl<'a> HeaderImpl<'a> {
                             BuiltinTypes::U8 => {
                                 let end = start.next_pos(field.bit);
                                 let default_val = match &field.default {
-                                    DefaultVal::Num(b) => b,
+                                    DefaultVal::Num(b) => *b,
                                     _ => panic!(),
                                 };
 
@@ -176,18 +176,40 @@ impl<'a> HeaderImpl<'a> {
                                     // 0 1 2 3 4 5 6 7
                                     // |     field   |
                                     // We directly assign the `write_value` to the write target.
-                                    *write_target = *default_val as u8;
+                                    *write_target = default_val as u8;
                                 } else {
                                     // The field area contains extra bits and we
                                     // extract the rest of the bits through a
                                     // mask.
                                     let mut bit_mask: u8 = 0xff;
-                                    for i in (7 - end.bit_pos())..(8 - start.bit_pos()) {
+                                    for i in (7 - end.bit_pos())..(7 - start.bit_pos() + 1) {
                                         bit_mask = bit_mask & (!(1 << i));
                                     }
+                                    let rest_of_bits = *write_target & bit_mask;
 
-                                    let rest_of_bits =
-                                        target_slice[start.byte_pos() as usize] & bit_mask;
+                                    if end.bit_pos() == 7 {
+                                        // The field has the following form:
+                                        // 0 1 2 3 4 5 6 7
+                                        //       | field |
+                                        // `write_value` has the same form as
+                                        // field.
+                                        // We glue `rest_of_bits` with
+                                        // `write_value` and write
+                                        // to the `write_target`.
+                                        *write_target = rest_of_bits | (default_val as u8);
+                                    } else {
+                                        // The field has the following form:
+                                        // 0 1 2 3 4 5 6 7
+                                        // | field |
+                                        // We left shift the `write_value` to
+                                        // make room
+                                        // for the rest of the bits.
+                                        // Then we glue them together and write
+                                        // to the
+                                        // `write_target`.
+                                        *write_target = rest_of_bits
+                                            | ((default_val as u8) << (7 - end.bit_pos()));
+                                    }
                                 }
                             }
                             _ => {}

@@ -1,6 +1,6 @@
 use std::fmt;
 
-use super::{max_value, Error};
+use super::{max_value, Error, MAX_MTU_IN_BYTES};
 
 /// The ast type constructed when parsing `Field` definition.
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -29,15 +29,22 @@ impl Field {
         default: Option<DefaultVal>,
         gen: Option<bool>,
     ) -> Result<Self, Error> {
-        if bit == 0 || (bit > 64 && bit % 8 != 0) {
+        if bit == 0 || (bit > 64 && bit % 8 != 0) || (bit > MAX_MTU_IN_BYTES * 8) {
             // 1. bit size 0 is not allowed.
             // 2. if bit size > 64, then bit size must be aligned to 8.
+            // 3. bit should be smaller than MAX_MTU_IN_BYTES * 8
 
             // field error 1
             return_err!(Error::field(
                 1,
                 format!(
-"invalid bit {}, bit value must satisfy: bit > 0 && (bit <= 64 | bit % 8 == 0) ", bit)
+                    "invalid bit {}, the following bit values are invalid:
+1. bit == 0,
+2. bit > 64 && bit % 8 != 0, 
+3. bit > {}",
+                    bit,
+                    MAX_MTU_IN_BYTES * 8
+                )
             ))
         }
 

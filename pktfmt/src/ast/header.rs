@@ -107,7 +107,7 @@ impl Header {
                 Error::header(
                     4,
                     format!(
-                        "header byte length {} is exceeds the maximum MTU size {}",
+                        "header byte length {} exceeds the maximum MTU size {}",
                         global_bit_pos / 8,
                         MAX_MTU_IN_BYTES
                     )
