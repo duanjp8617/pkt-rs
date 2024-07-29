@@ -1,75 +1,8 @@
 use std::io::Write;
 
-use byteorder::{ByteOrder, NetworkEndian};
+use crate::ast::Packet;
 
-use crate::ast::{Arg, BuiltinTypes, DefaultVal, Packet};
-
-use super::{byte_len, GenerateFieldAccessMethod, HeadTailWriter};
-
-// macro_rules! predefined_header_u16_u32_u64_impl {
-//     ($repr: ident, $start: expr, $field: expr) => {
-//         let end = $start.next_pos($field.bit);
-//         let default_val = match &$field.default {
-//             DefaultVal::Num(b) => *b,
-//             _ => panic!(),
-//         };
-
-//         if $field.bit % 8 == 0 {
-//             // The field has the form:
-//             // 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
-//             // |   field                     |
-//             NetworkEndian::write_$repr(
-//                 &mut target_slice
-//                     [start.byte_pos() as usize..(start.byte_pos() +
-// byte_len(field.bit)) as usize],                 default_val as $repr,
-//             );
-//         } else {
-//             // The field has the form:
-//             // 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
-//             // |   field       | | rest bits |
-
-//             if end.bit_pos() == 7 {
-//                 // The field has the form:
-//                 // 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
-//                 // |rest bits| |   field         |
-//                 // We do the following steps to read the
-//                 // rest of the bits:
-//                 // 1. Read the byte containing the rest of the bits
-// ("{}[{}]").                 // 2. Remove the extra bits that belong to the
-// field area ("{}[{}]&{}").                 // 3. Convert the value to `repr`
-// type ("({}[{}]&{}) as {})")                 // 4. Left shift to make room for
-// the field area ("(({}[{}]&{}) as {}) << {}")                 let mut
-// bit_mask: u8 = 0x00;                 for i in (7 - start.bit_pos() + 1)..8 {
-//                     bit_mask = bit_mask & (1 << i);
-//                 }
-//                 let rest_of_field = ((target_slice[start.byte_pos() as usize]
-// & bit_mask) as $repr)                     << (8 * (byte_len(field.bit) - 1));
-
-//                 NetworkEndian::write_$repr(
-//                     &mut target_slice[start.byte_pos() as usize
-//                         ..(start.byte_pos() + byte_len(field.bit)) as usize],
-//                     rest_of_field | (default_val as $repr),
-//                 );
-//             } else {
-//                 // The field has the form:
-//                 // 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
-//                 // |   field         | |rest bits|
-//                 // We do similar steps except for the
-//                 // final one (the left-shift one).
-//                 let mut bit_mask: u8 = 0x00;
-//                 for i in 0..(7 - end.bit_pos()) {
-//                     bit_mask = bit_mask & (1 << i);
-//                 }
-//                 let rest_of_field = (target_slice[end.byte_pos() as usize] &
-// bit_mask) as $repr;                 NetworkEndian::write_$repr(
-//                     &mut target_slice[start.byte_pos() as usize
-//                         ..(start.byte_pos() + byte_len(field.bit)) as usize],
-//                     rest_of_field | ((default_val as $repr) << (7 -
-// end.bit_pos())),                 );
-//             }
-//         }
-//     };
-// }
+use super::{GenerateFieldAccessMethod, HeadTailWriter};
 
 pub struct HeaderImpl<'a> {
     packet: &'a Packet,
@@ -87,7 +20,7 @@ impl<'a> HeaderImpl<'a> {
         // Generate a byte array containing a pre-defined header
         // whose field values are set to default.
         // TODO:
-        // self.predefined_header(output);
+        self.header_gen(output);
 
         // Defines the header struct.
         let header_struct_gen = StructDefinition {
@@ -150,216 +83,33 @@ impl<'a> HeaderImpl<'a> {
         self.packet.protocol_name().to_uppercase() + "_HEADER_LEN"
     }
 
-    fn predefined_header(&self) -> Vec<u8> {
-        let packet = self.packet;
+    fn header_name(&self) -> String {
+        self.packet.protocol_name().to_uppercase() + "_HEADER_TEMPLATE"
+    }
 
-        let mut header_template = Vec::new();
-        header_template.resize(packet.header().header_len_in_bytes(), 0);
-        let target_slice = &mut header_template[..];
+    fn header_gen(&self, output: &mut dyn Write) {
+        writeln!(
+            output,
+            "/// A fixed {} header.",
+            self.packet.protocol_name()
+        )
+        .unwrap();
+        write!(
+            output,
+            "pub const {}: {}<[u8;{}]> = [",
+            self.header_name(),
+            self.header_struct_name(),
+            self.packet.header().header_len_in_bytes()
+        )
+        .unwrap();
 
-        for (_, field, start) in packet.header().field_iter() {
-            match &field.arg {
-                Arg::BuiltinTypes(defined_arg) if *defined_arg != field.repr => {
-                    let start_byte_pos = start.byte_pos() as usize;
-                    let default_val = match field.default {
-                        DefaultVal::Bool(b) => b,
-                        _ => panic!(),
-                    };
-
-                    if default_val {
-                        target_slice[start_byte_pos] =
-                            target_slice[start_byte_pos] | (1 << (7 - u64::from(start.bit_pos())))
-                    } else {
-                        target_slice[start_byte_pos] = target_slice[start_byte_pos]
-                            & (!(1 << (7 - u64::from(start.bit_pos()))))
-                    }
-                }
-                _ => {
-                    let end = start.next_pos(field.bit);
-                    if field.bit <= 8 && start.byte_pos() != end.byte_pos() {
-                        let start_byte_pos = start.byte_pos() as usize;
-                        let end_byte_pos = end.byte_pos() as usize;
-                        let default_val = match field.default {
-                            DefaultVal::Num(b) => b,
-                            _ => panic!(),
-                        };
-
-                        // The field will have the following form:
-                        // 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
-                        //       |     fie-ld  |
-                        // The field is splitted into two parts by the byte boundary:
-
-                        // The 1st part is :
-                        // 0 1 2 3 4 5 6 7
-                        //       |  fie- |
-                        // To write to the 1st part, we do the following steps:
-                        // 1. Read the rest of the bits on the first part ("({}[{}]&{})")
-                        // 2. Right shift the `write_value` ("({}>>{})")
-                        // 3. Glue them together and write to the area covering the 1st part.
-                        target_slice[start_byte_pos] = (target_slice[start_byte_pos]
-                            & (!((1 << (8 - start.bit_pos())) - 1)))
-                            | ((default_val as u8) >> (end.bit_pos() + 1));
-
-                        // The 2nd part ("({}[{}]>>{})") is :
-                        // 0 1 2 3 4 5 6 7
-                        // |-ld|
-                        // To write to the 2nd part, we do the following steps:
-                        // 1. Read the rest of the bits on the 2nd part ("({}[{}]&{})")
-                        // 2. Left shift the `write_value` ("({}<<{})")
-                        // 3. Glue them together and write to the area covering the 2nd part.
-                        target_slice[end_byte_pos] = (target_slice[end_byte_pos]
-                            & ((1 << (7 - end.bit_pos())) - 1))
-                            | ((default_val as u8) << (7 - end.bit_pos()));
-                    } else {
-                        // self.write_field(target_slice, write_value, output);
-                        match &field.repr {
-                            BuiltinTypes::ByteSlice => {
-                                let default_val = match &field.default {
-                                    DefaultVal::Bytes(b) => b,
-                                    _ => panic!(),
-                                };
-
-                                // The `repr` is a `ByteSlice`.
-                                // The field has the following form:
-                                // 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
-                                // |          field              |
-                                // The field area contains no extra bits,
-                                // we just write `write_value` to the field
-                                // area.
-                                let target_slice = &mut target_slice[start.byte_pos() as usize
-                                    ..(start.byte_pos() + field.bit) as usize];
-                                target_slice.copy_from_slice(&default_val[..]);
-                            }
-                            BuiltinTypes::U8 => {
-                                let end = start.next_pos(field.bit);
-                                let default_val = match &field.default {
-                                    DefaultVal::Num(b) => *b,
-                                    _ => panic!(),
-                                };
-
-                                let write_target = &mut target_slice[start.byte_pos() as usize];
-                                if field.bit % 8 == 0 {
-                                    // The field has the following form:
-                                    // 0 1 2 3 4 5 6 7
-                                    // |     field   |
-                                    // We directly assign the `write_value` to the write target.
-                                    *write_target = default_val as u8;
-                                } else {
-                                    // The field area contains extra bits and we
-                                    // extract the rest of the bits through a
-                                    // mask.
-                                    let mut bit_mask: u8 = 0xff;
-                                    for i in (7 - end.bit_pos())..(7 - start.bit_pos() + 1) {
-                                        bit_mask = bit_mask & (!(1 << i));
-                                    }
-                                    let rest_of_bits = *write_target & bit_mask;
-
-                                    if end.bit_pos() == 7 {
-                                        // The field has the following form:
-                                        // 0 1 2 3 4 5 6 7
-                                        //       | field |
-                                        // `write_value` has the same form as
-                                        // field.
-                                        // We glue `rest_of_bits` with
-                                        // `write_value` and write
-                                        // to the `write_target`.
-                                        *write_target = rest_of_bits | (default_val as u8);
-                                    } else {
-                                        // The field has the following form:
-                                        // 0 1 2 3 4 5 6 7
-                                        // | field |
-                                        // We left shift the `write_value` to
-                                        // make room
-                                        // for the rest of the bits.
-                                        // Then we glue them together and write
-                                        // to the
-                                        // `write_target`.
-                                        *write_target = rest_of_bits
-                                            | ((default_val as u8) << (7 - end.bit_pos()));
-                                    }
-                                }
-                            }
-                            BuiltinTypes::U16 => {
-                                let end = start.next_pos(field.bit);
-                                let default_val = match &field.default {
-                                    DefaultVal::Num(b) => *b,
-                                    _ => panic!(),
-                                };
-
-                                if field.bit % 8 == 0 {
-                                    // The field has the form:
-                                    // 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
-                                    // |   field                     |
-                                    NetworkEndian::write_u16(
-                                        &mut target_slice[start.byte_pos() as usize
-                                            ..(start.byte_pos() + byte_len(field.bit)) as usize],
-                                        default_val as u16,
-                                    );
-                                } else {
-                                    // The field has the form:
-                                    // 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
-                                    // |   field       | | rest bits |
-
-                                    if end.bit_pos() == 7 {
-                                        // The field has the form:
-                                        // 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
-                                        // |rest bits| |   field         |
-                                        // We do the following steps to read the
-                                        // rest of the bits:
-                                        // 1. Read the byte containing the rest of the bits
-                                        //    ("{}[{}]").
-                                        // 2. Remove the extra bits that belong to the field area
-                                        //    ("{}[{}]&{}").
-                                        // 3. Convert the value to `repr` type ("({}[{}]&{}) as
-                                        //    {})")
-                                        // 4. Left shift to make room for the field area
-                                        //    ("(({}[{}]&{}) as {}) << {}")
-                                        let mut bit_mask: u8 = 0x00;
-                                        for i in (7 - start.bit_pos() + 1)..8 {
-                                            bit_mask = bit_mask & (1 << i);
-                                        }
-                                        let rest_of_field =
-                                            ((target_slice[start.byte_pos() as usize] & bit_mask)
-                                                as u16)
-                                                << (8 * (byte_len(field.bit) - 1));
-
-                                        NetworkEndian::write_u16(
-                                            &mut target_slice[start.byte_pos() as usize
-                                                ..(start.byte_pos() + byte_len(field.bit))
-                                                    as usize],
-                                            rest_of_field | (default_val as u16),
-                                        );
-                                    } else {
-                                        // The field has the form:
-                                        // 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
-                                        // |   field         | |rest bits|
-                                        // We do similar steps except for the
-                                        // final one (the left-shift one).
-                                        let mut bit_mask: u8 = 0x00;
-                                        for i in 0..(7 - end.bit_pos()) {
-                                            bit_mask = bit_mask & (1 << i);
-                                        }
-                                        let rest_of_field = (target_slice[end.byte_pos() as usize]
-                                            & bit_mask)
-                                            as u16;
-                                        NetworkEndian::write_u16(
-                                            &mut target_slice[start.byte_pos() as usize
-                                                ..(start.byte_pos() + byte_len(field.bit))
-                                                    as usize],
-                                            rest_of_field
-                                                | ((default_val as u16) << (7 - end.bit_pos())),
-                                        );
-                                    }
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
-                }
+        for (idx, b) in self.packet.header_template().iter().enumerate() {
+            if idx < self.packet.header_template().len() - 1 {
+                write!(output, "{b},").unwrap();
+            } else {
+                write!(output, "{b}]\n").unwrap()
             }
         }
-
-        header_template
     }
 
     // Return the name of the header struct.

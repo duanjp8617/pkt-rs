@@ -114,7 +114,7 @@ test_parse_eror_list!(
     parser::PacketParser
 );
 
-#[test]
-fn fuck() {
-    dump_parse_error!("header_error_4.pktfmt", parser::PacketParser);
-}
+// #[test]
+// fn fuck() {
+//     dump_parse_error!("header_error_4.pktfmt", parser::PacketParser);
+// }
