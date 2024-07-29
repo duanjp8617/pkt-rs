@@ -74,7 +74,7 @@ fn network_endian_write<T: Write>(writer: T, bit_len: u64) -> HeadTailWriter<T> 
 }
 
 // A helper that converts length in bit to length in bytes
-fn byte_len(bit_len: u64) -> u64 {
+pub(crate) fn byte_len(bit_len: u64) -> u64 {
     if bit_len % 8 == 0 {
         bit_len / 8
     } else {

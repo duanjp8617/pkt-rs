@@ -22,6 +22,7 @@ lalrpop-util = { version = "0.20", features = ["lexer", "unicode"] }
 quick-error = "2.0.1"
 codespan = "0.11.1"
 codespan-reporting = "0.11.1"
+byteorder = "1"
 
 [[bin]]
 name = "pktfmt"
