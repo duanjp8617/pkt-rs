@@ -578,7 +578,7 @@ impl<'a> FieldSetMethod<'a> {
 
         // The field will have the following form:
         // 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
-        //       |     fie-ld    |
+        //       |     fie-ld  |
         // The field is splitted into two parts by the byte boundary:
 
         // The 1st part is :

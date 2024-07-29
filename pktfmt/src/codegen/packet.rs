@@ -1,6 +1,6 @@
 use std::io::Write;
 
-use crate::ast::{Arg, DefaultVal, Packet};
+use crate::ast::{Arg, BuiltinTypes, DefaultVal, Packet};
 
 use super::{GenerateFieldAccessMethod, HeadTailWriter};
 
@@ -104,15 +104,94 @@ impl<'a> HeaderImpl<'a> {
                             target_slice[start_byte_pos] | (1 << (7 - start.bit_pos))
                     } else {
                         target_slice[start_byte_pos] =
-                            target_slice[start_byte_pos] | (!(1 << (7 - start.bit_pos)))
+                            target_slice[start_byte_pos] & (!(1 << (7 - start.bit_pos)))
                     }
                 }
                 _ => {
                     let end = start.next_pos(field.bit);
                     if field.bit <= 8 && start.byte_pos != end.byte_pos {
-                        // self.write_field_cross_byte(target_slice, write_value, output);
+                        let start_byte_pos = start.byte_pos as usize;
+                        let end_byte_pos = end.byte_pos as usize;
+                        let default_val = match field.default {
+                            DefaultVal::Num(b) => b,
+                            _ => panic!(),
+                        };
+
+                        // The field will have the following form:
+                        // 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
+                        //       |     fie-ld  |
+                        // The field is splitted into two parts by the byte boundary:
+
+                        // The 1st part is :
+                        // 0 1 2 3 4 5 6 7
+                        //       |  fie- |
+                        // To write to the 1st part, we do the following steps:
+                        // 1. Read the rest of the bits on the first part ("({}[{}]&{})")
+                        // 2. Right shift the `write_value` ("({}>>{})")
+                        // 3. Glue them together and write to the area covering the 1st part.
+                        target_slice[start_byte_pos] = (target_slice[start_byte_pos]
+                            & (!((1 << (8 - start.bit_pos)) - 1)))
+                            | ((default_val as u8) >> (end.bit_pos as u8 + 1));
+
+                        // The 2nd part ("({}[{}]>>{})") is :
+                        // 0 1 2 3 4 5 6 7
+                        // |-ld|
+                        // To write to the 2nd part, we do the following steps:
+                        // 1. Read the rest of the bits on the 2nd part ("({}[{}]&{})")
+                        // 2. Left shift the `write_value` ("({}<<{})")
+                        // 3. Glue them together and write to the area covering the 2nd part.
+                        target_slice[end_byte_pos] = (target_slice[end_byte_pos]
+                            & ((1 << (7 - end.bit_pos)) - 1))
+                            | ((default_val as u8) << (7 - end.bit_pos as u8));
                     } else {
                         // self.write_field(target_slice, write_value, output);
+                        match &field.repr {
+                            BuiltinTypes::ByteSlice => {
+                                let default_val = match &field.default {
+                                    DefaultVal::Bytes(b) => b,
+                                    _ => panic!(),
+                                };
+
+                                // The `repr` is a `ByteSlice`.
+                                // The field has the following form:
+                                // 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
+                                // |          field              |
+                                // The field area contains no extra bits,
+                                // we just write `write_value` to the field
+                                // area.
+                                let target_slice = &mut target_slice[start.byte_pos as usize
+                                    ..(start.byte_pos + field.bit) as usize];
+                                target_slice.copy_from_slice(&default_val[..]);
+                            }
+                            BuiltinTypes::U8 => {
+                                let end = start.next_pos(field.bit);
+                                let default_val = match &field.default {
+                                    DefaultVal::Num(b) => b,
+                                    _ => panic!(),
+                                };
+
+                                let write_target = &mut target_slice[start.byte_pos as usize];
+                                if field.bit % 8 == 0 {
+                                    // The field has the following form:
+                                    // 0 1 2 3 4 5 6 7
+                                    // |     field   |
+                                    // We directly assign the `write_value` to the write target.
+                                    *write_target = *default_val as u8;
+                                } else {
+                                    // The field area contains extra bits and we
+                                    // extract the rest of the bits through a
+                                    // mask.
+                                    let mut bit_mask: u8 = 0xff;
+                                    for i in (7 - end.bit_pos as u8)..(8 - start.bit_pos as u8) {
+                                        bit_mask = bit_mask & (!(1 << i));
+                                    }
+
+                                    let rest_of_bits =
+                                        target_slice[start.byte_pos as usize] & bit_mask;
+                                }
+                            }
+                            _ => {}
+                        }
                     }
                 }
             }
