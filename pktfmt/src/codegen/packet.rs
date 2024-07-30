@@ -19,7 +19,6 @@ impl<'a> HeaderImpl<'a> {
 
         // Generate a byte array containing a pre-defined header
         // whose field values are set to default.
-        // TODO:
         self.header_gen(output);
 
         // Defines the header struct.
@@ -216,7 +215,7 @@ impl<'a> StructDefinition<'a> {
         write!(
             output,
             "pub struct {}<T> {{
-    buf: T
+buf: T
 }}
 ",
             self.struct_name
