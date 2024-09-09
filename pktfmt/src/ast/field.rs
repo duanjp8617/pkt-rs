@@ -15,11 +15,9 @@ pub struct Field {
 impl Field {
     /// Create a new `Field` object from the parsed input.
     ///
-    /// Except for the `bit`, all the subfields can be optional.
-    ///
+    /// Except for the `bit`, all the subfields can be optional.  
     /// 1. If a subfield is defined, we check whether it with the inferred
     ///    subfield value.
-    ///
     /// 2. if a subfield is not defined, we infer it with the available parsing
     ///    informatin.
     pub fn new(
@@ -225,12 +223,9 @@ impl Field {
 /// `arg`.
 ///
 /// The meaning of each arm and how it is translated to rust type are as
-/// follows:
-///
-/// `Self::U8/16/32/64` -> `u8/16/32/64` primitive types.
-///
-/// `Self::ByteSlice` -> `&[u8]` byte slice type.
-///
+/// follows:  
+/// `Self::U8/16/32/64` -> `u8/16/32/64` primitive types.  
+/// `Self::ByteSlice` -> `&[u8]` byte slice type.  
 /// `[Self::Bool]` -> `bool` type.
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum BuiltinTypes {

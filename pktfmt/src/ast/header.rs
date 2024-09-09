@@ -8,14 +8,11 @@ use super::Error;
 
 /// The ast type constructed when parsing `header` list from the pktfmt script.
 ///
-/// **Member fields:**
-///
-/// `header_len_in_byets`: the length of the fixe header in bytes
-///
+/// **Member fields:**  
+/// `header_len_in_byets`: the length of the fixe header in bytes  
 /// `field_list`: an list that preserves the order of the header fields, with
 /// each element being the field name and the field object, used for field
-/// object indexing
-///
+/// object indexing  
 /// `field_position`: a hashmap that maps the field name to the bit position and
 /// field list index
 #[derive(Debug)]
@@ -28,17 +25,13 @@ pub struct Header {
 impl Header {
     /// Create a new `Header` object from the parsed input.
     ///
-    /// **Input args:**
-    ///
-    /// `field_list`: the parsed `header` list
-    ///
+    /// **Input args:**  
+    /// `field_list`: the parsed `header` list  
     /// `header_pos`: the byte indexes of the `header`` list in the original
     /// file
     ///
-    /// **Return value:**
-    ///
-    /// if succeed: a new `Header` object,
-    ///
+    /// **Return value:**  
+    /// if succeed: a new `Header` object,  
     /// if fail: an error and the file indexes that triggers the error.
     pub fn new(
         field_list: Vec<(Spanned<String>, Field)>,
@@ -67,23 +60,39 @@ impl Header {
 
                     if field.bit > 8 && start.bit_pos != 0 && end.bit_pos != 7 {
                         // header error 2
-                        // If the header field contains multiple bytes, then one of two ends must be
-                        // aligned to the byte boudary. In this branch, neither of
-                        // the two ends are aligned to the byte boundary, we report an error.
+                        // If the header field contains multiple bytes, then one of two ends must 
+                        // be aligned to the byte boudary. In this branch, neither of the two ends
+                        // are aligned to the byte boundary, we report an error.
                         return_err!((
                             Error::header(
                                 2,
                                 format!(
-                            "header field {} is not correctly aligned to the byte boundaries",
-                            &sp_str.item
-                        )
+                                    "header field {} is not correctly aligned to the byte boundaries",
+                                    &sp_str.item
+                                )
                             ),
                             sp_str.span
                         ))
                     } else {
                         global_bit_pos += field.bit;
-                        field_position.insert(sp_str.item.clone(), (start, field_idx));
-                        Ok((sp_str.item, field))
+                        if global_bit_pos / 8 > MAX_MTU_IN_BYTES {
+                            // header error 4
+                            return_err!((
+                                Error::header(
+                                    4,
+                                    format!(
+                                        "header byte length is at least {}, exceeding the maximum MTU size {}",
+                                        global_bit_pos / 8,
+                                        MAX_MTU_IN_BYTES
+                                    )
+                                ),
+                                header_pos
+                            ))
+                        }
+                        else {
+                            field_position.insert(sp_str.item.clone(), (start, field_idx));
+                            Ok((sp_str.item, field))
+                        }
                     }
                 }
             })
@@ -97,19 +106,6 @@ impl Header {
                     format!(
                         "invalid header bit length {}, not dividable by 8",
                         global_bit_pos
-                    )
-                ),
-                header_pos
-            ))
-        } else if global_bit_pos / 8 > MAX_MTU_IN_BYTES {
-            // header error 4
-            return_err!((
-                Error::header(
-                    4,
-                    format!(
-                        "header byte length {} exceeds the maximum MTU size {}",
-                        global_bit_pos / 8,
-                        MAX_MTU_IN_BYTES
                     )
                 ),
                 header_pos

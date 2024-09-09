@@ -10,4 +10,4 @@ at /home/djp/pkt-rs/pktfmt/tests/parse_errors_input/header_error_4.pktfmt 2:5-15
 15 |     ]
      ^^^^^
 header error 4:
-header byte length 1048578 exceeds the maximum MTU size 1048575
+header byte length is at least 1048577, exceeding the maximum MTU size 1048575
