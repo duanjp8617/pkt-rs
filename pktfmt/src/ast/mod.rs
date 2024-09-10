@@ -27,7 +27,9 @@ pub struct Packet {
 
 impl Packet {
     pub fn new(protocol_name: &str, header: header::Header, length: length::Length) -> Self {
-        let header_template = build_header_template(&header);
+        // let header_template = build_header_template(&header);
+        let mut header_template = Vec::new();
+        header_template.resize(header.header_len_in_bytes(), 0);
         Self {
             protocol_name: protocol_name.to_string(),
             header,

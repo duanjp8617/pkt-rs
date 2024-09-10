@@ -19,7 +19,7 @@ impl<'a> HeaderImpl<'a> {
 
         // Generate a byte array containing a pre-defined header
         // whose field values are set to default.
-        self.header_gen(output);
+        // self.header_gen(output);
 
         // Defines the header struct.
         let header_struct_gen = StructDefinition {

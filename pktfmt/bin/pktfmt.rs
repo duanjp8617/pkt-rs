@@ -1,15 +1,32 @@
-
+use std::env;
+use pktfmt::*;
 
 fn main() {
-    // let f = file_text::FileText::new("/home/djp/pkt-rs/pktcc/tests/field1.pktfmt").unwrap();
+    let mut args = env::args();
+    if args.len() != 2 {
+        eprintln!("Currently we only accept a single argument, which is the name of the input file.");
+        std::process::exit(1);
+    }
+    args.next();
 
-    // let tokenizer = token::Tokenizer::new(f.text());
+    // lexical analysis 
+    let file_text = file_text::FileText::new(args.next().unwrap()).unwrap();
+    let tokenizer = token::Tokenizer::new(file_text.text());
 
-    // let parse_res = parse_with_error!(parser::FieldParser, tokenizer);
+    // parsing for the abstract syntax tree
+    let ast = match  parse_with_error!(parser::PacketParser, tokenizer) {
+        Ok(ast) => ast,
+        Err(err) => {
+            let mut stderr = std::io::stderr();
+            utils::render_error(&file_text, err, &mut stderr);
+            std::process::exit(1)
+        }
+    };
 
-    // let mut out = std::io::stderr();
-    // match parse_res {
-    //     Ok(field) => println!("{:?}", field),
-    //     Err(err) => utils::render_error(&f, err, &mut out),
-    // }
+    // codegen to a writable buffer
+    let mut buf: Vec<u8> = Vec::new();
+    let hl = codegen::HeaderImpl::new(&ast);
+    hl.code_gen(&mut buf);
+
+    println!("{}", std::str::from_utf8(&buf[..]).unwrap());
 }
