@@ -19,7 +19,7 @@ impl<'a> HeaderImpl<'a> {
 
         // Generate a byte array containing a pre-defined header
         // whose field values are set to default.
-        // self.header_gen(output);
+        self.header_gen(output);
 
         // Defines the header struct.
         let header_struct_gen = StructDefinition {
@@ -104,9 +104,9 @@ impl<'a> HeaderImpl<'a> {
 
         for (idx, b) in self.packet.header_template().iter().enumerate() {
             if idx < self.packet.header_template().len() - 1 {
-                write!(output, "{b},").unwrap();
+                write!(output, "0x{:02x},", b).unwrap();
             } else {
-                write!(output, "{b}]\n").unwrap()
+                write!(output, "0x{:02x}]\n", b).unwrap()
             }
         }
     }
