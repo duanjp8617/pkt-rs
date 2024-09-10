@@ -217,6 +217,31 @@ impl Field {
             },
         }
     }
+
+    // When generating a set method for this field, whether we need to protect this
+    // method with a write guard.
+    pub(crate) fn need_write_guard(&self) -> bool {
+        fn repr_byte_len(field: &Field) -> u64 {
+            match field.repr {
+                BuiltinTypes::Bool => 1,
+                BuiltinTypes::U8 => 1,
+                BuiltinTypes::U16 => 2,
+                BuiltinTypes::U32 => 4,
+                BuiltinTypes::U64 => 8,
+                BuiltinTypes::ByteSlice => field.bit / 8,
+            }
+        }
+
+        if self.bit % 8 != 0 || (self.bit / 8) != repr_byte_len(self) {
+            // Cond 1: if self.bit % 8 != 0, the field does not occupy full bytes, and must
+            // be protected with write guard.
+            // Cond 2: field occupies full bytes, but the byte length is smaller than that
+            // indicated by the repr, e.g. bit (24, 40, 48, 56).
+            true
+        } else {
+            false
+        }
+    }
 }
 
 /// The built-in types of pktfmt script, representing values of `repr` and

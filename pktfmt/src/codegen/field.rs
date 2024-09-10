@@ -1,4 +1,5 @@
 use std::io::Write;
+use std::ptr::copy_nonoverlapping;
 
 use crate::ast::{Arg, BitPos, BuiltinTypes, Field};
 use crate::utils::byte_len;
@@ -336,10 +337,8 @@ impl<'a> FieldSetMethod<'a> {
             _ => {}
         }
 
-        if self.field.bit % 8 != 0 {
-            // The `write_value` will have the following form:
-            // 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
-            // |extra bits | |  write_value  |
+        if self.field.need_write_guard() {
+            // The `write_value` will have extra bits.
             // Here, we insert a guard condition to make sure that
             // the extra bits on the `write_value` are all zeroed out.
             write!(
@@ -630,14 +629,15 @@ impl<'a> FieldSetMethod<'a> {
 fn network_endian_read<T: Write>(writer: T, bit_len: u64) -> HeadTailWriter<T> {
     let byte_len = byte_len(bit_len);
     match byte_len {
-        2 => HeadTailWriter::new(writer, "u16::from_be_bytes((", ").try_into().unwrap())"),
-        4 => HeadTailWriter::new(writer, "u32::from_be_bytes((", ").try_into().unwrap())"),
-        8 => HeadTailWriter::new(writer, "u64::from_be_bytes((", ").try_into().unwrap())"),
-        3 | 5 | 6 | 7 => HeadTailWriter::new(
+        2 => HeadTailWriter::new(writer, "NetworkEndian::read_u16(", ")"),
+        3 => HeadTailWriter::new(writer, "NetworkEndian::read_u24(", ")"),
+        4 => HeadTailWriter::new(writer, "NetworkEndian::read_u32(", ")"),
+        5 | 6 | 7 => HeadTailWriter::new(
             writer,
-            &format!("{{let mut out = [0;8];out[(8-{byte_len})..].copy_from_slice("),
-            ");u64::from_be_bytes(out)}}",
+            "NetworkEndian::read_uint(",
+            &format!(", {byte_len})"),
         ),
+        8 => HeadTailWriter::new(writer, "NetworkEndian::read_u64(", ")"),
         _ => panic!(),
     }
 }
@@ -647,13 +647,14 @@ fn network_endian_write<T: Write>(writer: T, bit_len: u64) -> HeadTailWriter<T> 
     let byte_len = byte_len(bit_len);
     match byte_len {
         2 => HeadTailWriter::new(writer, "NetworkEndian::write_u16(", ");"),
+        3 => HeadTailWriter::new(writer, "NetworkEndian::write_u24(", ");"),
         4 => HeadTailWriter::new(writer, "NetworkEndian::write_u32(", ");"),
-        8 => HeadTailWriter::new(writer, "NetworkEndian::write_u64(", ");"),
-        3 | 5 | 6 | 7 => HeadTailWriter::new(
+        5 | 6 | 7 => HeadTailWriter::new(
             writer,
             "NetworkEndian::write_uint(",
             &format!(",{byte_len});"),
         ),
+        8 => HeadTailWriter::new(writer, "NetworkEndian::write_u64(", ");"),
         _ => panic!(),
     }
 }
