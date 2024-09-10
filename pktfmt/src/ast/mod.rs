@@ -27,9 +27,9 @@ pub struct Packet {
 
 impl Packet {
     pub fn new(protocol_name: &str, header: header::Header, length: length::Length) -> Self {
-        // let header_template = build_header_template(&header);
-        let mut header_template = Vec::new();
-        header_template.resize(header.header_len_in_bytes(), 0);
+        let header_template = build_header_template(&header);
+        // let mut header_template = Vec::new();
+        // header_template.resize(header.header_len_in_bytes(), 0);
         Self {
             protocol_name: protocol_name.to_string(),
             header,
@@ -145,7 +145,6 @@ macro_rules! predefined_header_u16_u32_u64_impl {
     ($write_func: ident, $repr: ident, $args:expr) => {{
         let (start, field, target_slice) = $args;
         if field.bit % 8 == 0 {
-            let end = start.next_pos(field.bit);
             let default_val = match &field.default {
                 DefaultVal::Num(b) => *b,
                 _ => panic!(),
@@ -155,7 +154,9 @@ macro_rules! predefined_header_u16_u32_u64_impl {
             // 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
             // |   field                     |
             NetworkEndian::$write_func(
-                &mut target_slice[start.byte_pos() as usize..end.byte_pos() as usize],
+                &mut target_slice[
+                    start.byte_pos() as usize..(start.byte_pos() + byte_len(field.bit)) as usize
+                ],
                 default_val as $repr,
             );
         } else {
@@ -187,7 +188,9 @@ macro_rules! predefined_header_u16_u32_u64_impl {
                     << (8 * (byte_len(field.bit) - 1));
 
                 NetworkEndian::$write_func(
-                    &mut target_slice[start.byte_pos() as usize..end.byte_pos() as usize],
+                    &mut target_slice[
+                        start.byte_pos() as usize..(start.byte_pos() + byte_len(field.bit)) as usize
+                    ],
                     rest_of_field | (default_val as $repr),
                 );
             } else {
@@ -202,7 +205,9 @@ macro_rules! predefined_header_u16_u32_u64_impl {
                 }
                 let rest_of_field = (target_slice[end.byte_pos() as usize] & bit_mask) as $repr;
                 NetworkEndian::$write_func(
-                    &mut target_slice[start.byte_pos() as usize..end.byte_pos() as usize],
+                    &mut target_slice[
+                        start.byte_pos() as usize..(start.byte_pos() + byte_len(field.bit)) as usize
+                    ],
                     rest_of_field | ((default_val as $repr) << (7 - end.bit_pos())),
                 );
             }
