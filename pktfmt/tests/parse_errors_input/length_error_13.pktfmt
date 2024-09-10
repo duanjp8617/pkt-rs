@@ -11,7 +11,7 @@ packet FakeProto {
         }
     ],
     length = [
-        header_len =field_1*3@4,
+        header_len =field_1*3,
         payload_len =field_2*3,
     ]
 }

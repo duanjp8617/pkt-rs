@@ -1,10 +1,12 @@
 packet FakeProto {
     header = [
         field_1 = Field {
-            bit = 128
+            bit = 128,
+            gen=false
         },
         field_2 = Field {
             bit = 8, 
+            gen=false
         },
         field_3 = Field {
             bit = 8, 

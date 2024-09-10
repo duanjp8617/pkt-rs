@@ -1,6 +1,6 @@
 ast error
-at /home/djp/pkt-rs/pktfmt/tests/parse_errors_input/length_error_10.pktfmt 15:21-31
-15 |         header_len =field_1/4-2,
+at /home/djp/pkt-rs/pktfmt/tests/parse_errors_input/length_error_10.pktfmt 17:21-31
+17 |         header_len =field_1/4-2,
                          ^^^^^^^^^^^
 field error 10:
 the form of the algorithmic expression is too complex, only simple ones are supported

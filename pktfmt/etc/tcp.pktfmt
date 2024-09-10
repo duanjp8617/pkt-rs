@@ -1,11 +1,6 @@
 packet Tcp {
-header = [
-        src_port = Field {
-            bit = 16,
-            repr = u16,
-            arg = u16,
-            default = 0,
-        },
+    header = [
+        src_port = Field {bit = 16,},
         dst_port = Field {bit = 16},
         seq_num = Field {bit = 32},
         ack_num = Field {bit = 32},

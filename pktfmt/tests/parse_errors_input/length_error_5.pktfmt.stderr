@@ -1,10 +1,10 @@
 ast error
-at /home/djp/pkt-rs/pktfmt/tests/parse_errors_input/length_error_5.pktfmt 13:5-16:5
+at /home/djp/pkt-rs/pktfmt/tests/parse_errors_input/length_error_5.pktfmt 15:5-18:5
          ~~~~~~~~~~
-13 |     length = [
-14 |         header_len =field_1*4611686018427387904,
-15 |         payload_len =field_2*3,
-16 |     ]
+15 |     length = [
+16 |         header_len =field_1*4611686018427387904,
+17 |         payload_len =field_2*3,
+18 |     ]
      ^^^^^
 length error 5:
 the max length can not be calculated for header_len using the max field value 255

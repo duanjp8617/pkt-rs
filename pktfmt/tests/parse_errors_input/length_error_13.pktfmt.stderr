@@ -1,0 +1,10 @@
+ast error
+at /home/djp/pkt-rs/pktfmt/tests/parse_errors_input/length_error_13.pktfmt 13:5-16:5
+         ~~~~~~~~~~
+13 |     length = [
+14 |         header_len =field_1*3,
+15 |         payload_len =field_2*3,
+16 |     ]
+     ^^^^^
+length error 13:
+the 'gen' of field field_1 should be false

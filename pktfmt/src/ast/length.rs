@@ -1,6 +1,6 @@
 use std::io::Write;
 
-use super::field::{Arg, BuiltinTypes};
+use super::field::{Arg, BuiltinTypes, Field};
 use super::header::Header;
 use super::number::MAX_MTU_IN_BYTES;
 use super::{max_value, DefaultVal, Error};
@@ -67,7 +67,7 @@ impl Length {
     fn check_length_field(&self, header: &Header, index: usize) -> Result<(), Error> {
         let length_field = &self.length_fields[index];
         match Self::check_length_field_basic(header, length_field)? {
-            Some((field_bit_size, expr, fixed_length_opt, default_val)) => match fixed_length_opt {
+            Some((field, expr, fixed_length_opt)) => match fixed_length_opt {
                 Some(fixed_length) => {
                     if index != 0 {
                         // only header_len can be associated with a fixed length,
@@ -96,24 +96,13 @@ impl Length {
                         ))
                     }
 
-                    if let None = expr.reverse_exec(fixed_length) {
-                        // length error 4
-                        return_err!(Error::length(
-                            4,
-                            format!(
-                            "fixed length {} can not be derived from the length field expression",
-                            fixed_length
-                        )
-                        ))
-                    }
-
                     // extract the default value of the length field
-                    let default_val = match default_val {
+                    let default_val = match field.default {
                         DefaultVal::Num(n) => n,
                         _ => panic!(),
                     };
 
-                    if expr.exec(*default_val).unwrap() != fixed_length {
+                    if expr.exec(default_val).unwrap() != fixed_length {
                         // length error 12
                         return_err!(Error::length(
                             12,
@@ -132,7 +121,7 @@ impl Length {
                     // of the header/payload/packet_len, we perform the
                     // following checks
 
-                    let x_max = max_value(field_bit_size).unwrap();
+                    let x_max = max_value(field.bit).unwrap();
                     // length error 5
                     let max_length = expr.exec(x_max).ok_or(Error::length(
                         5,
@@ -189,10 +178,9 @@ impl Length {
         length_field: &'parsed_object LengthField,
     ) -> Result<
         Option<(
-            u64,
+            &'parsed_object Field,
             &'parsed_object UsableAlgExpr,
             Option<u64>,
-            &'parsed_object DefaultVal,
         )>,
         Error,
     > {
@@ -229,6 +217,15 @@ impl Length {
                     ))
                 }
 
+                // make sure that the `gen` of field is marked as false
+                if field.gen {
+                    // length error 13
+                    return_err!(Error::length(
+                        13,
+                        format!("the 'gen' of field {} should be false", name)
+                    ))
+                }
+
                 // A field can only be used in a length expression if the repr is not a byte
                 // slice and that the arg is the same as the repr.
                 match field.arg {
@@ -238,7 +235,7 @@ impl Length {
                         // A field can only be used in a length expression if
                         // the repr is not a byte slice and that the arg is the
                         // same as the repr.
-                        Ok(Some((field.bit, expr, *fixed_length_opt, &field.default)))
+                        Ok(Some((field, expr, *fixed_length_opt)))
                     }
                     _ => {
                         // length error 9

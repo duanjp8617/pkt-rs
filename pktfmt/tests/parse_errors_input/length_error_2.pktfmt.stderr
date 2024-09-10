@@ -1,10 +1,10 @@
 ast error
-at /home/djp/pkt-rs/pktfmt/tests/parse_errors_input/length_error_2.pktfmt 14:5-17:5
+at /home/djp/pkt-rs/pktfmt/tests/parse_errors_input/length_error_2.pktfmt 16:5-19:5
          ~~~~~~~~~~
-14 |     length = [
-15 |         header_len =field_1*3@3,
-16 |         payload_len =field_2*3@3,
-17 |     ]
+16 |     length = [
+17 |         header_len =field_1*3@3,
+18 |         payload_len =field_2*3@3,
+19 |     ]
      ^^^^^
 length error 2:
 invalid fixed length, it can not be associated with payload_len
