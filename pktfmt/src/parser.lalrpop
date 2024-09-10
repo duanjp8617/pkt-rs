@@ -80,6 +80,7 @@ extern {
 
         // numbers
         "num" => Token::Num(<&'input str>),
+        "hex number" => Token::HexNum(<&'input str>),
 
         // rust code
         "code" => Token::Code(<&'input str>),
