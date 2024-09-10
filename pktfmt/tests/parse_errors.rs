@@ -110,14 +110,11 @@ test_parse_eror_list!(
     [field_error_1, field_error_2, field_error_3, field_error_4, field_error_5, field_error_6,
      header_error_1, header_error_2, header_error_3, header_error_4, 
      length_error_1, length_error_2, length_error_3, length_error_4, length_error_5, length_error_6,
-     length_error_7, length_error_8, length_error_9, length_error_10, length_error_11],
+     length_error_7, length_error_8, length_error_9, length_error_10, length_error_11, length_error_12],
     parser::PacketParser
 );
 
-#[test]
-fn fuck() {
-    // dump_parse_error!("header_error_4.pktfmt", parser::PacketParser);
-
-    let res = {println!("wtf"); 5}<<1;
-    println!("{res}");
-}
+// #[test]
+// fn fuck() {
+//     dump_parse_error!("length_error_2.pktfmt", parser::PacketParser);
+// }

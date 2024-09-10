@@ -2,7 +2,6 @@ packet FakeProto {
     header = [
         field_1 = Field {
             bit = 8, 
-            default = 1
         },
         field_2 = Field {
             bit = 8, 
@@ -13,7 +12,7 @@ packet FakeProto {
     ],
     length = [
         header_len =field_1*3@3,
-        payload_len =field_2*3@3,
+        payload_len =field_2*3,
     ]
 }
 

@@ -1,5 +1,4 @@
 use std::io::Write;
-use std::ptr::copy_nonoverlapping;
 
 use crate::ast::{Arg, BitPos, BuiltinTypes, Field};
 use crate::utils::byte_len;
