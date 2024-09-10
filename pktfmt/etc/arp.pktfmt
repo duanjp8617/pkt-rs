@@ -1,0 +1,14 @@
+packet Arp {
+    header = [
+        hardware_type = Field{bit = 16, arg = %%Hardware%%, default = 1},
+        protocol_type = Field{bit = 16, arg = %%EtherType%%, default = 0x0806},
+        hardware_addr_len = Field{bit = 8, default = 6},
+        protocol_addr_len = Field{bit = 8, default = 4},
+        operation = Field{bit = 16, arg = Operation},
+        sender_hardware_addr = Field{bit = 48, arg = MacAddr},
+        sender_protocol_addr = Field{bit = 32, repr = &[u8], arg = Ipv4Addr},
+        target_hardware_addr = Field{bit = 48, arg = MacAddr},
+        target_protocol_addr = Field{bit = 32, repr = &[u8], arg = Ipv4Addr},
+    ],
+    with_payload = false,
+}

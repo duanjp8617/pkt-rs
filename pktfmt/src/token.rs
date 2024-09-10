@@ -101,6 +101,7 @@ pub enum Token<'input> {
 
     // Numbers
     Num(&'input str),
+    HexNum(&'input str),
 
     // rust code enclosed by %%:  %%RsType::new(1)%%
     Code(&'input str),
@@ -501,8 +502,47 @@ impl<'input> Tokenizer<'input> {
                 }
                 // number token
                 Some((idx, c)) if num_start(c) => {
+                    if c == '0' {
+                        // we get a 0, we either encounter a number that starts
+                        // with 0, or we encounter a hex
+                        // number 0x
+                        match self.consume_and_peek() {
+                            Some((idx2, 'x')) => {
+                                let old_pos = (self.chars.clone(), self.head);
+                                self.consume_and_peek();
+
+                                // we encounter a hex string
+                                let next_idx = self
+                                    .take_while(is_hex)
+                                    .map(|(next_idx, _)| next_idx)
+                                    .unwrap_or(self.text.len());
+
+                                if next_idx == idx2 + 1 {
+                                    // there are no hex string after the original '0x', we restore
+                                    // the stream and return 0 as a number token
+                                    self.chars = old_pos.0;
+                                    self.head = old_pos.1;
+                                    let token_str = &self.text[idx..idx + 1];
+                                    return Some(Ok((idx, Token::Num(token_str), idx + 1)));
+                                } else {
+                                    let token_str = &self.text[idx..next_idx];
+                                    return Some(Ok((idx, Token::HexNum(token_str), next_idx)));
+                                }
+                            }
+                            Some((_, c2)) if num_start(c2) => {
+                                // we do nothing and let the control flow exits
+                                // the current if clause.
+                            }
+                            _ => {
+                                // we consume a single 0, just return this token
+                                let token_str = &self.text[idx..idx + 1];
+                                return Some(Ok((idx, Token::Num(token_str), idx + 1)));
+                            }
+                        }
+                    }
+
                     let next_idx = self
-                        .take_while(identifier_follow_up)
+                        .take_while(num_start)
                         .map(|(next_idx, _)| next_idx)
                         .unwrap_or(self.text.len());
 
@@ -535,6 +575,10 @@ fn identifier_follow_up(c: char) -> bool {
 
 fn num_start(c: char) -> bool {
     '0' <= c && c <= '9'
+}
+
+fn is_hex(c: char) -> bool {
+    num_start(c) || ('a' <= c && c <= 'f') || ('A' <= c && c <= 'F')
 }
 
 // The iterator implementation for the tokenizer.
@@ -804,6 +848,34 @@ mod test {
                 ("                 ~~~~", Token::BooleanValue("true")),
             ],
         );
+    }
+
+    #[test]
+    fn hex_num() {
+        test(
+            r#"0abc 0245 0xg 0xab1c 0x"#,
+            vec![
+                ("~                      ", Token::Num("0")),
+                (" ~~~                   ", Token::Ident("abc")),
+                ("     ~~~~              ", Token::Num("0245")),
+                ("          ~            ", Token::Num("0")),
+                ("           ~~          ", Token::Ident("xg")),
+                ("              ~~~~~~   ", Token::HexNum("0xab1c")),
+                ("                     ~ ", Token::Num("0")),
+                ("                      ~", Token::Ident("x"))
+            ],
+        );
+    }
+
+    #[test]
+    fn fuck() {
+        let fuck = r#"0abc 0245 0xg 0xab1c 0x"#;
+
+        let t = Tokenizer::new(fuck);
+
+        for token in t {
+            println!("{:?}", token);
+        }
     }
 
     #[test]
