@@ -1,0 +1,9 @@
+ast error
+at /home/djp/pkt-rs/pktfmt/tests/parse_errors_input/length_error_4.pktfmt 15:5-17:5
+         ~~~~~~~~~~
+15 |     length = [
+16 |         header_len =field_2*2,
+17 |     ]
+     ^^^^^
+length error 4:
+default value of header_len is 2, which is smaller than the fixed header length 4

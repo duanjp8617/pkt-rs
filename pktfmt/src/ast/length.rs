@@ -101,7 +101,6 @@ impl Length {
                         DefaultVal::Num(n) => n,
                         _ => panic!(),
                     };
-
                     if expr.exec(default_val).unwrap() != fixed_length {
                         // length error 12
                         return_err!(Error::length(
@@ -156,6 +155,23 @@ impl Length {
                                     "header length {} can not be derived from the {} expression",
                                     header_len, LENGTH_FIELDS[index]
                                 )
+                            ))
+                        }
+
+                        let default_val = match field.default {
+                            DefaultVal::Num(n) => n,
+                            _ => panic!(),
+                        };
+                        if expr.exec(default_val).unwrap() < header.header_len_in_bytes() as u64 {
+                            // length error 4
+                            return_err!(Error::length(
+                                4,
+                                format!(
+                                "default value of {} is {}, which is smaller than the fixed header length {}",
+                                LENGTH_FIELDS[index],
+                                expr.exec(default_val).unwrap(),
+                                header.header_len_in_bytes()
+                            )
                             ))
                         }
                     }
