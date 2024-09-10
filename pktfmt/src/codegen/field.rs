@@ -1,11 +1,9 @@
 use std::io::Write;
 
 use crate::ast::{Arg, BitPos, BuiltinTypes, Field};
+use crate::utils::byte_len;
 
-use super::{
-    byte_len, network_endian_read, network_endian_write, ones_mask, rust_var_as_repr, to_rust_type,
-    zeros_mask, HeadTailWriter,
-};
+use super::HeadTailWriter;
 
 const REST_OF_FIELD: &str = "rest_of_field";
 
@@ -624,5 +622,172 @@ impl<'a> FieldSetMethod<'a> {
             7 - end.bit_pos()
         )
         .unwrap();
+    }
+}
+
+// Append corresponding read method that honors the network endianess to the
+// input `writer`. We use the `byteorder` crate just like `smoltcp` here.
+fn network_endian_read<T: Write>(writer: T, bit_len: u64) -> HeadTailWriter<T> {
+    let byte_len = byte_len(bit_len);
+    match byte_len {
+        2 => HeadTailWriter::new(writer, "u16::from_be_bytes((", ").try_into().unwrap())"),
+        4 => HeadTailWriter::new(writer, "u32::from_be_bytes((", ").try_into().unwrap())"),
+        8 => HeadTailWriter::new(writer, "u64::from_be_bytes((", ").try_into().unwrap())"),
+        3 | 5 | 6 | 7 => HeadTailWriter::new(
+            writer,
+            &format!("{{let mut out = [0;8];out[(8-{byte_len})..].copy_from_slice("),
+            ");u64::from_be_bytes(out)}}",
+        ),
+        _ => panic!(),
+    }
+}
+
+// Similar to `network_endian_read`, but it appends the write method.
+fn network_endian_write<T: Write>(writer: T, bit_len: u64) -> HeadTailWriter<T> {
+    let byte_len = byte_len(bit_len);
+    match byte_len {
+        2 => HeadTailWriter::new(writer, "NetworkEndian::write_u16(", ");"),
+        4 => HeadTailWriter::new(writer, "NetworkEndian::write_u32(", ");"),
+        8 => HeadTailWriter::new(writer, "NetworkEndian::write_u64(", ");"),
+        3 | 5 | 6 | 7 => HeadTailWriter::new(
+            writer,
+            "NetworkEndian::write_uint(",
+            &format!(",{byte_len});"),
+        ),
+        _ => panic!(),
+    }
+}
+
+// Generate bit mask with all ones from `low`-th bit to the `high`-th bit.
+fn ones_mask(mut low: u64, high: u64) -> String {
+    assert!(low <= high && high < 64);
+
+    let mut s = String::new();
+    (0..low / 4).for_each(|_| {
+        s.push('0');
+    });
+
+    while low / 4 < high / 4 {
+        match low % 4 {
+            0 => s.insert(0, 'f'),
+            1 => s.insert(0, 'e'),
+            2 => s.insert(0, 'c'),
+            3 => s.insert(0, '8'),
+            _ => panic!(),
+        }
+        low += 4 - low % 4
+    }
+
+    let mut res = 0;
+    for offset in low % 4..high % 4 + 1 {
+        res += 2_i32.pow(offset as u32);
+    }
+
+    format!("{:#x}", res) + &s
+}
+
+// Generate bit mask with all zeros from `low`-th bit to the `high`-th bit.
+fn zeros_mask(mut low: u64, high: u64) -> String {
+    assert!(low <= high && high < 64);
+
+    let mut s = String::new();
+    (0..low / 4).for_each(|_| {
+        s.push('f');
+    });
+
+    while low / 4 < high / 4 {
+        match low % 4 {
+            0 => s.insert(0, '0'),
+            1 => s.insert(0, '1'),
+            2 => s.insert(0, '3'),
+            3 => s.insert(0, '7'),
+            _ => panic!(),
+        }
+        low += 4 - low % 4
+    }
+
+    let mut res = 0;
+    for offset in low % 4..high % 4 + 1 {
+        res += 2_i32.pow(offset as u32);
+    }
+
+    let mut s = format!("{:#x}", 15 - res) + &s;
+
+    let repr_len = match byte_len(high + 1) {
+        1 => 1,
+        2 => 2,
+        3 | 4 => 4,
+        5 | 6 | 7 | 8 => 8,
+        _ => panic!(),
+    };
+
+    (0..(repr_len * 2 - (s.len() - 2))).for_each(|_| s.insert(2, 'f'));
+    s
+}
+
+// If the `arg` is a rust type, then the rust type must implement a convert
+// method that turns the `repr`-typed value into a `arg`-typed one.
+//
+// Take `Ipv4Addr` as an example, it should implement:
+// pub fn Ipv4Addr::from_byte_slice(value: &[u8]) -> Ipv4Addr {...}
+fn to_rust_type(repr: BuiltinTypes, rust_type_code: &str) -> String {
+    match repr {
+        BuiltinTypes::U8 | BuiltinTypes::U16 | BuiltinTypes::U32 | BuiltinTypes::U64 => {
+            format!("{rust_type_code}::from_{}", repr.to_string())
+        }
+        BuiltinTypes::ByteSlice => {
+            format!("{rust_type_code}::from_byte_slice")
+        }
+        _ => panic!(),
+    }
+}
+
+// If the `arg` is a rust type, then the rust type must implement a convert
+// method that turns the `arg`-typed value into a `repr`-typed one.
+//
+// Take `EtherType` as an example, it should implement:
+// pub fn EtherType::as_u16(&self) -> u16 {...}
+fn rust_var_as_repr(var_name: &str, repr: BuiltinTypes) -> String {
+    match repr {
+        BuiltinTypes::U8 | BuiltinTypes::U16 | BuiltinTypes::U32 | BuiltinTypes::U64 => {
+            format!("{var_name}.as_{}()", repr.to_string())
+        }
+        BuiltinTypes::ByteSlice => {
+            format!("{var_name}.as_byte_slice()")
+        }
+        _ => panic!(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_bit_mask() {
+        fn to_num_back_to_hex_string(bit_mask: String) {
+            assert_eq!(
+                bit_mask,
+                format!("{:#x}", u64::from_str_radix(&bit_mask[2..], 16).unwrap())
+            );
+        }
+
+        to_num_back_to_hex_string(ones_mask(14, 33));
+        to_num_back_to_hex_string(zeros_mask(14, 33));
+
+        to_num_back_to_hex_string(ones_mask(7, 22));
+        to_num_back_to_hex_string(zeros_mask(7, 22));
+
+        to_num_back_to_hex_string(ones_mask(55, 55));
+        to_num_back_to_hex_string(zeros_mask(55, 55));
+
+        to_num_back_to_hex_string(ones_mask(55, 63));
+        assert_eq!(&zeros_mask(55, 63), "0x007fffffffffffff");
+
+        to_num_back_to_hex_string(ones_mask(44, 45));
+        to_num_back_to_hex_string(zeros_mask(44, 45));
+
+        to_num_back_to_hex_string(ones_mask(0, 63));
+        assert_eq!(&zeros_mask(0, 63), "0x0000000000000000");
     }
 }

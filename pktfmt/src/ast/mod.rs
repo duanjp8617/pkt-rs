@@ -2,7 +2,7 @@ use std::fmt;
 
 use byteorder::{ByteOrder, NetworkEndian};
 
-use crate::codegen::byte_len;
+use crate::utils::byte_len;
 
 mod number;
 pub use number::*;

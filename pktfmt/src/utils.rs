@@ -89,3 +89,13 @@ macro_rules! return_err {
         return Err($arg)
     };
 }
+
+// A helper that converts length in bit to length in bytes
+#[inline]
+pub(crate) fn byte_len(bit_len: u64) -> u64 {
+    if bit_len % 8 == 0 {
+        bit_len / 8
+    } else {
+        bit_len / 8 + 1
+    }
+}
