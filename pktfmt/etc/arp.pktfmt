@@ -5,9 +5,9 @@ packet Arp {
         hardware_addr_len = Field{bit = 8, default = 6},
         protocol_addr_len = Field{bit = 8, default = 4},
         operation = Field{bit = 16, arg = %%Operation%%, default = 1},
-        sender_hardware_addr = Field{bit = 48, repr = &[u8]},
-        sender_protocol_addr = Field{bit = 32, repr = &[u8]},
-        target_hardware_addr = Field{bit = 48, repr = &[u8]},
-        target_protocol_addr = Field{bit = 32, repr = &[u8]},
+        sender_hardware_addr = Field{bit = 48, repr = &[u8], arg = %%MacAddr%%},
+        sender_protocol_addr = Field{bit = 32, arg = %%Ipv4Addr%%},
+        target_hardware_addr = Field{bit = 48, repr = &[u8], arg = %%MacAdd4%%},
+        target_protocol_addr = Field{bit = 32, arg = %%Ipv4Addr%%},
     ]
 }

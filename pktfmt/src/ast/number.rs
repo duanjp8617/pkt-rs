@@ -23,10 +23,7 @@ const fn _check_usize() -> bool {
 const _: () = assert!(_check_usize() && _check_mtu_for_usize());
 
 // parse the byte token from a byte array to u8
-pub(crate) fn parse_to_byte_val(token_s: &str) -> Result<u8, Error> {
-    // the parse always succeeds, because token_s is a parsed number token
-    let num = u64::from_str(token_s).unwrap();
-
+pub(crate) fn parse_to_byte_val(num: u64) -> Result<u8, Error> {
     if num > 255 {
         return_err!(Error::num_error(1, format!("invalid byte value {}", num)))
     } else {

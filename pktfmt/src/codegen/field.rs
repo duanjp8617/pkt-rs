@@ -733,10 +733,10 @@ fn zeros_mask(mut low: u64, high: u64) -> String {
 fn to_rust_type(repr: BuiltinTypes, rust_type_code: &str) -> String {
     match repr {
         BuiltinTypes::U8 | BuiltinTypes::U16 | BuiltinTypes::U32 | BuiltinTypes::U64 => {
-            format!("{rust_type_code}::from_{}", repr.to_string())
+            format!("{rust_type_code}::from")
         }
         BuiltinTypes::ByteSlice => {
-            format!("{rust_type_code}::from_byte_slice")
+            format!("{rust_type_code}::from_bytes")
         }
         _ => panic!(),
     }
@@ -750,10 +750,10 @@ fn to_rust_type(repr: BuiltinTypes, rust_type_code: &str) -> String {
 fn rust_var_as_repr(var_name: &str, repr: BuiltinTypes) -> String {
     match repr {
         BuiltinTypes::U8 | BuiltinTypes::U16 | BuiltinTypes::U32 | BuiltinTypes::U64 => {
-            format!("{var_name}.as_{}()", repr.to_string())
+            format!("{}::from({var_name})", repr.to_string())
         }
         BuiltinTypes::ByteSlice => {
-            format!("{var_name}.as_byte_slice()")
+            format!("{var_name}.as_bytes()")
         }
         _ => panic!(),
     }

@@ -1,8 +1,7 @@
 packet Ether {
     header = [
-        dest_mac = Field {bit = 48, arg = %%MacAddr%%},
-        src_mac = Field {bit = 48, arg = %%MacAddr%%},
-        ethertype = Field {bit = 15, arg = %%EtherType%%},
-        fuck = Field {bit = 1, arg = bool},
+        dest_mac = Field {bit = 48, repr = &[u8], arg = %%MacAddr%%, default=[0x11, 0x22, 0x33, 0x44, 0x55, 0x66]},
+        src_mac = Field {bit = 48, repr = &[u8], arg = %%MacAddr%%},
+        ethertype = Field {bit = 16, arg = %%EtherType%%, default = 0x0800},
     ]
 }

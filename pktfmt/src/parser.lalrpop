@@ -124,7 +124,7 @@ Arg: Arg = {
 }
 
 Byte: u8  = {
-    <l: @L> <num: "num"> <r: @R> =>? {
+    <l: @L> <num: Num> <r: @R> =>? {
         parse_to_byte_val(num).map_err(|err| {
             let error = Error::Ast {err, span: (l, r)};
             ParseError::User{ error }
