@@ -1,0 +1,23 @@
+packet Ipv4 {
+    header = [
+        version = Field{bit = 4, default = 4},
+        data_off = Field{bit = 4, default = 5, gen = false},
+        dscp = Field{bit = 6},
+        ecn = Field{bit = 2},
+        packet_len_ = Field {bit = 16, default = 20, gen = false},
+        ident = Field {bit = 16},
+        flag_reserved = Field{bit = 1},
+        dont_frag = Field{bit = 1, arg = bool},
+        more_frag = Field{bit = 1, arg = bool},
+        frag_offset = Field{bit = 13},
+        ttl = Field{bit = 8},
+        protocol = Field{bit = 8, arg = %%IpProtocol%%},
+        checksum = Field{bit = 16},
+        src_ip = Field{bit = 32, arg = %%Ipv4Addr%%},
+        dst_ip = Field{bit = 32, arg = %%Ipv4Addr%%},
+    ],
+    length = [
+        header_len = data_off*4,
+        packet_len = packet_len_
+    ]
+}
