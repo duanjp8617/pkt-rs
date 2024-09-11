@@ -80,7 +80,7 @@ extern {
 
         // numbers
         "num" => Token::Num(<&'input str>),
-        "hex number" => Token::HexNum(<&'input str>),
+        "hex num" => Token::HexNum(<&'input str>),
 
         // rust code
         "code" => Token::Code(<&'input str>),
@@ -100,7 +100,8 @@ List<E>: Vec<E> =
 };
 
 pub Num: u64 = {
-    "num" => u64::from_str(<>).unwrap()
+    "num" => u64::from_str(<>).unwrap(),
+    "hex num" => u64::from_str_radix(&<>[2..], 16).unwrap()
 }
 
 Bool: bool = {
@@ -136,9 +137,9 @@ ByteArray: Vec<u8> = {
 }
 
 DefaultVal: DefaultVal = {
-     Num => DefaultVal::Num(<>),
-     Bool => DefaultVal::Bool(<>),
-     ByteArray => DefaultVal::Bytes(<>)
+    Num => DefaultVal::Num(<>),
+    Bool => DefaultVal::Bool(<>),
+    ByteArray => DefaultVal::Bytes(<>)
 }
 
 pub Field: Field = {

@@ -106,7 +106,7 @@ impl<'a> HeaderImpl<'a> {
             if idx < self.packet.header_template().len() - 1 {
                 write!(output, "0x{:02x},", b).unwrap();
             } else {
-                write!(output, "0x{:02x}]\n", b).unwrap()
+                write!(output, "0x{:02x}];\n", b).unwrap()
             }
         }
     }

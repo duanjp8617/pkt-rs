@@ -116,5 +116,12 @@ test_parse_eror_list!(
 
 #[test]
 fn fuck() {
-    dump_parse_error!("length_error_4.pktfmt", parser::PacketParser);
+    // dump_parse_error!("length_error_4.pktfmt", parser::PacketParser);
+    let s1 = "0xabc";
+    let s2 = "0xAbc";
+
+    let n1 = u64::from_str_radix(&s1[2..], 16).unwrap();
+    let n2 = u64::from_str_radix(&s2[2..], 16).unwrap();
+
+    println!("{n1}, {n2}");
 }
