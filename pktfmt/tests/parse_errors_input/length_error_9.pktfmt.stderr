@@ -7,4 +7,4 @@ at /home/djp/pkt-rs/pktfmt/tests/parse_errors_input/length_error_9.pktfmt 16:5-1
 19 |     ]
      ^^^^^
 length error 9:
-the field used by length expression is invalid: Field { bit: 16, repr: ByteSlice, arg: BuiltinTypes(ByteSlice), default: Bytes([0, 0]), gen: false }
+the field used by length expression is invalid: Field { bit: 16, repr: ByteSlice, arg: BuiltinTypes(ByteSlice), default: Bytes([0, 0]), gen: false, default_fix: false }

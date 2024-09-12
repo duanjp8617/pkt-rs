@@ -296,7 +296,7 @@ mod tests {
             "Field {bit  = 32, repr = &[u8], arg = %%Ipv4Addr%%, default=[0,0,0,0]}",
             FieldGetMethod,
             read_as_arg,
-            "Ipv4Addr::from_byte_slice(&self.buf.as_ref()[3..7])",
+            "Ipv4Addr::from_bytes(&self.buf.as_ref()[3..7])",
             BitPos::new(3 * 8 + 0),
             "self.buf.as_ref()"
         );
@@ -459,7 +459,7 @@ NetworkEndian::write_u64(&mut self.buf.as_mut()[3..11],rest_of_field|value);",
             "Field {bit  = 32, repr = &[u8], arg = %%Ipv4Addr%%, default=[0,0,0,0]}",
             FieldSetMethod,
             write_as_arg,
-            "let value = value.as_byte_slice();
+            "let value = value.as_bytes();
 (&mut self.buf.as_mut()[3..7]).copy_from_slice(value);",
             BitPos::new(3 * 8 + 0),
             "self.buf.as_mut()",

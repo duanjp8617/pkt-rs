@@ -7,4 +7,4 @@ at /home/djp/pkt-rs/pktfmt/tests/parse_errors_input/length_error_5.pktfmt 15:5-1
 18 |     ]
      ^^^^^
 length error 5:
-the max length can not be calculated for header_len using the max field value 255
+the length can not be calculated for header_len using the max field value 255
