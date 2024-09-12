@@ -10,6 +10,7 @@ pub struct Field {
     pub arg: Arg,
     pub default: DefaultVal,
     pub gen: bool,
+    pub default_fix: bool,
 }
 
 impl Field {
@@ -24,7 +25,7 @@ impl Field {
         bit: u64,
         repr: Option<BuiltinTypes>,
         arg: Option<Arg>,
-        default: Option<DefaultVal>,
+        default: Option<(DefaultVal, bool)>,
         gen: Option<bool>,
     ) -> Result<Self, Error> {
         if bit == 0 || (bit > 64 && bit % 8 != 0) || (bit > MAX_MTU_IN_BYTES * 8) {
@@ -56,12 +57,27 @@ impl Field {
             None => Arg::BuiltinTypes(repr),
         };
 
+        let mut default_fix = false;
         let default = match default {
-            Some(defined_default) => {
+            Some((defined_default, fix_flag)) => {
+                default_fix = fix_flag;
                 Self::check_defined_default_val(bit, &repr, &arg, defined_default)?
             }
             None => Self::infer_default_val(bit, &repr, &arg),
         };
+        if default_fix {
+            // make sure that the default is not bool and byte array
+            match &default {
+                DefaultVal::Bool(_) | DefaultVal::Bytes(_) => {
+                    // field error 7
+                    return_err!(Error::field(
+                        7,
+                        format!("default can not be fixed for bool value and byte array")
+                    ))
+                }
+                _ => {}
+            }
+        }
 
         let gen = gen.unwrap_or(true);
 
@@ -71,6 +87,7 @@ impl Field {
             arg,
             default,
             gen,
+            default_fix,
         })
     }
 

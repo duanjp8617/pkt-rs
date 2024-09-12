@@ -142,16 +142,21 @@ DefaultVal: DefaultVal = {
     ByteArray => DefaultVal::Bytes(<>)
 }
 
+DefaultValWithFixFlag: (DefaultVal, bool) = {
+    DefaultVal => (<>, false), 
+    "@" <DefaultVal> => (<>, true)
+}
+
 pub Field: Field = {
     <l: @L> "Field" "{"
         "bit" "=" <bit: Num> 
         <repr: ("," "repr" "=" <BuiltinTypes>)?>
         <arg: ("," "arg" "=" <Arg>)?>
-        <default: ("," "default" "=" <DefaultVal>)?>
+        <opt_default_fix: ("," "default" "=" <DefaultValWithFixFlag>)?>
         <gen: ("," "gen" "=" <Bool>)?>
         ","?
     "}" <r: @R> =>? {
-        Field::new(bit, repr, arg, default, gen).map_err(|err| {
+        Field::new(bit, repr, arg, opt_default_fix, gen).map_err(|err| {
             let error = Error::Ast {err, span: (l, r)};
             ParseError::User{ error }
         })
