@@ -1,0 +1,11 @@
+ast error
+at /home/djp/pkt-rs/pktfmt/tests/parse_errors_input/field_error_7.pktfmt 3:18-7:9
+                     ~~~~~~~
+3 |         field1 = Field {
+4 |             bit = 32,
+5 |             repr = &[u8],
+6 |             default = @[4,4,4,4]
+7 |         },
+    ^^^^^^^^^
+field error 7:
+default can not be fixed for bool value and byte array

@@ -1,0 +1,18 @@
+packet FakeProto {
+    header = [
+        field1 = Field {
+            bit = 32,
+            repr = &[u8],
+            default = @[4,4,4,4]
+        },
+        field2 = Field {
+            bit = 1,
+            arg = bool,
+            default = @true
+        },
+        field3 = Field {
+            bit = 7
+        }
+    ]
+}
+
