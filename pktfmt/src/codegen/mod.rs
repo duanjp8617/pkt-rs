@@ -77,10 +77,7 @@ trait GenerateFieldAccessMethod {
     ) {
         for index in 0..3 {
             match self.length().at(index) {
-                LengthField::Expr {
-                    expr,
-                    fixed_length_opt: _,
-                } => {
+                LengthField::Expr { expr } => {
                     let (field, start) = self.header().field(expr.field_name()).unwrap();
                     match write_value {
                         Some(write_value) => {

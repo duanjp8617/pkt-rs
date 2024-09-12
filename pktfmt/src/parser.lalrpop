@@ -203,11 +203,11 @@ AlgBaseExpr: Box<AlgExpr> = {
 }
 
 AlgExpr: LengthField = {
-    <l: @L> <expr: AddExpr> <fixed_length_opt: ("@" <Num>)?> <r: @R> =>? {
+    <l: @L> <expr: AddExpr> <r: @R> =>? {
         expr.try_take_usable_alg_expr().map_err(|err| {
             let error = Error::Ast {err, span: (l, r)};
             ParseError::User{ error }
-        }).map(|expr| LengthField::Expr{expr, fixed_length_opt})
+        }).map(|expr| LengthField::Expr{ expr })
     }
 }
 
