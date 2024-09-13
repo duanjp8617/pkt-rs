@@ -5,8 +5,6 @@ use crate::utils::byte_len;
 
 use super::HeadTailWriter;
 
-const REST_OF_FIELD: &str = "rest_of_field";
-
 /// A helper object that generate get method for the header field.
 pub struct FieldGetMethod<'a> {
     field: &'a Field,
@@ -503,14 +501,9 @@ impl<'a> FieldSetMethod<'a> {
                     // 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
                     // |   field       | | rest bits |
 
+                    let mut rest_of_field_buf = Vec::new();
                     {
                         // First, read the rest of the bits into a variable.
-                        let mut let_assign = HeadTailWriter::new(
-                            &mut output,
-                            &format!("let {REST_OF_FIELD}="),
-                            ";\n",
-                        );
-
                         if end.bit_pos() == 7 {
                             // The field has the form:
                             // 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
@@ -522,7 +515,7 @@ impl<'a> FieldSetMethod<'a> {
                             // 4. Left shift to make room for the field area ("(({}[{}]&{}) as {})
                             //    << {}")
                             write!(
-                                let_assign.get_writer(),
+                                &mut rest_of_field_buf,
                                 "(({target_slice}[{}]&{}) as {}) << {}",
                                 self.start.byte_pos(),
                                 ones_mask(8 - u64::from(self.start.bit_pos()), 7),
@@ -536,7 +529,7 @@ impl<'a> FieldSetMethod<'a> {
                             // |   field         | |rest bits|
                             // We do similar steps except for the final one (the left-shift one).
                             write!(
-                                let_assign.get_writer(),
+                                &mut rest_of_field_buf,
                                 "({target_slice}[{}]&{}) as {}",
                                 end.byte_pos(),
                                 ones_mask(0, 6 - u64::from(end.bit_pos())),
@@ -566,8 +559,12 @@ impl<'a> FieldSetMethod<'a> {
                         // `write_value` has the same form as field.
                         // We glue the variable defined as `REST_OF_FIELD`
                         // and `write_value` together.
-                        write!(field_writer.get_writer(), "{REST_OF_FIELD}|{write_value}",)
-                            .unwrap();
+                        write!(
+                            field_writer.get_writer(),
+                            "{}|{write_value}",
+                            std::str::from_utf8(&rest_of_field_buf[..]).unwrap()
+                        )
+                        .unwrap();
                     } else {
                         // The field has the following form:
                         // 0 1 2 3 4 5 6 7
@@ -577,7 +574,8 @@ impl<'a> FieldSetMethod<'a> {
                         // Then we glue them together.
                         write!(
                             field_writer.get_writer(),
-                            "{REST_OF_FIELD}|({write_value}<<{})",
+                            "{}|({write_value}<<{})",
+                            std::str::from_utf8(&rest_of_field_buf[..]).unwrap(),
                             7 - end.bit_pos()
                         )
                         .unwrap();
@@ -778,6 +776,9 @@ fn rust_var_as_repr(var_name: &str, repr: BuiltinTypes) -> String {
 
 #[cfg(test)]
 mod tests {
+    use crate::ast::BitPos;
+    use crate::token::Tokenizer;
+
     use super::*;
 
     #[test]
@@ -806,5 +807,365 @@ mod tests {
 
         to_num_back_to_hex_string(ones_mask(0, 63));
         assert_eq!(&zeros_mask(0, 63), "0x0000000000000000");
+    }
+
+    macro_rules! do_test_field_codegen {
+        ($program: expr, $test_ty: ident, $test_fn: ident, $expected: expr, $start: expr $(, $arg: expr)*) => {
+            let tokenizer = Tokenizer::new($program);
+            let field = parse_with_error!(crate::parser::FieldParser, tokenizer).unwrap();
+            let mut buf: Vec<u8> = ::std::vec::Vec::new();
+            $test_ty::new(&field, $start).$test_fn($($arg,)* &mut buf);
+            assert_eq!($expected, std::str::from_utf8(&buf[..]).unwrap());
+        };
+    }
+
+    #[allow(unused_macros)]
+    macro_rules! print_field_codegen {
+        ($program: expr, $test_fn: ident, $expected: expr $(, $arg: expr)*) => {
+            let tokenizer = Tokenizer::new($program);
+            let field = parse_with_error!(crate::parser::FieldParser, tokenizer).unwrap();
+            let mut buf: Vec<u8> = ::std::vec::Vec::new();
+            $test_fn(&field $(, $arg)* , &mut buf);
+            println!("{}", std::str::from_utf8(&buf[..]).unwrap())
+        };
+    }
+
+    #[test]
+    fn test_bracket_writer() {
+        let mut s: Vec<u8> = ::std::vec::Vec::new();
+
+        {
+            let mut writer = HeadTailWriter::new(&mut s, "(", ")");
+            write!(writer.get_writer(), "{}", 222).unwrap();
+        }
+
+        write!(&mut s, "{}", 555).unwrap();
+
+        {
+            let mut writer = HeadTailWriter::new(&mut s, "(", ")");
+            write!(writer.get_writer(), "{}", 777).unwrap();
+        }
+
+        assert_eq!(std::str::from_utf8(&s[..]).unwrap(), "(222)555(777)");
+    }
+
+    #[test]
+    fn test_read_repr_8b() {
+        do_test_field_codegen!(
+            "Field {bit  = 5}",
+            FieldGetMethod,
+            read_repr,
+            "(self.buf.as_ref()[0]>>2)&0x1f",
+            BitPos::new(0 * 8 + 1),
+            "self.buf.as_ref()"
+        );
+
+        do_test_field_codegen!(
+            "Field {bit  = 5}",
+            FieldGetMethod,
+            read_repr,
+            "self.buf.as_ref()[0]&0x1f",
+            BitPos::new(0 * 8 + 3),
+            "self.buf.as_ref()"
+        );
+
+        do_test_field_codegen!(
+            "Field {bit  = 5}",
+            FieldGetMethod,
+            read_repr,
+            "self.buf.as_ref()[0]>>3",
+            BitPos::new(0 * 8 + 0),
+            "self.buf.as_ref()"
+        );
+
+        do_test_field_codegen!(
+            "Field {bit  = 8}",
+            FieldGetMethod,
+            read_repr,
+            "self.buf.as_ref()[0]",
+            BitPos::new(0 * 8 + 0),
+            "self.buf.as_ref()"
+        );
+
+        do_test_field_codegen!(
+            "Field {bit  = 3}",
+            FieldGetMethod,
+            read_repr,
+            "((self.buf.as_ref()[0]<<1)|(self.buf.as_ref()[1]>>7))&0x7",
+            BitPos::new(0 * 8 + 6),
+            "self.buf.as_ref()"
+        );
+
+        do_test_field_codegen!(
+            "Field {bit  = 8}",
+            FieldGetMethod,
+            read_repr,
+            "(self.buf.as_ref()[0]<<6)|(self.buf.as_ref()[1]>>2)",
+            BitPos::new(0 * 8 + 6),
+            "self.buf.as_ref()"
+        );
+    }
+
+    #[test]
+    fn test_read_repr_gt_8b() {
+        do_test_field_codegen!(
+            "Field {bit  = 9}",
+            FieldGetMethod,
+            read_repr,
+            "NetworkEndian::read_u16(&self.buf.as_ref()[0..2])>>7",
+            BitPos::new(0 * 8 + 0),
+            "self.buf.as_ref()"
+        );
+
+        do_test_field_codegen!(
+            "Field {bit  = 14}",
+            FieldGetMethod,
+            read_repr,
+            "NetworkEndian::read_u16(&self.buf.as_ref()[0..2])&0x3fff",
+            BitPos::new(0 * 8 + 2),
+            "self.buf.as_ref()"
+        );
+
+        do_test_field_codegen!(
+            "Field {bit  = 16}",
+            FieldGetMethod,
+            read_repr,
+            "NetworkEndian::read_u16(&self.buf.as_ref()[0..2])",
+            BitPos::new(0 * 8 + 0),
+            "self.buf.as_ref()"
+        );
+
+        do_test_field_codegen!(
+            "Field {bit  = 16, repr = &[u8]}",
+            FieldGetMethod,
+            read_repr,
+            "&self.buf.as_ref()[0..2]",
+            BitPos::new(0 * 8 + 0),
+            "self.buf.as_ref()"
+        );
+
+        do_test_field_codegen!(
+            "Field {bit  = 55}",
+            FieldGetMethod,
+            read_repr,
+            "NetworkEndian::read_uint(&self.buf.as_ref()[3..10], 7)>>1",
+            BitPos::new(3 * 8 + 0),
+            "self.buf.as_ref()"
+        );
+
+        do_test_field_codegen!(
+            "Field {bit  = 60}",
+            FieldGetMethod,
+            read_repr,
+            "NetworkEndian::read_u64(&self.buf.as_ref()[3..11])&0xfffffffffffffff",
+            BitPos::new(3 * 8 + 4),
+            "self.buf.as_ref()"
+        );
+
+        do_test_field_codegen!(
+            "Field {bit  = 128}",
+            FieldGetMethod,
+            read_repr,
+            "&self.buf.as_ref()[3..19]",
+            BitPos::new(3 * 8 + 0),
+            "self.buf.as_ref()"
+        );
+    }
+
+    #[test]
+    fn test_read_arg() {
+        do_test_field_codegen!(
+            "Field {bit  = 32, repr = &[u8], arg = %%Ipv4Addr%%, default=[0,0,0,0]}",
+            FieldGetMethod,
+            read_as_arg,
+            "Ipv4Addr::from_bytes(&self.buf.as_ref()[3..7])",
+            BitPos::new(3 * 8 + 0),
+            "self.buf.as_ref()"
+        );
+
+        do_test_field_codegen!(
+            "Field {bit = 1, arg = bool, default = false}",
+            FieldGetMethod,
+            read_as_arg,
+            "self.buf.as_ref()[13]&0x80 != 0",
+            BitPos::new(13 * 8 + 0),
+            "self.buf.as_ref()"
+        );
+    }
+
+    #[test]
+    fn test_write_repr_8b() {
+        do_test_field_codegen!(
+            "Field {bit  = 5}",
+            FieldSetMethod,
+            write_repr,
+            "self.buf.as_mut()[0]=(self.buf.as_mut()[0]&0x83)|(value<<2);",
+            BitPos::new(0 * 8 + 1),
+            "self.buf.as_mut()",
+            "value"
+        );
+
+        do_test_field_codegen!(
+            "Field {bit  = 5}",
+            FieldSetMethod,
+            write_repr,
+            "self.buf.as_mut()[0]=(self.buf.as_mut()[0]&0xe0)|value;",
+            BitPos::new(0 * 8 + 3),
+            "self.buf.as_mut()",
+            "value"
+        );
+
+        do_test_field_codegen!(
+            "Field {bit  = 5}",
+            FieldSetMethod,
+            write_repr,
+            "self.buf.as_mut()[0]=(self.buf.as_mut()[0]&0x07)|(value<<3);",
+            BitPos::new(0 * 8 + 0),
+            "self.buf.as_mut()",
+            "value"
+        );
+
+        do_test_field_codegen!(
+            "Field {bit  = 8}",
+            FieldSetMethod,
+            write_repr,
+            "self.buf.as_mut()[0]=value;",
+            BitPos::new(0 * 8 + 0),
+            "self.buf.as_mut()",
+            "value"
+        );
+
+        do_test_field_codegen!(
+            "Field {bit  = 3}",
+            FieldSetMethod,
+            write_repr,
+            "self.buf.as_mut()[0]=(self.buf.as_mut()[0]&0xfc)|(value>>1);
+self.buf.as_mut()[1]=(self.buf.as_mut()[1]&0x7f)|(value<<7);",
+            BitPos::new(0 * 8 + 6),
+            "self.buf.as_mut()",
+            "value"
+        );
+
+        do_test_field_codegen!(
+            "Field {bit  = 8}",
+            FieldSetMethod,
+            write_repr,
+            "self.buf.as_mut()[0]=(self.buf.as_mut()[0]&0xfc)|(value>>6);
+self.buf.as_mut()[1]=(self.buf.as_mut()[1]&0x03)|(value<<2);",
+            BitPos::new(0 * 8 + 6),
+            "self.buf.as_mut()",
+            "value"
+        );
+    }
+
+    #[test]
+    fn test_write_repr_gt_8b() {
+        do_test_field_codegen!(
+            "Field {bit  = 9}",
+            FieldSetMethod,
+            write_repr,
+            "NetworkEndian::write_u16(&mut self.buf.as_mut()[0..2],(self.buf.as_mut()[1]&0x7f) as u16|(value<<7));",
+            BitPos::new(0 * 8 + 0),
+            "self.buf.as_mut()",
+            "value"
+        );
+
+        do_test_field_codegen!(
+            "Field {bit  = 14}",
+            FieldSetMethod,
+            write_repr,
+            "NetworkEndian::write_u16(&mut self.buf.as_mut()[0..2],((self.buf.as_mut()[0]&0xc0) as u16) << 8|value);",
+            BitPos::new(0 * 8 + 2),
+            "self.buf.as_mut()",
+            "value"
+        );
+
+        do_test_field_codegen!(
+            "Field {bit  = 16}",
+            FieldSetMethod,
+            write_repr,
+            "NetworkEndian::write_u16(&mut self.buf.as_mut()[0..2],value);",
+            BitPos::new(0 * 8 + 0),
+            "self.buf.as_mut()",
+            "value"
+        );
+
+        do_test_field_codegen!(
+            "Field {bit  = 16, repr = &[u8]}",
+            FieldSetMethod,
+            write_repr,
+            "(&mut self.buf.as_mut()[0..2]).copy_from_slice(value);",
+            BitPos::new(0 * 8 + 0),
+            "self.buf.as_mut()",
+            "value"
+        );
+
+        do_test_field_codegen!(
+            "Field {bit  = 55}",
+            FieldSetMethod,
+            write_repr,
+            "NetworkEndian::write_uint(&mut self.buf.as_mut()[3..10],(self.buf.as_mut()[9]&0x1) as u64|(value<<1),7);",
+            BitPos::new(3 * 8 + 0),
+            "self.buf.as_mut()",
+            "value"
+        );
+
+        do_test_field_codegen!(
+            "Field {bit  = 60}",
+            FieldSetMethod,
+            write_repr,
+            "NetworkEndian::write_u64(&mut self.buf.as_mut()[3..11],((self.buf.as_mut()[3]&0xf0) as u64) << 56|value);",
+            BitPos::new(3 * 8 + 4),
+            "self.buf.as_mut()",
+            "value"
+        );
+
+        do_test_field_codegen!(
+            "Field {bit  = 128}",
+            FieldSetMethod,
+            write_repr,
+            "(&mut self.buf.as_mut()[3..19]).copy_from_slice(value);",
+            BitPos::new(3 * 8 + 0),
+            "self.buf.as_mut()",
+            "value"
+        );
+    }
+
+    #[test]
+    fn test_write_arg() {
+        do_test_field_codegen!(
+            "Field {bit  = 32, repr = &[u8], arg = %%Ipv4Addr%%, default=[0,0,0,0]}",
+            FieldSetMethod,
+            write_as_arg,
+            "(&mut self.buf.as_mut()[3..7]).copy_from_slice(value.as_bytes());",
+            BitPos::new(3 * 8 + 0),
+            "self.buf.as_mut()",
+            "value"
+        );
+
+        do_test_field_codegen!(
+            "Field {bit = 1, arg = bool, default = false}",
+            FieldSetMethod,
+            write_as_arg,
+            "if value {
+self.buf.as_mut()[13]=self.buf.as_mut()[13]|0x80
+} else {
+self.buf.as_mut()[13]=self.buf.as_mut()[13]&0x7f
+}",
+            BitPos::new(13 * 8 + 0),
+            "self.buf.as_mut()",
+            "value"
+        );
+
+        do_test_field_codegen!(
+            "Field {bit  = 35}",
+            FieldSetMethod,
+            write_as_arg,
+            "assert!(value <= 0x7ffffffff);
+NetworkEndian::write_uint(&mut self.buf.as_mut()[3..8],(self.buf.as_mut()[7]&0x1f) as u64|(value<<5),5);",
+            BitPos::new(3 * 8 + 0),
+            "self.buf.as_mut()",
+            "value"
+        );
     }
 }
