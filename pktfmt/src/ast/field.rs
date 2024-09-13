@@ -249,11 +249,14 @@ impl Field {
             }
         }
 
-        if self.bit % 8 != 0 || (self.bit / 8) != repr_byte_len(self) {
-            // Cond 1: if self.bit % 8 != 0, the field does not occupy full bytes, and must
-            // be protected with write guard.
-            // Cond 2: field occupies full bytes, but the byte length is smaller than that
-            // indicated by the repr, e.g. bit (24, 40, 48, 56).
+        if self.default_fix || self.bit % 8 != 0 || (self.bit / 8) != repr_byte_len(self) {
+            // Cond 1 (self.default_fix): the field has a fixed default value, we use a
+            // write guard to ensure that the write to this field is always fixed.
+            // Cond 2 (self.bit % 8 != 0): the field does not occupy full bytes, and must be
+            // protected with write guard.
+            // Cond 3 ( (self.bit / 8) != repr_byte_len(self) ): field occupies full bytes,
+            // but the byte length is smaller than that indicated by the repr, e.g.
+            // field.bit is one of (24, 40, 48, 56).
             true
         } else {
             false

@@ -1,6 +1,6 @@
 packet Ipv4 {
     header = [
-        version = Field{bit = 4, default = 4},
+        version = Field{bit = 4, default = @4},
         data_off = Field{bit = 4, default = 5, gen = false},
         dscp = Field{bit = 6},
         ecn = Field{bit = 2},

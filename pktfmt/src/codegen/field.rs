@@ -1,6 +1,6 @@
 use std::io::Write;
 
-use crate::ast::{Arg, BitPos, BuiltinTypes, Field};
+use crate::ast::{Arg, BitPos, BuiltinTypes, DefaultVal, Field};
 use crate::utils::byte_len;
 
 use super::HeadTailWriter;
@@ -322,10 +322,13 @@ impl<'a> FieldSetMethod<'a> {
                 // the fast path ends here
                 return;
             }
-            Arg::Code(_) => {
-                // `arg` is rust type.
-                // We convert the `write_value` to the `repr` type
-                // using `arg`'s compulsory association method.
+            _ => {}
+        }
+
+        let tmp_s;
+        let write_value = if self.field.need_write_guard() {
+            if matches!(&self.field.arg, Arg::Code(_)) {
+                // we need to first convert the argument to repr type
                 write!(
                     output,
                     "let {write_value} = {};\n",
@@ -333,20 +336,34 @@ impl<'a> FieldSetMethod<'a> {
                 )
                 .unwrap();
             }
-            _ => {}
-        }
 
-        if self.field.need_write_guard() {
-            // The `write_value` will have extra bits.
-            // Here, we insert a guard condition to make sure that
-            // the extra bits on the `write_value` are all zeroed out.
-            write!(
-                output,
-                "assert!({write_value} <= {});\n",
-                ones_mask(0, self.field.bit - 1)
-            )
-            .unwrap();
-        }
+            if self.field.default_fix {
+                let default_val = match self.field.default {
+                    DefaultVal::Num(n) => n,
+                    _ => panic!(),
+                };
+                write!(output, "assert!({write_value} == {});\n", default_val).unwrap();
+            } else {
+                // The `write_value` will have extra bits.
+                // Here, we insert a guard condition to make sure that
+                // the extra bits on the `write_value` are all zeroed out.
+                write!(
+                    output,
+                    "assert!({write_value} <= {});\n",
+                    ones_mask(0, self.field.bit - 1)
+                )
+                .unwrap();
+            }
+            write_value
+        } else {
+            if matches!(&self.field.arg, Arg::Code(_)) {
+                // we update the write_value to a converted value.
+                tmp_s = format!("{}", rust_var_as_repr(write_value, self.field.repr));
+                &tmp_s
+            } else {
+                write_value
+            }
+        };
         self.write_repr(target_slice, write_value, output);
     }
 
