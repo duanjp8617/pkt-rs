@@ -72,6 +72,9 @@ impl Length {
                 Ok(())
             }
             LengthField::Expr { expr } => {
+                // First, we check whether the field specified in the length computation
+                // expression can be safely used.
+
                 // make sure that the field name contained in the expr correspond to a field
                 // in the header, if it fails, we generate:
                 // length error 8
@@ -122,6 +125,21 @@ impl Length {
                     }
                 };
 
+                // Second, only the field for header_len can be associated with a fixed default
+                // value
+                if field.default_fix && index != 0 {
+                    // length error 2:
+                    return_err!(Error::length(
+                        2,
+                        format!(
+                            "field {} used for computing the {} can not have a fixed default value",
+                            name, LENGTH_FIELDS[index]
+                        )
+                    ))
+                }
+
+                // Finally, we check whether the length computed using the field is valid.
+
                 let x_max = max_value(field.bit).unwrap();
                 // length error 5
                 let max_length = expr.exec(x_max).ok_or(Error::length(
@@ -131,6 +149,7 @@ impl Length {
                         LENGTH_FIELDS[index], x_max
                     ),
                 ))?;
+                // the maximum length can not exceed the max mtu.
                 if max_length > MAX_MTU_IN_BYTES {
                     // length error 6
                     return_err!(Error::length(
@@ -143,11 +162,28 @@ impl Length {
                 }
 
                 if index == 0 || index == 2 {
-                    // if length field denotes header_len or packet_len,
-                    // then we make sure that the fixed header length can
-                    // be derived from the length expression. if
-                    // fail, generate the following error:
+                    // if the length field is the header_len or packet_len, we also need to ensure
+                    // that the length computed using the default value is large enough to hold the
+                    // fixed header.
                     let header_len = header.header_len_in_bytes() as u64;
+                    let default_val = match field.default {
+                        DefaultVal::Num(n) => n,
+                        _ => panic!(),
+                    };
+                    let computed_default_length = expr.exec(default_val).unwrap();
+                    if header_len > computed_default_length {
+                        // length error 12
+                        return_err!(Error::length(
+                            12,
+                            format!(
+                                "the default length {} of {} is smaller than the fixed header length {}",
+                                computed_default_length, LENGTH_FIELDS[index], header_len
+                            )
+                        ))
+                    }
+
+                    // we then make sure that the fixed header length can be derived from the length
+                    // expression. if fail, generate the following error:
                     match expr.reverse_exec(header_len) {
                         None => {
                             // length error 7
@@ -166,7 +202,7 @@ impl Length {
                 Ok(())
             }
             _ => panic!(),
-        }   
+        }
     }
 }
 

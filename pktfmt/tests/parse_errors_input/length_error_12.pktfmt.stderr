@@ -1,0 +1,10 @@
+ast error
+at /home/djp/pkt-rs/pktfmt/tests/parse_errors_input/length_error_12.pktfmt 17:5-20:5
+         ~~~~~~~~~~
+17 |     length = [
+18 |         header_len =field_1,
+19 |         payload_len =field_2*3,
+20 |     ]
+     ^^^^^
+length error 12:
+the default length 1 of header_len is smaller than the fixed header length 3

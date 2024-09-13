@@ -26,6 +26,7 @@ header_field_val_accessors! {
     (plen, plen_mut, 5),
 }
 
+#[allow(unused_parens)]
 mod header;
 pub use header::{ArpHeader, ARP_HEADER_LEN, ARP_HEADER_TEMPLATE};
 

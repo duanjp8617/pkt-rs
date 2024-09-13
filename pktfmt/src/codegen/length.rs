@@ -39,22 +39,20 @@ impl<'a> LengthGetMethod<'a> {
         // We also ensure in the parser that the calculated length will
         // not exceed a pre-defined constant that is way smaller than the
         // maximum value of `USIZE`.
-        // So, we first read the field value into a local variable `length_val`,
-        // and cast its type to `usize`.
+        // So, we read the field value and cast its type to `usize`.
+        let mut buf = Vec::new();
         {
-            let mut temp_writer = HeadTailWriter::new(
-                func_def_writer.get_writer(),
-                "let length_val=(",
-                ") as usize;\n",
-            );
+            let mut temp_writer = HeadTailWriter::new(&mut buf, "(", ") as usize");
             FieldGetMethod::new(self.field, self.start)
                 .read_repr(target_slice, temp_writer.get_writer());
         }
 
         // The parser will make sure that evaluating the expression
         // will not lead to any overflow.
-        self.expr
-            .gen_exec("length_val", func_def_writer.get_writer());
+        self.expr.gen_exec(
+            std::str::from_utf8(&buf[..]).unwrap(),
+            func_def_writer.get_writer(),
+        );
     }
 }
 
@@ -99,11 +97,16 @@ impl<'a> LengthSetMethod<'a> {
         // of usize. In the meantime, the maximum length that can be calculated derived
         // from the underlying expression is guaranteed to be a value that can fit in
         // usize as well. So here, we just need to make sure that the input argument is
-        // smaller than the maximum length.
+        // smaller than the maximum length and larger than the fixed header length.
         guards.push(format!(
             "{write_value}<={}",
             self.expr.exec(max_value(self.field.bit).unwrap()).unwrap()
         ));
+        // guards.push(format!(
+        //     "{write_value}>={}",
+
+        // ));
+
 
         let guard_str = self.expr.reverse_exec_guard(write_value);
         if guard_str.len() > 0 {
@@ -125,13 +128,14 @@ impl<'a> LengthSetMethod<'a> {
             });
         }
 
+        let mut buf = Vec::new();
         {
             // Perform a reverse calculation of the expression,
             // and assign the result to a new local variable.
             let mut val_def_writer = HeadTailWriter::new(
-                func_def_writer.get_writer(),
-                "let field_val = (",
-                &format!(") as {};\n", self.field.repr.to_string()),
+               &mut buf,
+                "(",
+                &format!(") as {}", self.field.repr.to_string()),
             );
             self.expr
                 .gen_reverse_exec(write_value, val_def_writer.get_writer());
@@ -141,7 +145,7 @@ impl<'a> LengthSetMethod<'a> {
         // to the field area on the `target_slice`.
         FieldSetMethod::new(self.field, self.start).write_repr(
             target_slice,
-            "field_val",
+            std::str::from_utf8(&buf[..]).unwrap(),
             func_def_writer.get_writer(),
         );
     }

@@ -22,7 +22,7 @@ pub const ARP_HEADER_TEMPLATE: ArpHeader<[u8; ARP_HEADER_LEN]> = ArpHeader {
 /// protocol Arp(header, packet) {
 ///    hardware_type: Bit(32) | To(Hardware) | Default(Hardware::Ethernet),
 ///    protocol_type: Bit<16> | To<EtherType> | Default(EtherType::IPV4),
-///    hardware_addr_len: Bit<8> | To<u8> | Default(6), 
+///    hardware_addr_len: Bit<8> | To<u8> | Default(6),
 ///    protocol_addr_lenlen: Bit<8> | To<u8> | Default(4),
 ///    operation: Bit<16> | To<Operation> | Default(Operation::REQUEST),
 ///    sender_hardware_addr: Bit<48> | To<&[u8]> | Default([00;00;00;00;00;00]),
