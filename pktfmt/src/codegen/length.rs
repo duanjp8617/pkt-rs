@@ -1,6 +1,6 @@
 use std::io::Write;
 
-use crate::ast::{max_value, BitPos, Field, UsableAlgExpr};
+use crate::ast::{max_value, BitPos, BuiltinTypes, Field, UsableAlgExpr};
 
 use super::{FieldGetMethod, FieldSetMethod, HeadTailWriter};
 
@@ -30,7 +30,11 @@ impl<'a> LengthGetMethod<'a> {
         // pub fn length_field_name(&self) -> usize {
         // ...
         // }
-        let func_def = format!("#[inline]\npub fn {length_field_name}(&self)->usize{{\n");
+        let return_type = length_access_method_io_type(self.expr, self.field);
+        let func_def = format!(
+            "#[inline]\npub fn {length_field_name}(&self)->{}{{\n",
+            return_type.to_string()
+        );
         let mut func_def_writer = HeadTailWriter::new(&mut output, &func_def, "\n}\n");
 
         // Here, the checks performed by the parser will ensure that
@@ -39,10 +43,15 @@ impl<'a> LengthGetMethod<'a> {
         // We also ensure in the parser that the calculated length will
         // not exceed a pre-defined constant that is way smaller than the
         // maximum value of `USIZE`.
-        // So, we read the field value and cast its type to `usize`.
+        // So, we read the field value and cast its type to the corresponding return
+        // type.
         let mut buf = Vec::new();
         {
-            let mut temp_writer = HeadTailWriter::new(&mut buf, "(", ") as usize");
+            let mut temp_writer = if return_type == self.field.repr {
+                HeadTailWriter::new(&mut buf, "(", ")")
+            } else {
+                HeadTailWriter::new(&mut buf, "(", &format!(") as {}", return_type.to_string()))
+            };
             FieldGetMethod::new(self.field, self.start)
                 .read_repr(target_slice, temp_writer.get_writer());
         }
@@ -84,29 +93,30 @@ impl<'a> LengthSetMethod<'a> {
         // pub fn set_length_field_name(&mut self, write_value: usize) {
         // ...
         // }
+        let arg_type = length_access_method_io_type(self.expr, self.field);
         let func_def = format!(
-            "#[inline]\npub fn set_{length_field_name}(&mut self, {write_value}:usize){{\n",
+            "#[inline]\npub fn set_{length_field_name}(&mut self, {write_value}:{}){{\n",
+            arg_type.to_string()
         );
         let mut func_def_writer = HeadTailWriter::new(&mut output, &func_def, "\n}\n");
 
         // Next, we calculate a series of guard conditions for the header set
         // method.
         let mut guards = Vec::new();
-
-        // Here, the bit size of the length field is guaranteed to be smaller than that
-        // of usize. In the meantime, the maximum length that can be calculated derived
-        // from the underlying expression is guaranteed to be a value that can fit in
-        // usize as well. So here, we just need to make sure that the input argument is
-        // smaller than the maximum length and larger than the fixed header length.
-        guards.push(format!(
-            "{write_value}<={}",
-            self.expr.exec(max_value(self.field.bit).unwrap()).unwrap()
-        ));
-        // guards.push(format!(
-        //     "{write_value}>={}",
-
-        // ));
-
+        // we use a closure to check whether the max value of the input arg type is the
+        // same as the max value of the length field. If these two are not the same, we
+        // add a guard.
+        let need_max_length_guard = |max_length: u64| match &arg_type {
+            BuiltinTypes::U8 => max_length < u8::MAX as u64,
+            BuiltinTypes::U16 => max_length < u16::MAX as u64,
+            BuiltinTypes::U32 => max_length < u32::MAX as u64,
+            BuiltinTypes::U64 => max_length < u64::MAX as u64,
+            _ => panic!(),
+        };
+        let max_length = self.expr.exec(max_value(self.field.bit).unwrap()).unwrap();
+        if need_max_length_guard(max_length) {
+            guards.push(format!("{write_value}<={max_length}"));
+        }
 
         let guard_str = self.expr.reverse_exec_guard(write_value);
         if guard_str.len() > 0 {
@@ -116,7 +126,6 @@ impl<'a> LengthSetMethod<'a> {
         }
 
         // If the guard conditions are present, we prepend them to the generated method.
-        // TODO: update code gen
         if guards.len() > 0 {
             let mut assert_writer =
                 HeadTailWriter::new(func_def_writer.get_writer(), "assert!(", ");\n");
@@ -132,11 +141,15 @@ impl<'a> LengthSetMethod<'a> {
         {
             // Perform a reverse calculation of the expression,
             // and assign the result to a new local variable.
-            let mut val_def_writer = HeadTailWriter::new(
-               &mut buf,
-                "(",
-                &format!(") as {}", self.field.repr.to_string()),
-            );
+            let mut val_def_writer = if arg_type == self.field.repr {
+                HeadTailWriter::new(&mut buf, "(", ")")
+            } else {
+                HeadTailWriter::new(
+                    &mut buf,
+                    "((",
+                    &format!(") as {})", self.field.repr.to_string()),
+                )
+            };
             self.expr
                 .gen_reverse_exec(write_value, val_def_writer.get_writer());
         }
@@ -148,5 +161,19 @@ impl<'a> LengthSetMethod<'a> {
             std::str::from_utf8(&buf[..]).unwrap(),
             func_def_writer.get_writer(),
         );
+    }
+}
+
+// Find out the input and output types of a length field.
+fn length_access_method_io_type(expr: &UsableAlgExpr, field: &Field) -> BuiltinTypes {
+    let max_length = expr.exec(max_value(field.bit).unwrap()).unwrap();
+    if max_length <= (u8::MAX as u64) {
+        BuiltinTypes::U8
+    } else if max_length <= (u16::MAX as u64) {
+        BuiltinTypes::U16
+    } else if max_length <= (u32::MAX as u64) {
+        BuiltinTypes::U32
+    } else {
+        BuiltinTypes::U64
     }
 }
