@@ -1,20 +1,22 @@
-use std::env;
 use pktfmt::*;
+use std::env;
 
 fn main() {
     let mut args = env::args();
     if args.len() != 2 {
-        eprintln!("Currently we only accept a single argument, which is the name of the input file.");
+        eprintln!(
+            "Currently we only accept a single argument, which is the name of the input file."
+        );
         std::process::exit(1);
     }
     args.next();
 
-    // lexical analysis 
+    // lexical analysis
     let file_text = file_text::FileText::new(args.next().unwrap()).unwrap();
     let tokenizer = token::Tokenizer::new(file_text.text());
 
     // parsing for the abstract syntax tree
-    let ast = match  parse_with_error!(parser::PacketParser, tokenizer) {
+    let ast = match parse_with_error!(parser::PacketParser, tokenizer) {
         Ok(ast) => ast,
         Err(err) => {
             let mut stderr = std::io::stderr();
@@ -26,7 +28,9 @@ fn main() {
     // codegen to a writable buffer
     let mut buf: Vec<u8> = Vec::new();
     let hl = codegen::HeaderImpl::new(&ast);
+    let packet = codegen::PacketImpl::new(&hl);
     hl.code_gen(&mut buf);
+    packet.code_gen(&mut buf);
 
     println!("{}", std::str::from_utf8(&buf[..]).unwrap());
 }
