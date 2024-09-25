@@ -1,6 +1,6 @@
 use std::{default, io::Write};
 
-use crate::ast::{DefaultVal, LengthField, Packet};
+use crate::ast::{DefaultVal, Length, LengthField, Packet};
 
 use super::{GenerateFieldAccessMethod, HeadTailWriter};
 /// Packet type generator.
@@ -50,9 +50,11 @@ impl<'a> PacketImpl<'a> {
             // Generate the `parse` and `payload` methods.
             self.parse(impl_block.get_writer());
             self.payload(impl_block.get_writer());
+
+            // Generate the `option_bytes` method if the header length is variable.
+            self.option_bytes(impl_block.get_writer());
         }
 
-        // Generate set methods
         {
             let mut impl_block =
                 impl_block("T:BufMut", &self.packet_struct_name(), "T", &mut output);
@@ -73,6 +75,9 @@ impl<'a> PacketImpl<'a> {
 
             // Generate `prepend_header` method.
             self.prepend_header(impl_block.get_writer());
+
+            // Generate the `option_bytes_mut` method if the header length is variable.
+            self.option_bytes_mut(impl_block.get_writer())
         }
     }
 
@@ -81,9 +86,7 @@ impl<'a> PacketImpl<'a> {
         let packet_struct_name = self.packet_struct_name();
         let header_len_name = self.header_impl.header_len_name();
 
-        // dump the start of the function body
-        // we need to make sure that the length of the starting chunk is
-        // larger than the fixed length of the packet header
+        // Dump the start of the function body.
         write!(
             output,
             "#[inline]
@@ -97,11 +100,8 @@ let packet = Self::parse_unchecked(buf);
         )
         .unwrap();
 
-        // we will generate format check conditions in this array
+        // Format checks are appended to the `guards`.
         let mut guards = Vec::new();
-
-        // if we have defined a header length expression, we need more checks to ensure
-        // that the header length has the correct format
         let header_len_var = match self.packet().length().at(0) {
             LengthField::None => {
                 // Header field is not defined, use the fixed header length.
@@ -138,15 +138,12 @@ let packet = Self::parse_unchecked(buf);
         };
 
         if self.packet().length().at(1).appear() {
-            // add format check conditions for payload length,
-            // make ensure that the packet fits within the buffer
+            // Add check for the variable payload length.
             guards.push(format!(
                 "(packet.payload_len() as usize)+{header_len_var}>packet.buf.remaining()"
             ));
         } else if self.packet().length().at(2).appear() {
-            // add format check conditions for packet length,
-            // make sure that the header fits within the packet,
-            // and that the packet fits within the buffer
+            // Add check for the variable packet length.
             guards.push(format!("(packet.packet_len() as usize)<{header_len_var}"));
             guards.push(format!(
                 "(packet.packet_len() as usize)>packet.buf.remaining()"
@@ -155,23 +152,9 @@ let packet = Self::parse_unchecked(buf);
             // Do nothing
         }
 
-        // we need to insert format checks depending on weather
-        // the packet has variable length fields
+        // Generate the checks.
         if guards.len() > 0 {
-            let guard_str = if guards.len() == 1 {
-                format!("{}", guards[0])
-            } else {
-                let mut buf = Vec::new();
-                guards.iter().enumerate().for_each(|(idx, s)| {
-                    write!(&mut buf, "({s})").unwrap();
-
-                    if idx < guards.len() - 1 {
-                        write!(&mut buf, "||").unwrap();
-                    }
-                });
-                String::from_utf8(buf).unwrap()
-            };
-
+            let guard_str = Self::guard_assert_str(&guards, "||");
             write!(
                 output,
                 "if {guard_str} {{
@@ -182,15 +165,12 @@ return Err(packet.release());
             .unwrap();
         }
 
-        // dirrectly return the buffer as it is, if the guarding conditions
-        // are met.
         write!(output, "Ok(packet)\n}}\n").unwrap();
     }
 
+    // A generator for the `payload` method.
     fn payload(&self, output: &mut dyn Write) {
-        // If we have a variable packet length, we need to trim off
-        // some bytes before we release the payload
-
+        // Dump the start of the function body.
         let header_len_name = self.header_impl.header_len_name();
         write!(
             output,
@@ -200,8 +180,12 @@ pub fn payload(self)->T{{
         )
         .unwrap();
 
+        // If we have a variable payload or packet length, it is possible that the total
+        // packet length will be smaller than the buffer size. In that case, we will
+        // trim off the trailing bytes from the underlying buffer before we release the
+        // payload.
         if self.packet().length().at(1).appear() {
-            // we have variable payload length
+            // The protocol has variable payload length.
             let header_len_var = if self.packet().length().at(0).appear() {
                 "(self.header_len() as usize)"
             } else {
@@ -209,39 +193,38 @@ pub fn payload(self)->T{{
             };
             write!(
                 output,
-                "assert!({header_len_var}+self.payload_len()<=self.buf.remaining());
-let trim_size = self.buf.remaining()-({header_len_var}+self.payload_len());
+                "assert!({header_len_var}+self.payload_len() as usize<=self.buf.remaining());
+let trim_size = self.buf.remaining()-({header_len_var}+self.payload_len() as usize);
 "
             )
             .unwrap();
         } else if self.packet().length().at(2).appear() {
-            // we have variable packet length
+            // The protocol has variable packet length.
             write!(
                 output,
                 "assert!((self.packet_len() as usize)<=self.buf.remaining());
-let trim_size = self.buf.remaining()-self.packet_len();
+let trim_size = self.buf.remaining()-self.packet_len() as usize;
 "
             )
             .unwrap();
         } else {
-            // Do nothing
+            // Do nothing.
         }
 
         let header_len_var = if self.packet().length().at(0).appear() {
             // Here, we have variable header length, so we must save the length
-            // to a local variable before we release the buffer
+            // to a local variable before we release the buffer.
             write!(output, "let header_len = self.header_len() as usize;\n").unwrap();
             "header_len"
         } else {
-            // The header has fixed length, we use the pre-defined constant
+            // The header has fixed length, we use the pre-defined constant.
             &header_len_name
         };
 
-        // release the internal buffer from the packet
+        // Release the internal buffer from the packet and then trim off the trailing
+        // bytes if necessary.
         write!(output, "let mut buf = self.release();\n").unwrap();
         if self.packet().length().at(1).appear() || self.packet().length().at(2).appear() {
-            // if we have variable packet length, we are gona need to trim off the trailing
-            // bytes beyond the end of the packet
             write!(
                 output,
                 "if trim_size > 0 {{
@@ -252,7 +235,7 @@ buf.trim_off(trim_size);
             .unwrap();
         }
 
-        // advance the cursor beyond the header
+        // Advance the cursor beyond the header.
         write!(
             output,
             "buf.advance({header_len_var});
@@ -263,6 +246,7 @@ buf
         .unwrap();
     }
 
+    // A generator for the `prepend_header` method.
     fn prepend_header(&self, output: &mut dyn Write) {
         let packet_struct_name = self.packet_struct_name();
         let header_len_name = self.header_impl.header_len_name();
@@ -280,40 +264,46 @@ pub fn prepend_header<HT: AsRef<[u8]>>(mut buf: T, header: &{}<HT>) -> {packet_s
             write!(output, "let payload_len = buf.remaining();\n").unwrap();
         }
 
+        let mut guards = Vec::new();
         let header_len_var = match self.packet().length().at(0) {
             LengthField::None => {
-                // Header field is not defined, use the fixed header length.
+                // Fixed header length.
+                guards.push(format!("buf.chunk_headeroom()>={header_len_name}"));
                 &header_len_name
             }
             LengthField::Undefined => {
-                // Header field is defined without computing expression.
-                // add a guard condition to make sure that the header_len is larger
-                // than the fixed header length
-                write!(output, "assert!(header.header_len()>={header_len_name});\n",).unwrap();
-                "header.header_len()"
+                // Variable header length with undefined computing expression.
+                write!(output, "let header_len = header.header_len() as usize;\n").unwrap();
+                guards.push(format!("header_len>={header_len_name}"));
+                guards.push(format!("header_len<=buf.chunk_headeroom()"));
+                "header_len"
             }
             LengthField::Expr { expr } => {
                 // Header field is defined with computing expression.
+                write!(output, "let header_len = header.header_len() as usize;\n").unwrap();
                 let (field, _) = self.packet().header().field(expr.field_name()).unwrap();
                 if field.default_fix {
-                    // The default is fixed, check against the fixed value.
+                    // Variable header length with fixed default value.
                     let default_val = match field.default {
                         DefaultVal::Num(n) => n,
                         _ => panic!(),
                     };
                     let fixed_header_len = expr.exec(default_val).unwrap();
-                    write!(
-                        output,
-                        "assert!(header.header_len()=={fixed_header_len});\n",
-                    )
-                    .unwrap();
+                    guards.push(format!("header_len=={fixed_header_len}"));
                 } else {
-                    // The default is not fixed, check with the fixed header length.
-                    write!(output, "assert!(header.header_len()>={header_len_name});\n",).unwrap();
+                    // Variable header length.
+                    guards.push(format!("header_len>={header_len_name}"));
                 }
-                "header.header_len()"
+                guards.push(format!("header_len<=buf.chunk_headroom()"));
+                "header_len"
             }
         };
+        write!(
+            output,
+            "assert!({});\n",
+            Self::guard_assert_str(&guards, "&&")
+        )
+        .unwrap();
 
         // move the cursor back and copy the packet content in
         write!(
@@ -350,6 +340,44 @@ pkt",
         write!(output, "}}\n").unwrap();
     }
 
+    // A generator for the option bytes.
+    fn option_bytes(&self, output: &mut dyn Write) {
+        match self.packet().length().at(0) {
+            LengthField::None => {} //do nothing
+            _ => {
+                write!(
+                    output,
+                    "#[inline]
+        pub fn option_bytes(&self)->&[u8]{{
+        &self.buf.chunk()[{}..(self.header_len() as usize)]
+        }}
+        ",
+                    self.header_impl.header_len_name()
+                )
+                .unwrap();
+            }
+        }
+    }
+
+    // A generator for the mutable option bytes.
+    fn option_bytes_mut(&self, output: &mut dyn Write) {
+        match self.packet().length().at(0) {
+            LengthField::None => {} //do nothing
+            _ => {
+                write!(
+                    output,
+                    "#[inline]
+        pub fn option_bytes_mut(&mut self)->&mut [u8]{{
+        &mut self.buf.chunk_mut()[{}..(self.header_len() as usize)]
+        }}
+        ",
+                    self.header_impl.header_len_name()
+                )
+                .unwrap();
+            }
+        }
+    }
+
     // Obtain a reference to the packet contained in the `header_impl`.
     fn packet(&self) -> &Packet {
         &self.header_impl.packet
@@ -374,6 +402,22 @@ let data = &self.buf.chunk()[..{header_len_name}];
 "
         )
         .unwrap();
+    }
+
+    fn guard_assert_str(guards: &Vec<String>, comp: &str) -> String {
+        if guards.len() == 1 {
+            format!("{}", guards[0])
+        } else {
+            let mut buf = Vec::new();
+            guards.iter().enumerate().for_each(|(idx, s)| {
+                write!(&mut buf, "({s})").unwrap();
+
+                if idx < guards.len() - 1 {
+                    write!(&mut buf, "{comp}").unwrap();
+                }
+            });
+            String::from_utf8(buf).unwrap()
+        }
     }
 }
 
