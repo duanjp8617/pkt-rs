@@ -20,7 +20,7 @@ impl Length {
 }
 
 impl Length {
-    /// Create a new `Length` object from the parsed input.
+    /// Create a new `Length` object from the packet definition.
     pub fn from_packet_length(
         length_fields: Vec<LengthField>,
         header: &Header,
@@ -57,6 +57,33 @@ impl Length {
             _ => {
                 // length error 1
                 return_err!(Error::length(1, "invalid packet length format".to_string()))
+            }
+        }
+        Ok(res)
+    }
+
+    /// Create a new `Length` object from the packet definition.
+    pub fn from_message_length(
+        length_fields: Vec<LengthField>,
+        header: &Header,
+    ) -> Result<Self, Error> {
+        // `length_fields` is created by the parser, its length is guaranteed to be 3.
+
+        let res = Self { length_fields };
+        match (res.at(0), res.at(1), res.at(2)) {
+            (LengthField::None, LengthField::None, LengthField::None) => {
+                // no length definition, no check is needed
+            }
+            (_, LengthField::None, LengthField::None) => {
+                // the message has a variable header length
+                res.check_length_field(header, 0)?;
+            }
+            _ => {
+                // length error 1
+                return_err!(Error::length(
+                    14,
+                    "invalid message length format".to_string()
+                ))
             }
         }
         Ok(res)

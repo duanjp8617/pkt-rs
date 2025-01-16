@@ -16,6 +16,9 @@ pub use header::*;
 mod length;
 pub use length::*;
 
+mod cond;
+pub use cond::*;
+
 /// The top level ast type for the `packet`` definition
 #[derive(Debug)]
 pub struct Packet {
@@ -26,6 +29,49 @@ pub struct Packet {
 }
 
 impl Packet {
+    pub fn new(protocol_name: &str, header: header::Header, length: length::Length) -> Self {
+        let header_template = build_header_template(&header);
+        // let mut header_template = Vec::new();
+        // header_template.resize(header.header_len_in_bytes(), 0);
+        Self {
+            protocol_name: protocol_name.to_string(),
+            header,
+            length,
+            header_template,
+        }
+    }
+
+    pub fn protocol_name(&self) -> &str {
+        &self.protocol_name
+    }
+
+    pub fn header(&self) -> &Header {
+        &self.header
+    }
+
+    pub fn length(&self) -> &Length {
+        &self.length
+    }
+
+    pub fn header_template(&self) -> &[u8] {
+        &self.header_template
+    }
+}
+
+/// Top level ast type for `message` definition.
+///
+/// It is basically the same as `Packet`, except that it carries conditional
+/// field.
+#[derive(Debug)]
+pub struct Message {
+    protocol_name: String,
+    header: Header,
+    length: Length,
+    // cond: Cond,
+    header_template: Vec<u8>,
+}
+
+impl Message {
     pub fn new(protocol_name: &str, header: header::Header, length: length::Length) -> Self {
         let header_template = build_header_template(&header);
         // let mut header_template = Vec::new();
@@ -66,6 +112,7 @@ enum ErrorType {
     HeaderDef,
     // 10 errors
     LengthDef,
+    CondDef,
 }
 
 // Record the error type and error index.
@@ -79,6 +126,7 @@ impl fmt::Display for ErrorPos {
             ErrorType::FieldDef => write!(fmt, "field error {}", self.1),
             ErrorType::HeaderDef => write!(fmt, "header error {}", self.1),
             ErrorType::LengthDef => write!(fmt, "length error {}", self.1),
+            ErrorType::CondDef => write!(fmt, "conditional error {}", self.1),
         }
     }
 }
@@ -123,6 +171,13 @@ impl Error {
     pub fn length(index: usize, reason: String) -> Self {
         Self {
             pos: ErrorPos(ErrorType::LengthDef, index),
+            reason,
+        }
+    }
+
+    pub fn cond(index: usize, reason: String) -> Self {
+        Self {
+            pos: ErrorPos(ErrorType::CondDef, index),
             reason,
         }
     }
