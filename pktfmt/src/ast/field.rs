@@ -5,11 +5,17 @@ use super::{max_value, Error, MAX_MTU_IN_BYTES};
 /// The ast type constructed when parsing `Field` definition.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Field {
+    /// Bit size of the field.
     pub bit: u64,
+    /// How this field is accessed internally.
     pub repr: BuiltinTypes,
+    /// How this field is accessed publicly.
     pub arg: Arg,
+    /// The default value of this field.
     pub default: DefaultVal,
+    /// Whether the accesser methods of this field is public.
     pub gen: bool,
+    /// Whether the default value of this field is fixed. 
     pub default_fix: bool,
 }
 

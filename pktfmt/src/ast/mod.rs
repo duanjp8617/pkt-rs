@@ -31,8 +31,7 @@ pub struct Packet {
 impl Packet {
     pub fn new(protocol_name: &str, header: header::Header, length: length::Length) -> Self {
         let header_template = build_header_template(&header);
-        // let mut header_template = Vec::new();
-        // header_template.resize(header.header_len_in_bytes(), 0);
+
         Self {
             protocol_name: protocol_name.to_string(),
             header,
@@ -67,19 +66,24 @@ pub struct Message {
     protocol_name: String,
     header: Header,
     length: Length,
-    // cond: Cond,
+    cond: Option<Cond>,
     header_template: Vec<u8>,
 }
 
 impl Message {
-    pub fn new(protocol_name: &str, header: header::Header, length: length::Length) -> Self {
+    pub fn new(
+        protocol_name: &str,
+        header: header::Header,
+        length: length::Length,
+        cond: Option<Cond>,
+    ) -> Self {
         let header_template = build_header_template(&header);
-        // let mut header_template = Vec::new();
-        // header_template.resize(header.header_len_in_bytes(), 0);
+
         Self {
             protocol_name: protocol_name.to_string(),
             header,
             length,
+            cond,
             header_template,
         }
     }
@@ -94,6 +98,10 @@ impl Message {
 
     pub fn length(&self) -> &Length {
         &self.length
+    }
+
+    pub fn cond(&self) -> &Option<Cond> {
+        &self.cond
     }
 
     pub fn header_template(&self) -> &[u8] {

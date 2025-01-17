@@ -11,6 +11,9 @@ pub use length::*;
 mod packet;
 pub use packet::*;
 
+mod message;
+pub use message::*;
+
 // A writer object that appends prefix string and prepends suffix string to the
 // underlying content.
 struct HeadTailWriter<T: Write> {
