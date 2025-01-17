@@ -1,4 +1,4 @@
-use super::{max_value, BuiltinTypes, Error, Header, LengthField};
+use super::{max_value, BuiltinTypes, Error, Header};
 
 /// The ast type that are constructed when parsing `cond` of the `message` type.
 ///
@@ -6,17 +6,21 @@ use super::{max_value, BuiltinTypes, Error, Header, LengthField};
 /// logical or operator.
 #[derive(Debug)]
 pub struct Cond {
-    conds: Vec<(String, u64)>,
+    field_name: String,
+    compared_values: Vec<u64>,
 }
 
 impl Cond {
-    pub fn at(&self, index: usize) -> (&String, &u64) {
-        let (field_name, value) = &self.conds[index];
-        (field_name, value)
+    pub fn field_name(&self) -> &str {
+        &self.field_name
+    }
+
+    pub fn compared_values(&self) -> &Vec<u64> {
+        &self.compared_values
     }
 
     pub fn from_cond_list(conds: Vec<(String, u64)>, header: &Header) -> Result<Self, Error> {
-        // Make sure the following conditions hold:
+        // Make sure the following hold:
         // 1. cond contains a valid field name
         // 2. `repr` is u8/u16/u32/u64
         // 3. the compared value in the cond does not exceeds the bit limit of the
@@ -52,38 +56,34 @@ impl Cond {
 
         let mut conds_iter = conds.iter();
 
-        match conds_iter.next() {
-            None => Ok(Cond { conds }),
-            Some(first_cond) => {
-                // make sure that the first condition passes the check
-                cond_checker(first_cond)?;
+        // The parser ensures that conds list is non-empty.
+        let first_cond = conds_iter.next().unwrap();
+        // make sure that the first condition passes the check
+        cond_checker(first_cond)?;
 
-                // make sure that all following conditions pass the check
-                let mut err = None;
-                if conds_iter.all(|cond| {
-                    if cond.0 != first_cond.0 {
-                        err = Some(Error::field(
-                            5,
-                            format!(
-                                "field name {} does not match that in the first condition",
-                                cond.0
-                            ),
-                        ));
-                        return false;
-                    }
-                    match cond_checker(cond) {
-                        Ok(_) => true,
-                        Err(e) => {
-                            err = Some(e);
-                            false
-                        }
-                    }
-                }) {
-                    Ok(Cond { conds })
-                } else {
-                    Err(err.unwrap())
-                }
+        let field_name = first_cond.0.clone();
+        let mut compared_values = vec![first_cond.1];
+
+        for cond in conds_iter {
+            // make sure that each following cond's field name
+            // is the same as the first cond
+            if cond.0 != first_cond.0 {
+                return_err!(Error::field(
+                    5,
+                    format!(
+                        "field name {} does not match that in the first condition",
+                        cond.0
+                    ),
+                ))
             }
+            // and that each following cond passes the check
+            cond_checker(cond)?;
+            compared_values.push(cond.1);
         }
+
+        Ok(Self {
+            field_name,
+            compared_values,
+        })
     }
 }
