@@ -114,12 +114,15 @@ impl Header {
                 header_pos
             ))
         } else {
-            Ok(Self {
+            let mut header = Self {
                 header_len_in_bytes: (global_bit_pos / 8) as usize,
                 field_list,
                 field_position,
                 header_template: Vec::new(),
-            })
+            };
+            header.build_header_template();
+
+            Ok(header)
         }
     }
 
@@ -141,6 +144,11 @@ impl Header {
     /// Get the length of the fixed header in bytes.
     pub fn header_len_in_bytes(&self) -> usize {
         self.header_len_in_bytes
+    }
+
+    /// Get the header template
+    pub fn header_template(&self) -> &[u8] {
+        &self.header_template[..]
     }
 
     fn build_header_template(&mut self) {
