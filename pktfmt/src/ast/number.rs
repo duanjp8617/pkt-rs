@@ -1,5 +1,3 @@
-use std::str::FromStr;
-
 use super::Error;
 
 /// The maximum size of a contiguous memory region for storing the packet.

@@ -27,9 +27,7 @@ fn main() {
 
     // codegen to a writable buffer
     let mut buf: Vec<u8> = Vec::new();
-    let hl = codegen::HeaderImpl::new(&ast);
-    let packet = codegen::PacketImpl::new(&hl);
-    hl.code_gen(&mut buf);
+    let packet = codegen::PacketImpl::new(&ast);
     packet.code_gen(&mut buf);
 
     println!("{}", std::str::from_utf8(&buf[..]).unwrap());

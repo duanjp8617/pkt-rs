@@ -1,6 +1,6 @@
 use std::io::Write;
 
-use super::field::{Arg, BuiltinTypes, Field};
+use super::field::{Arg, BuiltinTypes};
 use super::header::Header;
 use super::number::MAX_MTU_IN_BYTES;
 use super::{max_value, DefaultVal, Error};

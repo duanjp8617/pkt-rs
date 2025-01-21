@@ -45,7 +45,7 @@ impl<'a> FieldGetMethod<'a> {
     //
     // Note: we first call `read_repr` to read the field into a `repr`-typed value.
     // Then we convert the `repr`-typed value into `arg`-typed one.
-    pub(crate) fn read_as_arg(&self, target_slice: &str, mut output: &mut dyn Write) {
+    pub fn read_as_arg(&self, target_slice: &str, mut output: &mut dyn Write) {
         match &self.field.arg {
             Arg::Code(code) => {
                 // `arg` is a rust type.
@@ -90,7 +90,7 @@ impl<'a> FieldGetMethod<'a> {
     //
     // Note: this is the top-level method that combines `read_field` and
     // `read_field_cross_byte`.
-    pub(crate) fn read_repr(&self, target_slice: &str, output: &mut dyn Write) {
+    pub fn read_repr(&self, target_slice: &str, output: &mut dyn Write) {
         let end = self.start.next_pos(self.field.bit);
         if self.field.bit <= 8 && self.start.byte_pos() != end.byte_pos() {
             self.read_field_cross_byte(target_slice, output);
@@ -286,7 +286,7 @@ impl<'a> FieldSetMethod<'a> {
 
     // Generate a code piece for writing an input value `write_value` of type `arg`
     // to the field area stored on `target_slice`.
-    pub(crate) fn write_as_arg(
+    pub fn write_as_arg(
         &self,
         target_slice: &str,
         write_value: &str,
@@ -369,7 +369,7 @@ impl<'a> FieldSetMethod<'a> {
     // a value to the field.
     //
     // Note: it combines `write_field` and `write_field_cross_byte`.
-    pub(crate) fn write_repr(&self, target_slice: &str, write_value: &str, output: &mut dyn Write) {
+    pub fn write_repr(&self, target_slice: &str, write_value: &str, output: &mut dyn Write) {
         let end = self.start.next_pos(self.field.bit);
         if self.field.bit <= 8 && self.start.byte_pos() != end.byte_pos() {
             self.write_field_cross_byte(target_slice, write_value, output);

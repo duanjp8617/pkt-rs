@@ -3,19 +3,18 @@ use std::io::Write;
 use crate::ast::{Header, Length, LengthField, Message, Packet};
 
 mod field;
-pub use field::*;
-
-mod length;
-pub use length::*;
+use field::*;
 
 mod header;
-pub use header::*;
+
+mod length;
+use length::*;
 
 mod packet;
 pub use packet::*;
 
-// mod message;
-// pub use message::*;
+mod message;
+pub use message::*;
 
 // A writer object that appends prefix string and prepends suffix string to the
 // underlying content.
@@ -132,7 +131,7 @@ fn impl_block<'out>(
 }
 
 // A trait that can help generate all the field access methods.
-pub trait GenerateFieldAccessMethod {
+trait GenerateFieldAccessMethod {
     const LENGTH_FIELD_NAMES: &'static [&'static str] =
         &["header_len", "payload_len", "packet_len"];
 

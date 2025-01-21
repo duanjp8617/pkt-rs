@@ -77,16 +77,16 @@ impl<'a, T: GenerateFieldAccessMethod> HeaderImpl<'a, T> {
     }
 
     // Return the name of the header length const.
-    pub(crate) fn header_len_name(&self) -> String {
+    pub fn header_len_name(&self) -> String {
         self.inner.protocol_name().to_uppercase() + "_HEADER_LEN"
     }
 
     // Return the name of the header struct.
-    pub(crate) fn header_struct_name(&self) -> String {
+    pub fn header_struct_name(&self) -> String {
         self.inner.protocol_name().to_string() + "Header"
     }
 
-    pub(crate) fn get_inner(&self) -> &'a T {
+    pub fn get_inner(&self) -> &'a T {
         self.inner
     }
 

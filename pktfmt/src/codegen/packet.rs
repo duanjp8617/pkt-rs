@@ -1,21 +1,24 @@
-use std::{default, io::Write};
+use std::io::Write;
 
-use crate::ast::{DefaultVal, Length, LengthField, Packet};
+use crate::ast::{DefaultVal, LengthField, Packet};
 
 use super::header::HeaderImpl;
 use super::{impl_block, GenerateFieldAccessMethod, StructDefinition};
 
 /// Packet type generator.
 pub struct PacketImpl<'a> {
-    header_impl: &'a HeaderImpl<'a, Packet>,
+    header_impl: HeaderImpl<'a, Packet>,
 }
 
 impl<'a> PacketImpl<'a> {
-    pub fn new(header_impl: &'a HeaderImpl<'a, Packet>) -> Self {
+    pub fn new(packet: &'a Packet) -> Self {
+        let header_impl = HeaderImpl::new(packet);
         Self { header_impl }
     }
 
     pub fn code_gen(&self, mut output: &mut dyn Write) {
+        self.header_impl.code_gen(output);
+
         // Generate packet struct definition.
         let packet_struct_gen = StructDefinition {
             struct_name: &self.packet_struct_name(),
