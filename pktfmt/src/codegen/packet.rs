@@ -2,14 +2,16 @@ use std::{default, io::Write};
 
 use crate::ast::{DefaultVal, Length, LengthField, Packet};
 
-use super::{GenerateFieldAccessMethod, HeadTailWriter};
+use super::header::HeaderImpl;
+use super::{impl_block, GenerateFieldAccessMethod, StructDefinition};
+
 /// Packet type generator.
 pub struct PacketImpl<'a> {
-    header_impl: &'a HeaderImpl<'a>,
+    header_impl: &'a HeaderImpl<'a, Packet>,
 }
 
 impl<'a> PacketImpl<'a> {
-    pub fn new(header_impl: &'a HeaderImpl<'a>) -> Self {
+    pub fn new(header_impl: &'a HeaderImpl<'a, Packet>) -> Self {
         Self { header_impl }
     }
 
@@ -380,7 +382,7 @@ pkt",
 
     // Obtain a reference to the packet contained in the `header_impl`.
     fn packet(&self) -> &Packet {
-        &self.header_impl.packet
+        self.header_impl.get_inner()
     }
 
     // Obtain the type name of the packet struct.
@@ -419,266 +421,4 @@ let data = &self.buf.chunk()[..{header_len_name}];
             String::from_utf8(buf).unwrap()
         }
     }
-}
-
-/// Protocol header generator.
-pub struct HeaderImpl<'a> {
-    packet: &'a Packet,
-}
-
-impl<'a> HeaderImpl<'a> {
-    pub fn new(packet: &'a Packet) -> Self {
-        Self { packet }
-    }
-
-    pub fn code_gen(&self, mut output: &mut dyn Write) {
-        // Generate a constant for the fixed header length.
-        self.header_len_gen(output);
-
-        // Generate a byte array containing a pre-defined header
-        // whose field values are set to default.
-        self.header_gen(output);
-
-        // Defines the header struct.
-        let header_struct_gen = StructDefinition {
-            struct_name: &self.header_struct_name(),
-            derives: &["Debug", "Clone", "Copy"],
-        };
-        header_struct_gen.code_gen(output);
-
-        {
-            let mut impl_block = impl_block(
-                "T:AsRef<[u8]>",
-                &self.header_struct_name(),
-                "T",
-                &mut output,
-            );
-
-            // Generate the `parse` and `parse_unchecked` methods.
-            self.parse(impl_block.get_writer());
-            StructDefinition::parse_unchecked(impl_block.get_writer());
-
-            // Generate `as_bytes` and `to_owned` methods.
-            self.as_bytes(impl_block.get_writer());
-            self.to_owned(impl_block.get_writer());
-
-            // Generate get methods for various header fields.
-            self.packet
-                .header_field_method_gen("self.buf.as_ref()", None, impl_block.get_writer());
-
-            // Generate get methods for length fields if there are any.
-            self.packet
-                .length_field_method_gen("self.buf.as_ref()", None, impl_block.get_writer());
-        }
-
-        {
-            let mut impl_block = impl_block(
-                "T:AsMut<[u8]>",
-                &self.header_struct_name(),
-                "T",
-                &mut output,
-            );
-
-            // Generate set methods for various header fields.
-            self.packet.header_field_method_gen(
-                "self.buf.as_mut()",
-                Some("value"),
-                impl_block.get_writer(),
-            );
-
-            // Generate set methods for length fields if there are any.
-            self.packet.length_field_method_gen(
-                "self.buf.as_mut()",
-                Some("value"),
-                impl_block.get_writer(),
-            );
-        }
-    }
-
-    // Return the name of the header length const.
-    fn header_len_name(&self) -> String {
-        self.packet.protocol_name().to_uppercase() + "_HEADER_LEN"
-    }
-
-    fn header_name(&self) -> String {
-        self.packet.protocol_name().to_uppercase() + "_HEADER_TEMPLATE"
-    }
-
-    fn header_gen(&self, output: &mut dyn Write) {
-        writeln!(
-            output,
-            "/// A fixed {} header.",
-            self.packet.protocol_name()
-        )
-        .unwrap();
-        write!(
-            output,
-            "pub const {}: {}<[u8;{}]> = [",
-            self.header_name(),
-            self.header_struct_name(),
-            self.packet.header().header_len_in_bytes()
-        )
-        .unwrap();
-
-        for (idx, b) in self.packet.header_template().iter().enumerate() {
-            if idx < self.packet.header_template().len() - 1 {
-                write!(output, "0x{:02x},", b).unwrap();
-            } else {
-                write!(output, "0x{:02x}];\n", b).unwrap()
-            }
-        }
-    }
-
-    // Return the name of the header struct.
-    fn header_struct_name(&self) -> String {
-        self.packet.protocol_name().to_string() + "Header"
-    }
-
-    fn header_len_gen(&self, output: &mut dyn Write) {
-        let header_len = self.packet.header().header_len_in_bytes();
-
-        write!(
-            output,
-            "/// A constant that defines the fixed byte length of the {} protocol header.
-pub const {}: usize = {header_len};
-",
-            &self.packet.protocol_name(),
-            self.header_len_name(),
-        )
-        .unwrap();
-    }
-
-    fn parse(&self, output: &mut dyn Write) {
-        write!(
-            output,
-            "#[inline]
-pub fn parse(buf: T) -> Result<Self, T>{{
-if buf.as_ref().len()>={}{{
-Ok(Self{{buf}})
-}} else {{
-Err(buf)
-}}
-}}
-",
-            self.header_len_name()
-        )
-        .unwrap();
-    }
-
-    fn as_bytes(&self, output: &mut dyn Write) {
-        write!(
-            output,
-            "#[inline]
-pub fn as_bytes(&self) -> &[u8]{{
-&self.buf.as_ref()[0..{}]
-}}
-",
-            self.header_len_name()
-        )
-        .unwrap();
-    }
-
-    fn to_owned(&self, output: &mut dyn Write) {
-        let header_struct_name = self.header_struct_name();
-        let header_len_name = self.header_len_name();
-
-        write!(
-            output,
-            "#[inline]
-pub fn to_owned(&self) -> {header_struct_name}<[u8; {header_len_name}]>{{
-let mut buf = [0; {header_len_name}];
-buf.copy_from_slice(self.as_bytes());
-{header_struct_name} {{buf}}
-}}
-"
-        )
-        .unwrap();
-    }
-}
-
-// A helper struct for generating common struct definitino.
-struct StructDefinition<'a> {
-    struct_name: &'a str,
-    derives: &'a [&'static str],
-}
-
-impl<'a> StructDefinition<'a> {
-    // Generate the struct definition with derive attributes.
-    fn code_gen(&self, mut output: &mut dyn Write) {
-        assert!(self.derives.len() > 0);
-        {
-            let mut derive_writer = HeadTailWriter::new(&mut output, "#[derive(", ")]\n");
-            self.derives
-                .iter()
-                .enumerate()
-                .for_each(|(idx, derive_name)| {
-                    write!(derive_writer.get_writer(), "{derive_name}").unwrap();
-                    if idx < self.derives.len() - 1 {
-                        write!(derive_writer.get_writer(), ",").unwrap();
-                    }
-                });
-        }
-        write!(
-            output,
-            "pub struct {}<T> {{
-buf: T
-}}
-",
-            self.struct_name
-        )
-        .unwrap();
-    }
-
-    // Wrap a `buf` inside a packet struct.
-    fn parse_unchecked(output: &mut dyn Write) {
-        write!(
-            output,
-            "#[inline]
-pub fn parse_unchecked(buf: T) -> Self{{
-Self{{buf}}
-}}
-"
-        )
-        .unwrap();
-    }
-
-    // Return an imutable reference to the contained `buf`.
-    fn buf(output: &mut dyn Write) {
-        write!(
-            output,
-            "#[inline]
-pub fn buf(&self) -> &T{{
-&self.buf
-}}
-"
-        )
-        .unwrap();
-    }
-
-    // Release the `buf` from the containing packet struct.
-    fn release(output: &mut dyn Write) {
-        write!(
-            output,
-            "#[inline]
-pub fn release(self) -> T{{
-self.buf
-}}
-"
-        )
-        .unwrap();
-    }
-}
-
-// Generate an implementation block for header/packet/message struct type.
-fn impl_block<'out>(
-    trait_name: &str,
-    type_name: &str,
-    type_param: &str,
-    output: &'out mut dyn Write,
-) -> HeadTailWriter<&'out mut dyn Write> {
-    HeadTailWriter::new(
-        output,
-        &format!("impl<{trait_name}> {type_name}<{type_param}>{{\n"),
-        "}\n",
-    )
 }

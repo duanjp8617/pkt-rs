@@ -1,6 +1,6 @@
 use std::io::Write;
 
-use crate::ast::{Header, Length, LengthField, Packet};
+use crate::ast::{Header, Length, LengthField, Message, Packet};
 
 mod field;
 pub use field::*;
@@ -8,11 +8,14 @@ pub use field::*;
 mod length;
 pub use length::*;
 
+mod header;
+pub use header::*;
+
 mod packet;
 pub use packet::*;
 
-mod message;
-pub use message::*;
+// mod message;
+// pub use message::*;
 
 // A writer object that appends prefix string and prepends suffix string to the
 // underlying content.
@@ -41,11 +44,99 @@ impl<T: Write> Drop for HeadTailWriter<T> {
     }
 }
 
+// A helper struct for generating common struct definitino.
+struct StructDefinition<'a> {
+    struct_name: &'a str,
+    derives: &'a [&'static str],
+}
+
+impl<'a> StructDefinition<'a> {
+    // Generate the struct definition with derive attributes.
+    fn code_gen(&self, mut output: &mut dyn Write) {
+        assert!(self.derives.len() > 0);
+        {
+            let mut derive_writer = HeadTailWriter::new(&mut output, "#[derive(", ")]\n");
+            self.derives
+                .iter()
+                .enumerate()
+                .for_each(|(idx, derive_name)| {
+                    write!(derive_writer.get_writer(), "{derive_name}").unwrap();
+                    if idx < self.derives.len() - 1 {
+                        write!(derive_writer.get_writer(), ",").unwrap();
+                    }
+                });
+        }
+        write!(
+            output,
+            "pub struct {}<T> {{
+buf: T
+}}
+",
+            self.struct_name
+        )
+        .unwrap();
+    }
+
+    // Wrap a `buf` inside a packet struct.
+    fn parse_unchecked(output: &mut dyn Write) {
+        write!(
+            output,
+            "#[inline]
+pub fn parse_unchecked(buf: T) -> Self{{
+Self{{buf}}
+}}
+"
+        )
+        .unwrap();
+    }
+
+    // Return an imutable reference to the contained `buf`.
+    fn buf(output: &mut dyn Write) {
+        write!(
+            output,
+            "#[inline]
+pub fn buf(&self) -> &T{{
+&self.buf
+}}
+"
+        )
+        .unwrap();
+    }
+
+    // Release the `buf` from the containing packet struct.
+    fn release(output: &mut dyn Write) {
+        write!(
+            output,
+            "#[inline]
+pub fn release(self) -> T{{
+self.buf
+}}
+"
+        )
+        .unwrap();
+    }
+}
+
+// Generate an implementation block for header/packet/message struct type.
+fn impl_block<'out>(
+    trait_name: &str,
+    type_name: &str,
+    type_param: &str,
+    output: &'out mut dyn Write,
+) -> HeadTailWriter<&'out mut dyn Write> {
+    HeadTailWriter::new(
+        output,
+        &format!("impl<{trait_name}> {type_name}<{type_param}>{{\n"),
+        "}\n",
+    )
+}
+
 // A trait that can help generate all the field access methods.
-trait GenerateFieldAccessMethod {
+pub trait GenerateFieldAccessMethod {
     const LENGTH_FIELD_NAMES: &'static [&'static str] =
         &["header_len", "payload_len", "packet_len"];
 
+    fn protocol_name(&self) -> &str;
     fn header(&self) -> &Header;
     fn length(&self) -> &Length;
 
@@ -110,6 +201,10 @@ macro_rules! impl_generate_field_access_method {
     ($($ast_ty: ident),*) => {
         $(
             impl $crate::codegen::GenerateFieldAccessMethod for $ast_ty {
+                fn protocol_name(&self) -> &str {
+                    self.protocol_name()
+                }
+
                 fn header(&self) -> &$crate::ast::Header {
                     self.header()
                 }
@@ -121,4 +216,4 @@ macro_rules! impl_generate_field_access_method {
         )*
     };
 }
-impl_generate_field_access_method!(Packet);
+impl_generate_field_access_method!(Packet, Message);
