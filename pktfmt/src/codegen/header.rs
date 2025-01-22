@@ -35,19 +35,21 @@ impl<'a, T: GenerateFieldAccessMethod> HeaderImpl<'a, T> {
                 &mut output,
             );
 
-            // Generate the `parse` and `parse_unchecked` methods.
+            // Transform buffer to header.
             self.parse(impl_block.get_writer());
             StructDefinition::parse_unchecked(impl_block.get_writer());
 
-            // Generate `as_bytes` and `to_owned` methods.
-            self.as_bytes(impl_block.get_writer());
-            self.to_owned(impl_block.get_writer());
+            // Transform the header to buffer.
+            StructDefinition::release(impl_block.get_writer());
 
-            // Generate get methods for various header fields.
+            // Access the fixed header as a imutable byte slice.
+            self.as_bytes(impl_block.get_writer());
+
+            // Header field getters.
             self.inner
                 .header_field_method_gen("self.buf.as_ref()", None, impl_block.get_writer());
 
-            // Generate get methods for length fields if there are any.
+            // Length field getters.
             self.inner
                 .length_field_method_gen("self.buf.as_ref()", None, impl_block.get_writer());
         }
@@ -60,14 +62,17 @@ impl<'a, T: GenerateFieldAccessMethod> HeaderImpl<'a, T> {
                 &mut output,
             );
 
-            // Generate set methods for various header fields.
+            // Access the fixed header as a mutable byte slice.
+            self.as_bytes_mut(impl_block.get_writer());
+
+            // Header field setters.
             self.inner.header_field_method_gen(
                 "self.buf.as_mut()",
                 Some("value"),
                 impl_block.get_writer(),
             );
 
-            // Generate set methods for length fields if there are any.
+            // Length field setters.
             self.inner.length_field_method_gen(
                 "self.buf.as_mut()",
                 Some("value"),
@@ -159,19 +164,15 @@ pub fn as_bytes(&self) -> &[u8]{{
         .unwrap();
     }
 
-    fn to_owned(&self, output: &mut dyn Write) {
-        let header_struct_name = self.header_struct_name();
-        let header_len_name = self.header_len_name();
-
+    fn as_bytes_mut(&self, output: &mut dyn Write) {
         write!(
             output,
             "#[inline]
-pub fn to_owned(&self) -> {header_struct_name}<[u8; {header_len_name}]>{{
-let mut buf = [0; {header_len_name}];
-buf.copy_from_slice(self.as_bytes());
-{header_struct_name} {{buf}}
+pub fn as_bytes_mut(&mut self) -> &mut [u8]{{
+&mut self.buf.as_mut()[0..{}]
 }}
-"
+",
+            self.header_len_name()
         )
         .unwrap();
     }

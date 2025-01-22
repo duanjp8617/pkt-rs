@@ -17,6 +17,8 @@ impl<'a> PacketImpl<'a> {
     }
 
     pub fn code_gen(&self, mut output: &mut dyn Write) {
+        // Generate the header container first, as the packet container relies on the
+        // header container.
         self.header_impl.code_gen(output);
 
         // Generate packet struct definition.
@@ -30,58 +32,60 @@ impl<'a> PacketImpl<'a> {
             let mut impl_block =
                 impl_block("T:PktBuf", &self.packet_struct_name(), "T", &mut output);
 
-            // Generate the `parse_unchecked` methods.
+            // Transform buffer to packet.
+            self.parse(impl_block.get_writer());
             StructDefinition::parse_unchecked(impl_block.get_writer());
 
-            // Generate the `buf`, `header` and `release` methods.
-            StructDefinition::buf(impl_block.get_writer());
-            self.header(impl_block.get_writer());
+            // Transform header to buffer.
             StructDefinition::release(impl_block.get_writer());
+            self.payload(impl_block.get_writer());
 
-            // Generate the get methods for various header fields.
+            // Access the fixed header as a imutable byte slice.
+            self.header(impl_block.get_writer());
+
+            // Header field getters.
             self.packet().header_field_method_gen(
                 "self.buf.chunk()",
                 None,
                 impl_block.get_writer(),
             );
 
-            // Generate the get methods for length fields if there are any.
+            // Length field getters.
             self.packet().length_field_method_gen(
                 "self.buf.chunk()",
                 None,
                 impl_block.get_writer(),
             );
 
-            // Generate the `parse` and `payload` methods.
-            self.parse(impl_block.get_writer());
-            self.payload(impl_block.get_writer());
-
-            // Generate the `option_bytes` method if the header length is variable.
+            // Return a byte slice covering the variable option bytes.
             self.option_bytes(impl_block.get_writer());
+
+            // Return a imutable reference to the underlying buffer.
+            StructDefinition::buf(impl_block.get_writer());
         }
 
         {
             let mut impl_block =
                 impl_block("T:BufMut", &self.packet_struct_name(), "T", &mut output);
 
-            // Generate set methods for various header fields.
-            self.packet().header_field_method_gen(
-                "self.buf.chunk_mut()",
-                Some("value"),
-                impl_block.get_writer(),
-            );
-
-            // Generate set methods for length fields if there are any.
-            self.packet().header_field_method_gen(
-                "self.buf.chunk_mut()",
-                Some("value"),
-                impl_block.get_writer(),
-            );
-
-            // Generate `prepend_header` method.
+            // Transform buffer to packet.
             self.prepend_header(impl_block.get_writer());
 
-            // Generate the `option_bytes_mut` method if the header length is variable.
+            // Header field setters.
+            self.packet().header_field_method_gen(
+                "self.buf.chunk_mut()",
+                Some("value"),
+                impl_block.get_writer(),
+            );
+
+            // Length field setters.
+            self.packet().length_field_method_gen(
+                "self.buf.chunk_mut()",
+                Some("value"),
+                impl_block.get_writer(),
+            );
+
+            // Return a byte slice covering the variable option bytes.
             self.option_bytes_mut(impl_block.get_writer())
         }
     }
