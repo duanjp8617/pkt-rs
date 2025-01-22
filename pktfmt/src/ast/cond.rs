@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use super::{max_value, BuiltinTypes, Error, Header};
 
 /// The ast type that are constructed when parsing `cond` of the `message` type.
@@ -62,10 +64,11 @@ impl Cond {
         cond_checker(first_cond)?;
 
         let field_name = first_cond.0.clone();
-        let mut compared_values = vec![first_cond.1];
+        let mut compared_values = HashSet::new();
+        compared_values.insert(first_cond.1);
 
         for cond in conds_iter {
-            // make sure that each following cond's field name
+            // make sure that subsequent cond's field name
             // is the same as the first cond
             if cond.0 != first_cond.0 {
                 return_err!(Error::field(
@@ -76,14 +79,24 @@ impl Cond {
                     ),
                 ))
             }
-            // and that each following cond passes the check
+
+            // and that subsequent cond's compared value is unique
+            if compared_values.get(&cond.1).is_some() {
+                return_err!(Error::field(
+                    6,
+                    format!("the compared value {} has appeared", cond.1),
+                ))
+            }
+
+            // and that the subsequent cond passes the check
             cond_checker(cond)?;
-            compared_values.push(cond.1);
+
+            compared_values.insert(cond.1);
         }
 
         Ok(Self {
             field_name,
-            compared_values,
+            compared_values: Vec::from_iter(compared_values.into_iter()),
         })
     }
 }
