@@ -3,7 +3,7 @@ use std::str::FromStr;
 use lalrpop_util::ParseError;
 
 use crate::ast::{
-    Field, BuiltinTypes, Arg, DefaultVal, Header, AlgOp, AlgExpr, parse_to_byte_val, LengthField, Length, Packet,
+    Field, BuiltinTypes, Arg, DefaultVal, Header, AlgOp, AlgExpr, parse_to_byte_val, LengthField, Length, Packet, Message
 };
 use crate::utils::{Spanned, Error};
 use crate::token::Token;
@@ -17,6 +17,7 @@ extern {
     enum Token<'input> {
         // top-level 
         "packet" => Token::Packet,
+        "message" => Token::Message,
         
         // header
         "header" => Token::Header,
@@ -286,5 +287,23 @@ pub Packet: Packet = {
         })?;
 
         Ok(Packet::new(name, header, length))
+    }
+}
+
+pub Message: Message = {
+    "message" <name: "ident"> "{"
+        <header: Header>
+        <length_fields_with_pos_opt: ("," <LengthFieldList>)?>
+        ","?
+    "}" =>? {
+        let (length_fields, span) = length_fields_with_pos_opt.unwrap_or(
+            (vec![LengthField::None, LengthField::None, LengthField::None], (0,0))
+        );
+        let length = Length::from_message_length(length_fields, &header).map_err(|err| {            
+            let error = Error::Ast{err, span};
+            ParseError::User{ error }
+        })?;
+
+        Ok(Message::new(name, header, length, None))
     }
 }

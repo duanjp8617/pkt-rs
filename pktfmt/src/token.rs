@@ -37,6 +37,7 @@ fn error<T>(c: ErrorCode, l: usize) -> Result<T, Error> {
 pub enum Token<'input> {
     // top-level keywords
     Packet,
+    Message,
 
     // header definition keywords
     Header,
@@ -124,6 +125,7 @@ impl<'input> std::fmt::Display for Token<'input> {
 // A static table that translates keyword to Token.
 const KEYWORDS: &[(&str, Token)] = &[
     ("packet", Token::Packet),
+    ("message", Token::Message),
     ("header", Token::Header),
     ("Field", Token::Field),
     ("bit", Token::Bit),
