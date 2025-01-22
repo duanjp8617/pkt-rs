@@ -61,7 +61,7 @@ impl<'a> MessageImpl<'a> {
         write!(
             output,
             "#[inline]
-    pub fn header(self) -> {header_struct_name}<&[u8]>{{
+    pub fn header(&self) -> {header_struct_name}<&[u8]>{{
     let data = &self.buf.as_ref()[..{header_len_name}];
     {header_struct_name}::parse_unchecked(data)
     }}

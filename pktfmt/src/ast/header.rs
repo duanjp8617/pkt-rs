@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use byteorder::{ByteOrder, NetworkEndian};
 
@@ -7,6 +7,8 @@ use crate::utils::{byte_len, Spanned};
 use super::field::{Arg, BuiltinTypes, DefaultVal, Field};
 use super::number::MAX_MTU_IN_BYTES;
 use super::Error;
+
+const INVALID_FIELD_NAMES: &'static [&'static str] = &["type"];
 
 /// The ast type constructed when parsing `header` list from the pktfmt script.
 ///
@@ -46,6 +48,9 @@ impl Header {
         // temporary variable for recording the field bit position
         let mut global_bit_pos = 0;
 
+        let invalid_field_names: HashSet<&str> =
+            HashSet::from_iter(INVALID_FIELD_NAMES.iter().map(|e| *e));
+
         let field_list = field_list
             .into_iter()
             .enumerate()
@@ -56,7 +61,13 @@ impl Header {
                         Error::header(1, format!("duplicated header field name {}", &sp_str.item)),
                         sp_str.span
                     ))
-                } else {
+                } else if invalid_field_names.contains(&sp_str.item[..]) {
+                     // header error 8
+                     return_err!((
+                        Error::header(8, format!("invalid header field name {}", &sp_str.item)),
+                        sp_str.span
+                    ))
+                }else {
                     // calculate the start and end bit position of the header
                     let start = BitPos::new(global_bit_pos);
                     let end = start.next_pos(field.bit);
