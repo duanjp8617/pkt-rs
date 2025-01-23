@@ -1,7 +1,7 @@
 use bytes::Buf;
 
 use crate::checksum_utils;
-use crate::{Cursor, CursorMut};
+use crate::cursors_old::{Cursor, CursorMut};
 use crate::{PktBuf, PktMut};
 
 use super::header::{Ipv4Header, IPV4_HEADER_LEN};
@@ -133,43 +133,30 @@ impl<T: PktMut> Ipv4Packet<T> {
 
 impl<'a> Ipv4Packet<Cursor<'a>> {
     #[inline]
-    pub fn cursor_header(&self) -> Ipv4Header<&'a [u8]> {
-        let data = &self.buf.chunk_shared_lifetime()[..IPV4_HEADER_LEN];
+    pub fn cursor_header(&self) -> Ipv4Header<&[u8]> {
+        let data = &self.buf.current_buf()[..IPV4_HEADER_LEN];
         Ipv4Header::new_unchecked(data)
     }
 
     #[inline]
-    pub fn cursor_options(&self) -> &'a [u8] {
-        &self.buf.chunk_shared_lifetime()[IPV4_HEADER_LEN..usize::from(self.header_len())]
+    pub fn cursor_options(&self) -> &[u8] {
+        &&self.buf.current_buf()[IPV4_HEADER_LEN..usize::from(self.header_len())]
     }
 
     #[inline]
-    pub fn cursor_payload(&self) -> Cursor<'a> {
+    pub fn cursor_payload(&self) -> Cursor<'_> {
         Cursor::new(
-            &self.buf.chunk_shared_lifetime()
-                [usize::from(self.header_len())..usize::from(self.packet_len())],
+            &self.buf.current_buf()[usize::from(self.header_len())..usize::from(self.packet_len())],
         )
     }
 }
 
 impl<'a> Ipv4Packet<CursorMut<'a>> {
     #[inline]
-    pub fn split(self) -> (Ipv4Header<&'a mut [u8]>, &'a [u8], CursorMut<'a>) {
-        let header_len = self.header_len();
-        let packet_len = self.packet_len();
-
-        let (buf_mut, _) = self
-            .buf
-            .chunk_mut_shared_lifetime()
-            .split_at_mut(usize::from(packet_len));
-        let (hdr, payload) = buf_mut.split_at_mut(usize::from(header_len));
-        let (hdr, option) = hdr.split_at_mut(IPV4_HEADER_LEN);
-
-        (
-            Ipv4Header::new_unchecked(hdr),
-            option,
-            CursorMut::new(payload),
-        )
+    pub fn cursor_payload(&mut self) -> CursorMut<'_> {
+        let header_len = usize::from(self.header_len());
+        let packet_len = usize::from(self.packet_len());
+        CursorMut::new(&mut self.buf.current_buf()[header_len..packet_len])
     }
 }
 

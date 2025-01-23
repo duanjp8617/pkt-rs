@@ -15,12 +15,12 @@ impl<'a> Cursor<'a> {
     }
 
     #[inline]
-    pub fn original_buf(&self) -> &'a [u8] {
+    pub fn original_buf(&self) -> &[u8] {
         self.buf
     }
 
     #[inline]
-    pub fn current_buf(&self) -> &'a [u8] {
+    pub fn current_buf(&self) -> &[u8] {
         &self.buf[self.cursor..]
     }
 
@@ -79,12 +79,12 @@ impl<'a> CursorMut<'a> {
     }
 
     #[inline]
-    pub fn original_buf(&self) -> &[u8] {
+    pub fn original_buf(&mut self) -> &mut [u8] {
         self.buf
     }
 
     #[inline]
-    pub fn current_buf(self) -> &'a mut [u8] {
+    pub fn current_buf(&mut self) -> &mut [u8] {
         &mut self.buf[self.cursor..]
     }
 

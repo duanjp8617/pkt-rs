@@ -2,7 +2,7 @@ use bytes::Buf;
 
 use crate::checksum_utils;
 use crate::ipv4::{Ipv4Addr, Ipv4PseudoHeader};
-use crate::{Cursor, CursorMut};
+use crate::cursors_old::{Cursor, CursorMut};
 use crate::{PktBuf, PktMut};
 
 use super::{TcpHeader, TCP_HEADER_LEN};
@@ -101,7 +101,7 @@ impl<T: PktBuf> TcpPacket<T> {
     pub fn payload(self) -> T {
         let header_len = usize::from(self.header_len());
 
-        let mut buf = self.release();
+        let mut buf = self.buf;
         buf.advance(header_len);
 
         buf
@@ -142,38 +142,27 @@ impl<T: PktMut> TcpPacket<T> {
 
 impl<'a> TcpPacket<Cursor<'a>> {
     #[inline]
-    pub fn cursor_header(&self) -> TcpHeader<&'a [u8]> {
-        let data = &self.buf.chunk_shared_lifetime()[..TCP_HEADER_LEN];
+    pub fn cursor_header(&self) -> TcpHeader<&[u8]> {
+        let data = &self.buf.current_buf()[..TCP_HEADER_LEN];
         TcpHeader::new_unchecked(data)
     }
 
     #[inline]
-    pub fn cursor_options(&self) -> &'a [u8] {
-        &self.buf.chunk_shared_lifetime()[TCP_HEADER_LEN..usize::from(self.header_len())]
+    pub fn cursor_options(&self) -> &[u8] {
+        &self.buf.current_buf()[TCP_HEADER_LEN..usize::from(self.header_len())]
     }
 
     #[inline]
-    pub fn cursor_payload(&self) -> Cursor<'a> {
-        Cursor::new(&self.buf.chunk_shared_lifetime()[usize::from(self.header_len())..])
+    pub fn cursor_payload(&self) -> Cursor<'_> {
+        Cursor::new(&self.buf.current_buf()[usize::from(self.header_len())..])
     }
 }
 
 impl<'a> TcpPacket<CursorMut<'a>> {
     #[inline]
-    pub fn split(self) -> (TcpHeader<&'a mut [u8]>, &'a [u8], CursorMut<'a>) {
-        let header_len = self.header_len();
-
-        let (hdr, payload) = self
-            .buf
-            .chunk_mut_shared_lifetime()
-            .split_at_mut(usize::from(header_len));
-        let (hdr, options) = hdr.split_at_mut(TCP_HEADER_LEN);
-
-        (
-            TcpHeader::new_unchecked(hdr),
-            options,
-            CursorMut::new(payload),
-        )
+    pub fn cursor_payload(&mut self) -> CursorMut<'_> {
+        let header_len = usize::from(self.header_len());
+        CursorMut::new(&mut self.buf.current_buf()[header_len..])
     }
 }
 

@@ -18,12 +18,12 @@ impl<'a> Cursor<'a> {
     }
 
     #[inline]
-    pub fn buf(&self) -> &'a [u8] {
+    pub fn original_buf(&self) -> &[u8] {
         unsafe { std::slice::from_raw_parts(self.start_addr, self.cursor() + self.chunk.len()) }
     }
 
     #[inline]
-    pub fn chunk_shared_lifetime(&self) -> &'a [u8] {
+    pub fn current_buf(&self) -> &[u8] {
         self.chunk
     }
 
@@ -85,12 +85,17 @@ impl<'a> CursorMut<'a> {
     }
 
     #[inline]
-    pub fn buf(&self) -> &[u8] {
-        unsafe { std::slice::from_raw_parts(self.start_addr, self.cursor() + self.chunk.len()) }
+    pub fn original_buf(&mut self) -> &mut [u8] {
+        unsafe {
+            std::slice::from_raw_parts_mut(
+                self.start_addr as *mut u8,
+                self.cursor() + self.chunk.len(),
+            )
+        }
     }
 
     #[inline]
-    pub fn chunk_mut_shared_lifetime(self) -> &'a mut [u8] {
+    pub fn current_buf(&mut self) -> &mut [u8] {
         self.chunk
     }
 
@@ -162,7 +167,7 @@ mod tests {
             cursor.advance(c_pos);
 
             assert_eq!(c_pos, cursor.cursor());
-            assert_eq!(cursor.buf(), &b[..]);
+            assert_eq!(cursor.original_buf(), &b[..]);
             assert_eq!(cursor.remaining(), 1000 - c_pos);
             assert_eq!(cursor.chunk(), &b[c_pos..]);
         }
@@ -173,7 +178,7 @@ mod tests {
             cursor.move_back(c_pos);
 
             assert_eq!(1000 - c_pos, cursor.cursor());
-            assert_eq!(cursor.buf(), &b[..]);
+            assert_eq!(cursor.original_buf(), &b[..]);
             assert_eq!(cursor.remaining(), c_pos);
             assert_eq!(cursor.chunk(), &b[1000 - c_pos..]);
         }
@@ -198,7 +203,7 @@ mod tests {
             cursor.advance(c_pos);
 
             assert_eq!(c_pos, cursor.cursor());
-            assert_eq!(cursor.buf(), &c[..]);
+            assert_eq!(cursor.original_buf(), &c[..]);
             assert_eq!(cursor.remaining(), 1000 - c_pos);
             assert_eq!(cursor.chunk_mut(), &mut c[c_pos..]);
         }
@@ -209,7 +214,7 @@ mod tests {
             cursor.move_back(c_pos);
 
             assert_eq!(1000 - c_pos, cursor.cursor());
-            assert_eq!(cursor.buf(), &c[..]);
+            assert_eq!(cursor.original_buf(), &c[..]);
             assert_eq!(cursor.remaining(), c_pos);
             assert_eq!(cursor.chunk_mut(), &mut c[1000 - c_pos..]);
         }
