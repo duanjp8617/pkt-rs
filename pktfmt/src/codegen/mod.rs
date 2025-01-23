@@ -2,13 +2,7 @@ use std::io::Write;
 
 use crate::ast::{Header, Length, LengthField, Message, Packet};
 
-mod field;
-use field::*;
-
 mod header;
-
-mod length;
-use length::*;
 
 mod packet;
 pub use packet::*;
@@ -16,7 +10,16 @@ pub use packet::*;
 mod message;
 pub use message::*;
 
+mod container;
+
+mod build;
+mod field;
+mod length;
 mod parse;
+mod payload;
+
+use field::*;
+use length::*;
 
 // A writer object that appends prefix string and prepends suffix string to the
 // underlying content.
@@ -218,3 +221,19 @@ macro_rules! impl_generate_field_access_method {
     };
 }
 impl_generate_field_access_method!(Packet, Message);
+
+fn guard_assert_str(guards: &Vec<String>, comp: &str) -> String {
+    if guards.len() == 1 {
+        format!("{}", guards[0])
+    } else {
+        let mut buf = Vec::new();
+        guards.iter().enumerate().for_each(|(idx, s)| {
+            write!(&mut buf, "({s})").unwrap();
+
+            if idx < guards.len() - 1 {
+                write!(&mut buf, "{comp}").unwrap();
+            }
+        });
+        String::from_utf8(buf).unwrap()
+    }
+}

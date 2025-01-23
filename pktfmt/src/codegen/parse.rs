@@ -2,8 +2,8 @@ use std::io::Write;
 
 use crate::ast::Length;
 
-use super::{impl_block, GenerateFieldAccessMethod, StructDefinition};
-use crate::ast::{DefaultVal, LengthField, Packet};
+use super::{guard_assert_str, impl_block, GenerateFieldAccessMethod, StructDefinition};
+use crate::ast::{DefaultVal, Header, LengthField, Packet};
 
 use super::HeadTailWriter;
 
@@ -13,36 +13,13 @@ use super::HeadTailWriter;
 /// Currently, we consider two different buffer types, including the contiguous
 /// and in-contiguous ones.
 pub struct Parse<'a> {
+    header: &'a Header,
     length: &'a Length,
-    header_len_in_bytes: usize,
 }
 
 impl<'a> Parse<'a> {
-    pub fn new(length: &'a Length, header_len_in_bytes: usize) -> Self {
-        Self {
-            length,
-            header_len_in_bytes,
-        }
-    }
-
-    /// Generator for `parse_unchecked`.
-    /// Each container type will have a `parse_unchecked` method,  which just
-    /// wraps the buffer type inside the container type.
-    pub fn code_gen_for_parse_unchecked(
-        &self,
-        buf_name: &str,
-        buf_type: &str,
-        output: &mut dyn Write,
-    ) {
-        write!(
-            output,
-            "#[inline]
-pub fn parse_unchecked({buf_name}: {buf_type}) -> Self{{
-Self{{ {buf_name} }}
-}}
-"
-        )
-        .unwrap();
+    pub fn new(header: &'a Header, length: &'a Length) -> Self {
+        Self { header, length }
     }
 
     pub fn code_gen_for_contiguous_buffer(
@@ -50,10 +27,10 @@ Self{{ {buf_name} }}
         method_name: &str,
         buf_name: &str,
         buf_type: &str,
-        buf_access: &str,
+        buf_access_infix: &str,
         output: &mut dyn Write,
     ) {
-        let remaining_len = &format!("{buf_name}.{buf_access}().len()");
+        let remaining_len = &format!("{buf_name}{buf_access_infix}.len()");
 
         write!(
             output,
@@ -61,66 +38,202 @@ Self{{ {buf_name} }}
 pub fn {method_name}({buf_name}: {buf_type}) -> Result<Self, {buf_type}> {{
 let remaining_len = {remaining_len};
 if remainig_len < {} {{
-return Err(buf);
+return Err({buf_name});
 }}
 let container = Self{{ {buf_name} }};
 ",
-            self.header_len_in_bytes
+            self.header.header_len_in_bytes()
         )
         .unwrap();
 
-        // // Format checks are appended to the `guards`.
-        // let mut guards = Vec::new();
-        // let header_len_var = match self.length.at(0) {
-        //     LengthField::None => {
-        //         // Header field is not defined, use the fixed header length.
-        //         &format!("{}", self.header_len_in_bytes)
-        //     }
-        //     LengthField::Undefined => {
-        //         // Header field is defined without computing expression.
-        //         // The return value of the user defined `header_len` method
-        // must convert to         // `usize` safely.
-        //         guards.push(format!("(packet.header_len() as usize)<{}",
-        // self.header_len_in_bytes));         guards.push(format!("
-        // (packet.header_len() as usize)>remaining_len"));
-        //         "(packet.header_len() as usize)"
-        //     }
-        //     LengthField::Expr { expr } => {
-        //         // Header field is defined with computing expression.
-        //         let (field, _) =
-        // self.packet().header().field(expr.field_name()).unwrap();
-        //         if field.default_fix {
-        //             // The default is fixed, check against the fixed value.
-        //             let default_val = match field.default {
-        //                 DefaultVal::Num(n) => n,
-        //                 _ => panic!(),
-        //             };
-        //             let fixed_header_len = expr.exec(default_val).unwrap();
-        //             guards.push(format!(
-        //                 "(packet.header_len() as usize)!={fixed_header_len}"
-        //             ));
-        //         } else {
-        //             // The default is not fixed, check with the fixed header
-        // length.             guards.push(format!("(packet.header_len()
-        // as usize)<{header_len_name}"));         }
-        //         guards.push(format!("(packet.header_len() as
-        // usize)>chunk_len"));         "(packet.header_len() as usize)"
-        //     }
-        // };
+        let mut guards = Vec::new();
+        match (self.length.at(0), self.length.at(1), self.length.at(2)) {
+            (LengthField::None, LengthField::None, LengthField::None) => {
+                // no length definition, no changes are needed.
+            }
+            (header_len_field, LengthField::None, LengthField::None) => {
+                // We have a single header definition here
+                match header_len_field {
+                    LengthField::Undefined => {
+                        guards.push(format!(
+                            "(container.header_len() as usize)<{}",
+                            self.header.header_len_in_bytes()
+                        ));
+                    }
+                    LengthField::Expr { expr } => {
+                        let (field, _) = self.header.field(expr.field_name()).unwrap();
+                        if field.default_fix {
+                            let default_val = match field.default {
+                                DefaultVal::Num(n) => n,
+                                _ => panic!(),
+                            };
+                            let fixed_header_len = expr.exec(default_val).unwrap();
+                            guards.push(format!(
+                                "(container.header_len() as usize)!={fixed_header_len}"
+                            ));
+                        } else {
+                            guards.push(format!(
+                                "(container.header_len() as usize)<{}",
+                                self.header.header_len_in_bytes()
+                            ));
+                        }
+                    }
+                    _ => panic!(),
+                };
+                guards.push(format!("(container.header_len() as usize)>remaining_len"));
+            }
+            (LengthField::None, _, LengthField::None)
+            | (_, _, LengthField::None)
+            | (LengthField::None, LengthField::None, _)
+            | (_, LengthField::None, _) => {
+                // the packet has a payload length or a packet length
+                let header_len_var = match self.length.at(0) {
+                    LengthField::None => &format!("{}", self.header.header_len_in_bytes()),
+                    LengthField::Undefined => {
+                        guards.push(format!(
+                            "(container.header_len() as usize)<{}",
+                            self.header.header_len_in_bytes()
+                        ));
+                        "(container.header_len() as usize)"
+                    }
+                    LengthField::Expr { expr } => {
+                        let (field, _) = self.header.field(expr.field_name()).unwrap();
+                        if field.default_fix {
+                            let default_val = match field.default {
+                                DefaultVal::Num(n) => n,
+                                _ => panic!(),
+                            };
+                            let fixed_header_len = expr.exec(default_val).unwrap();
+                            guards.push(format!(
+                                "(container.header_len() as usize)!={fixed_header_len}"
+                            ));
+                        } else {
+                            guards.push(format!(
+                                "(container.header_len() as usize)<{}",
+                                self.header.header_len_in_bytes()
+                            ));
+                        }
+                        "(container.header_len() as usize)"
+                    }
+                };
+                if self.length.at(1).appear() {
+                    guards.push(format!(
+                        "(container.payload_len() as usize)+{header_len_var}>remaining_len"
+                    ));
+                } else {
+                    guards.push(format!(
+                        "(container.packet_len() as usize)<{header_len_var}"
+                    ));
+                    guards.push(format!("(container.packet_len() as usize)>remaining"));
+                }
+            }
+            _ => {
+                panic!()
+            }
+        }
 
-        // if self.packet().length().at(1).appear() {
-        //     // Add check for the variable payload length.
-        //     guards.push(format!(
-        //         "(packet.payload_len() as
-        // usize)+{header_len_var}>packet.buf.remaining()"     ));
-        // } else if self.packet().length().at(2).appear() {
-        //     // Add check for the variable packet length.
-        //     guards.push(format!("(packet.packet_len() as
-        // usize)<{header_len_var}"));     guards.push(format!(
-        //         "(packet.packet_len() as usize)>packet.buf.remaining()"
-        //     ));
-        // } else {
-        //     // Do nothing
-        // }
+        // Generate the checks.
+        if guards.len() > 0 {
+            let guard_str = guard_assert_str(&guards, "||");
+            write!(
+                output,
+                "if {guard_str} {{
+return Err(container.{buf_name});
+}}
+"
+            )
+            .unwrap();
+        }
+
+        write!(output, "Ok(container)\n}}\n").unwrap();
+    }
+
+    pub fn code_gen_for_pktbuf(
+        &self,
+        method_name: &str,
+        buf_name: &str,
+        buf_type: &str,
+        buf_access_infix: &str,
+        remaining_size_suffix: &str,
+        output: &mut dyn Write,
+    ) {
+        let chunk_len = &format!("{buf_name}{buf_access_infix}.len()");
+
+        write!(
+            output,
+            "#[inline]
+pub fn {method_name}({buf_name}: {buf_type}) -> Result<Self, {buf_type}> {{
+let chunk_len = {chunk_len};
+if remainig_len < {} {{
+return Err({buf_name});
+}}
+let container = Self{{ {buf_name} }};
+",
+            self.header.header_len_in_bytes()
+        )
+        .unwrap();
+
+        let mut guards = Vec::new();
+        let header_len_var = match self.length.at(0) {
+            LengthField::None => &format!("{}", self.header.header_len_in_bytes()),
+            LengthField::Undefined => {
+                guards.push(format!(
+                    "(container.header_len() as usize)<{}",
+                    self.header.header_len_in_bytes()
+                ));
+                guards.push(format!("(container.header_len() as usize)>chunk_len"));
+                "(container.header_len() as usize)"
+            }
+            LengthField::Expr { expr } => {
+                let (field, _) = self.header.field(expr.field_name()).unwrap();
+                if field.default_fix {
+                    let default_val = match field.default {
+                        DefaultVal::Num(n) => n,
+                        _ => panic!(),
+                    };
+                    let fixed_header_len = expr.exec(default_val).unwrap();
+                    guards.push(format!(
+                        "(container.header_len() as usize)!={fixed_header_len}"
+                    ));
+                } else {
+                    guards.push(format!(
+                        "(container.header_len() as usize)<{}",
+                        self.header.header_len_in_bytes()
+                    ));
+                }
+                guards.push(format!("(container.header_len() as usize)>chunk_len"));
+                "(container.header_len() as usize)"
+            }
+        };
+
+        if self.length.at(1).appear() {
+            guards.push(format!(
+                "(container.payload_len() as usize)+{header_len_var}>container.{buf_name}.{remaining_size_suffix}"
+            ));
+        } else if self.length.at(2).appear() {
+            guards.push(format!(
+                "(container.packet_len() as usize)<{header_len_var}"
+            ));
+            guards.push(format!(
+                "(container.packet_len() as usize)>container.{buf_name}.{remaining_size_suffix}"
+            ));
+        } else {
+            // Do nothing
+        }
+
+        // Generate the checks.
+        if guards.len() > 0 {
+            let guard_str = guard_assert_str(&guards, "||");
+            write!(
+                output,
+                "if {guard_str} {{
+return Err(container.{buf_name});
+}}
+"
+            )
+            .unwrap();
+        }
+
+        write!(output, "Ok(container)\n}}\n").unwrap();
     }
 }

@@ -1,8 +1,8 @@
 use bytes::Buf;
 
 use crate::checksum_utils;
-use crate::ipv4::{Ipv4Addr, Ipv4PseudoHeader};
 use crate::cursors_old::{Cursor, CursorMut};
+use crate::ipv4::{Ipv4Addr, Ipv4PseudoHeader};
 use crate::{PktBuf, PktMut};
 
 use super::{TcpHeader, TCP_HEADER_LEN};
@@ -141,6 +141,22 @@ impl<T: PktMut> TcpPacket<T> {
 }
 
 impl<'a> TcpPacket<Cursor<'a>> {
+    #[inline]
+    pub fn cursor_parse(buf: Cursor<'a>) -> Result<Self, Cursor<'a>> {
+        let remaining_len = buf.chunk().len();
+        if remaining_len < TCP_HEADER_LEN {
+            return Err(buf);
+        }
+        let container = Self { buf };
+        if ((container.header_len() as usize) < TCP_HEADER_LEN)
+            || ((container.header_len() as usize) > remaining_len)
+        {
+            return Err(container.buf);
+        }
+
+        Ok(container)
+    }
+
     #[inline]
     pub fn cursor_header(&self) -> TcpHeader<&[u8]> {
         let data = &self.buf.current_buf()[..TCP_HEADER_LEN];

@@ -36,25 +36,28 @@ pub const TCP_HEADER_TEMPLATE: TcpHeader<[u8; TCP_HEADER_LEN]> = TcpHeader {
 
 ///
 /// protocol Tcp {
-///   src_port: Bit(16), Mult(1) | Start(0), End(None) | Repr(u16), Arg(u16) | Default(0),
-///   dst_port: Bit(16), Mult(1) | Start(0), End(None) | Repr(u16), Arg(u16) | Default(0),
-///   seq:  Bit(32), Mult(1) | Start(0), End(None) | Repr(u32), Arg(u32) | Default(0),
-///   ack:  Bit(32), Mult(1) | Start(0), End(None) | Repr(u32), Arg(u32) | Default(0),
-///   header_len:  Bit(4), Mult(4) | Start(20), End(Some(60)) | Repr(u8), Arg(u8) | Default(20),
-///   reserved: Bit(4), Mult(1) | Start(0), End(Some(0)) | Repr(u8), Arg(u8) | Default(0),
-///   cwr: Bit(1), Mult(1) | Start(0), End(Some(1)) | Repr(u8), Arg(bool) | Default(false),
-///   ece: Bit(1), Mult(1) | Start(0), End(Some(1)) | Repr(u8), Arg(bool) | Default(false),
-///   urg: Bit(1), Mult(1) | Start(0), End(Some(1)) | Repr(u8), Arg(bool) | Default(false),
-///   ack: Bit(1), Mult(1) | Start(0), End(Some(1)) | Repr(u8), Arg(bool) | Default(false),
-///   psh: Bit(1), Mult(1) | Start(0), End(Some(1)) | Repr(u8), Arg(bool) | Default(false),
-///   rst: Bit(1), Mult(1) | Start(0), End(Some(1)) | Repr(u8), Arg(bool) | Default(false),
-///   syn: Bit(1), Mult(1) | Start(0), End(Some(1)) | Repr(u8), Arg(bool) | Default(false),
-///   fin: Bit(1), Mult(1) | Start(0), End(Some(1)) | Repr(u8), Arg(bool) | Default(false),
-///   window_size: Bit(16), Mult(1) | Start(0), End(None) | Repr(u16), Arg(u16) | Default(0),
-///   checksum: Bit(16), Mult(1) | Start(0), End(None) | Repr(u16), Arg(u16) | Default(0),
-///   urgent_pointer: Bit(16), Mult(1) | Start(0), End(None) | Repr(u16), Arg(u16) | Default(0),
-///   option: Variable | Start(0), End(Some(header_len-20))
-/// }
+///   src_port: Bit(16), Mult(1) | Start(0), End(None) | Repr(u16), Arg(u16) |
+/// Default(0),   dst_port: Bit(16), Mult(1) | Start(0), End(None) | Repr(u16),
+/// Arg(u16) | Default(0),   seq:  Bit(32), Mult(1) | Start(0), End(None) |
+/// Repr(u32), Arg(u32) | Default(0),   ack:  Bit(32), Mult(1) | Start(0),
+/// End(None) | Repr(u32), Arg(u32) | Default(0),   header_len:  Bit(4), Mult(4)
+/// | Start(20), End(Some(60)) | Repr(u8), Arg(u8) | Default(20),   reserved:
+/// Bit(4), Mult(1) | Start(0), End(Some(0)) | Repr(u8), Arg(u8) | Default(0),
+///   cwr: Bit(1), Mult(1) | Start(0), End(Some(1)) | Repr(u8), Arg(bool) |
+/// Default(false),   ece: Bit(1), Mult(1) | Start(0), End(Some(1)) | Repr(u8),
+/// Arg(bool) | Default(false),   urg: Bit(1), Mult(1) | Start(0), End(Some(1))
+/// | Repr(u8), Arg(bool) | Default(false),   ack: Bit(1), Mult(1) | Start(0),
+/// End(Some(1)) | Repr(u8), Arg(bool) | Default(false),   psh: Bit(1), Mult(1)
+/// | Start(0), End(Some(1)) | Repr(u8), Arg(bool) | Default(false),
+///   rst: Bit(1), Mult(1) | Start(0), End(Some(1)) | Repr(u8), Arg(bool) |
+/// Default(false),   syn: Bit(1), Mult(1) | Start(0), End(Some(1)) | Repr(u8),
+/// Arg(bool) | Default(false),   fin: Bit(1), Mult(1) | Start(0), End(Some(1))
+/// | Repr(u8), Arg(bool) | Default(false),   window_size: Bit(16), Mult(1) |
+/// Start(0), End(None) | Repr(u16), Arg(u16) | Default(0),   checksum: Bit(16),
+/// Mult(1) | Start(0), End(None) | Repr(u16), Arg(u16) | Default(0),
+///   urgent_pointer: Bit(16), Mult(1) | Start(0), End(None) | Repr(u16),
+/// Arg(u16) | Default(0),   option: Variable | Start(0),
+/// End(Some(header_len-20)) }
 #[derive(Clone, Copy, Debug)]
 pub struct TcpHeader<T> {
     buf: T,
@@ -370,5 +373,23 @@ impl<T: AsMut<[u8]>> TcpHeader<T> {
     pub fn set_urgent_ptr(&mut self, value: u16) {
         let data = urgent_mut(self.buf.as_mut());
         NetworkEndian::write_u16(data, value)
+    }
+}
+
+impl<T: AsRef<[u8]>> TcpHeader<T> {
+    #[inline]
+    pub fn cursor_parse(buf: T) -> Result<Self, T> {
+        let remaining_len = buf.as_ref().len();
+        if remaining_len < TCP_HEADER_LEN {
+            return Err(buf);
+        }
+        let container = Self { buf };
+        if ((container.header_len() as usize) < TCP_HEADER_LEN)
+            || ((container.header_len() as usize) > remaining_len)
+        {
+            return Err(container.buf);
+        }
+
+        Ok(container)
     }
 }
