@@ -10,7 +10,7 @@ use super::HeadTailWriter;
 ///     buf: T
 /// }
 pub struct Container<'a> {
-    pub name: &'a str,
+    pub container_struct_name: &'a str,
     pub derives: &'a [&'static str],
 }
 
@@ -36,18 +36,18 @@ impl<'a> Container<'a> {
 buf: T
 }}
 ",
-            self.name
+            self.container_struct_name
         )
         .unwrap();
     }
 
     // Wrap a `buf` inside a container.
-    pub fn parse_unchecked(output: &mut dyn Write) {
+    pub fn code_gen_for_parse_unchecked(buf_name: &str, buf_type: &str, output: &mut dyn Write) {
         write!(
             output,
             "#[inline]
-pub fn parse_unchecked(buf: T) -> Self{{
-Self{{buf}}
+pub fn parse_unchecked({buf_name}: {buf_type}) -> Self{{
+Self{{ {buf_name} }}
 }}
 "
         )
@@ -55,12 +55,12 @@ Self{{buf}}
     }
 
     // Return an imutable reference to the contained `buf`.
-    pub fn buf(output: &mut dyn Write) {
+    pub fn code_gen_for_buf(buf_name: &str, buf_type: &str, output: &mut dyn Write) {
         write!(
             output,
             "#[inline]
-pub fn buf(&self) -> &T{{
-&self.buf
+pub fn buf(&self) -> &{buf_type}{{
+&self.{buf_name}
 }}
 "
         )
@@ -68,12 +68,12 @@ pub fn buf(&self) -> &T{{
     }
 
     // Release the `buf` from the container.
-    pub fn release(output: &mut dyn Write) {
+    pub fn code_gen_for_release(buf_name: &str, buf_type: &str, output: &mut dyn Write) {
         write!(
             output,
             "#[inline]
-pub fn release(self) -> T{{
-self.buf
+pub fn release(self) -> {buf_type}{{
+self.{buf_name}
 }}
 "
         )

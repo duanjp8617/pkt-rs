@@ -7,6 +7,9 @@ use super::{max_value, DefaultVal, Error};
 
 const LENGTH_FIELDS: &[&str; 3] = &["header_len", "payload_len", "packet_len"];
 
+pub const LENGTH_TEMPLATE_FOR_HEADER: &[LengthField] =
+    &[LengthField::None, LengthField::None, LengthField::None];
+
 /// The ast type constructed when parsing `length` list from the pktfmt script.
 #[derive(Debug)]
 pub struct Length {
@@ -16,6 +19,10 @@ pub struct Length {
 impl Length {
     pub fn at(&self, index: usize) -> &LengthField {
         &self.length_fields[index]
+    }
+
+    pub fn as_slice(&self) -> &[LengthField] {
+        &self.length_fields[..]
     }
 }
 

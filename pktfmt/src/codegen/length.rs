@@ -1,8 +1,52 @@
 use std::io::Write;
 
-use crate::ast::{max_value, BitPos, BuiltinTypes, DefaultVal, Field, UsableAlgExpr};
+use crate::ast::{
+    max_value, BitPos, BuiltinTypes, DefaultVal, Field, Header, Length, LengthField, UsableAlgExpr,
+};
 
 use super::{FieldGetMethod, FieldSetMethod, HeadTailWriter};
+
+pub struct LengthGenerator<'a> {
+    header: &'a Header,
+    length: &'a Length,
+}
+
+impl<'a> LengthGenerator<'a> {
+    const LENGTH_FIELD_NAMES: &'static [&'static str] =
+        &["header_len", "payload_len", "packet_len"];
+
+    pub fn new(header: &'a Header, length: &'a Length) -> Self {
+        Self { header, length }
+    }
+
+    pub fn code_gen(&self, target_slice: &str, write_value: Option<&str>, output: &mut dyn Write) {
+        for index in 0..3 {
+            match self.length.at(index) {
+                LengthField::Expr { expr } => {
+                    let (field, start) = self.header.field(expr.field_name()).unwrap();
+                    match write_value {
+                        Some(write_value) => {
+                            LengthSetMethod::new(field, start, expr).code_gen(
+                                Self::LENGTH_FIELD_NAMES[index],
+                                target_slice,
+                                write_value,
+                                output,
+                            );
+                        }
+                        None => {
+                            LengthGetMethod::new(field, start, expr).code_gen(
+                                Self::LENGTH_FIELD_NAMES[index],
+                                target_slice,
+                                output,
+                            );
+                        }
+                    }
+                }
+                _ => {} // do nothing
+            }
+        }
+    }
+}
 
 /// A helper object that generate length get method for length field.
 pub struct LengthGetMethod<'a> {

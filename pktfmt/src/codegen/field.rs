@@ -1,9 +1,37 @@
 use std::io::Write;
 
-use crate::ast::{Arg, BitPos, BuiltinTypes, DefaultVal, Field};
+use crate::ast::{Arg, BitPos, BuiltinTypes, DefaultVal, Field, Header};
 use crate::utils::byte_len;
 
 use super::HeadTailWriter;
+
+pub struct FieldGenerator<'a> {
+    header: &'a Header,
+}
+
+impl<'a> FieldGenerator<'a> {
+    pub fn new(header: &'a Header) -> Self {
+        Self { header }
+    }
+
+    pub fn code_gen(&self, target_slice: &str, write_value: Option<&str>, output: &mut dyn Write) {
+        for (field_name, field, start) in self.header.field_iter() {
+            match write_value {
+                Some(write_value) => {
+                    FieldSetMethod::new(field, start).code_gen(
+                        field_name,
+                        target_slice,
+                        write_value,
+                        output,
+                    );
+                }
+                None => {
+                    FieldGetMethod::new(field, start).code_gen(field_name, target_slice, output)
+                }
+            }
+        }
+    }
+}
 
 /// A helper object that generate get method for the header field.
 pub struct FieldGetMethod<'a> {
@@ -286,12 +314,7 @@ impl<'a> FieldSetMethod<'a> {
 
     // Generate a code piece for writing an input value `write_value` of type `arg`
     // to the field area stored on `target_slice`.
-    pub fn write_as_arg(
-        &self,
-        target_slice: &str,
-        write_value: &str,
-        output: &mut dyn Write,
-    ) {
+    pub fn write_as_arg(&self, target_slice: &str, write_value: &str, output: &mut dyn Write) {
         match &self.field.arg {
             Arg::BuiltinTypes(defined_arg) if *defined_arg != self.field.repr => {
                 // Generate a fast path method in case that

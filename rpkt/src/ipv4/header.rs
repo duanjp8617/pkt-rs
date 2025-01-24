@@ -33,11 +33,11 @@ pub const IPV4_HEADER_TEMPLATE: Ipv4Header<[u8; 20]> = Ipv4Header {
 /// protocol Ipv4 {
 ///   // ip version field
 ///   version: 4| u8, u8 | 4
-///   header_len: Bit(4), Start(4), End(Some(60)), Mult(4) | Repr(u8), Arg(u8) | Default(20),
-///   dscp: Bit(6) | Repr(u8), Arg(u8) | Default(0),
-///   ecn: 2 | u8, u8 | 0, 
-///   packet_len: Bit(16), Start(header_len), End(None), Mult(1) | Repr(u16), Arg(u16) | Default(20),
-///   ident: 16 | u16, u16 | 0,
+///   header_len: Bit(4), Start(4), End(Some(60)), Mult(4) | Repr(u8), Arg(u8) |
+/// Default(20),   dscp: Bit(6) | Repr(u8), Arg(u8) | Default(0),
+///   ecn: 2 | u8, u8 | 0,
+///   packet_len: Bit(16), Start(header_len), End(None), Mult(1) | Repr(u16),
+/// Arg(u16) | Default(20),   ident: 16 | u16, u16 | 0,
 ///   flag_reserved: 1 | u8, u8 | 0
 ///   flag_dont_frag: 1 | u8, bool | true,
 ///   flag_more_frag: 1 | u8, bool | false,
@@ -164,6 +164,22 @@ impl<T: AsRef<[u8]>> Ipv4Header<T> {
     pub fn dest_ip(&self) -> Ipv4Addr {
         let data = dest_ip(self.buf.as_ref());
         Ipv4Addr::from_bytes(data)
+    }
+
+    #[inline]
+    pub fn parse(buf: T) -> Result<Self, T> {
+        let remaining_len = buf.as_ref().len();
+        if remaining_len < 20 {
+            return Err(buf);
+        }
+        let container = Self { buf };
+        if ((container.header_len() as usize) < 20)
+            || ((container.packet_len() as usize) < (container.header_len() as usize))
+            || ((container.packet_len() as usize) > remaining_len)
+        {
+            return Err(container.buf);
+        }
+        Ok(container)
     }
 }
 

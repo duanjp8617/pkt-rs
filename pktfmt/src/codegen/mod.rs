@@ -1,25 +1,22 @@
 use std::io::Write;
 
-use crate::ast::{Header, Length, LengthField, Message, Packet};
-
-mod header;
-
-mod packet;
-pub use packet::*;
-
-mod message;
-pub use message::*;
+use crate::ast::{Header, Length, LengthField, Message, Packet, LENGTH_TEMPLATE_FOR_HEADER};
 
 mod container;
+use container::*;
 
 mod build;
-mod field;
-mod length;
-mod parse;
-mod payload;
 
+mod field;
 use field::*;
+
+mod length;
 use length::*;
+
+mod parse;
+use parse::*;
+
+mod payload;
 
 // A writer object that appends prefix string and prepends suffix string to the
 // underlying content.
@@ -48,79 +45,6 @@ impl<T: Write> Drop for HeadTailWriter<T> {
     }
 }
 
-// A helper struct for generating common struct definitino.
-struct StructDefinition<'a> {
-    struct_name: &'a str,
-    derives: &'a [&'static str],
-}
-
-impl<'a> StructDefinition<'a> {
-    // Generate the struct definition with derive attributes.
-    fn code_gen(&self, mut output: &mut dyn Write) {
-        assert!(self.derives.len() > 0);
-        {
-            let mut derive_writer = HeadTailWriter::new(&mut output, "#[derive(", ")]\n");
-            self.derives
-                .iter()
-                .enumerate()
-                .for_each(|(idx, derive_name)| {
-                    write!(derive_writer.get_writer(), "{derive_name}").unwrap();
-                    if idx < self.derives.len() - 1 {
-                        write!(derive_writer.get_writer(), ",").unwrap();
-                    }
-                });
-        }
-        write!(
-            output,
-            "pub struct {}<T> {{
-buf: T
-}}
-",
-            self.struct_name
-        )
-        .unwrap();
-    }
-
-    // Wrap a `buf` inside a packet struct.
-    fn parse_unchecked(output: &mut dyn Write) {
-        write!(
-            output,
-            "#[inline]
-pub fn parse_unchecked(buf: T) -> Self{{
-Self{{buf}}
-}}
-"
-        )
-        .unwrap();
-    }
-
-    // Return an imutable reference to the contained `buf`.
-    fn buf(output: &mut dyn Write) {
-        write!(
-            output,
-            "#[inline]
-pub fn buf(&self) -> &T{{
-&self.buf
-}}
-"
-        )
-        .unwrap();
-    }
-
-    // Release the `buf` from the containing packet struct.
-    fn release(output: &mut dyn Write) {
-        write!(
-            output,
-            "#[inline]
-pub fn release(self) -> T{{
-self.buf
-}}
-"
-        )
-        .unwrap();
-    }
-}
-
 // Generate an implementation block for header/packet/message struct type.
 fn impl_block<'out>(
     trait_name: &str,
@@ -135,93 +59,6 @@ fn impl_block<'out>(
     )
 }
 
-// A trait that can help generate all the field access methods.
-trait GenerateFieldAccessMethod {
-    const LENGTH_FIELD_NAMES: &'static [&'static str] =
-        &["header_len", "payload_len", "packet_len"];
-
-    fn protocol_name(&self) -> &str;
-    fn header(&self) -> &Header;
-    fn length(&self) -> &Length;
-
-    fn header_field_method_gen(
-        &self,
-        target_slice: &str,
-        write_value: Option<&str>,
-        output: &mut dyn Write,
-    ) {
-        for (field_name, field, start) in self.header().field_iter() {
-            match write_value {
-                Some(write_value) => {
-                    FieldSetMethod::new(field, start).code_gen(
-                        field_name,
-                        target_slice,
-                        write_value,
-                        output,
-                    );
-                }
-                None => {
-                    FieldGetMethod::new(field, start).code_gen(field_name, target_slice, output)
-                }
-            }
-        }
-    }
-
-    fn length_field_method_gen(
-        &self,
-        target_slice: &str,
-        write_value: Option<&str>,
-        output: &mut dyn Write,
-    ) {
-        for index in 0..3 {
-            match self.length().at(index) {
-                LengthField::Expr { expr } => {
-                    let (field, start) = self.header().field(expr.field_name()).unwrap();
-                    match write_value {
-                        Some(write_value) => {
-                            LengthSetMethod::new(field, start, expr).code_gen(
-                                Self::LENGTH_FIELD_NAMES[index],
-                                target_slice,
-                                write_value,
-                                output,
-                            );
-                        }
-                        None => {
-                            LengthGetMethod::new(field, start, expr).code_gen(
-                                Self::LENGTH_FIELD_NAMES[index],
-                                target_slice,
-                                output,
-                            );
-                        }
-                    }
-                }
-                _ => {} // do nothing
-            }
-        }
-    }
-}
-
-macro_rules! impl_generate_field_access_method {
-    ($($ast_ty: ident),*) => {
-        $(
-            impl $crate::codegen::GenerateFieldAccessMethod for $ast_ty {
-                fn protocol_name(&self) -> &str {
-                    self.protocol_name()
-                }
-
-                fn header(&self) -> &$crate::ast::Header {
-                    self.header()
-                }
-
-                fn length(&self) -> &$crate::ast::Length {
-                    self.length()
-                }
-            }
-        )*
-    };
-}
-impl_generate_field_access_method!(Packet, Message);
-
 fn guard_assert_str(guards: &Vec<String>, comp: &str) -> String {
     if guards.len() == 1 {
         format!("{}", guards[0])
@@ -235,5 +72,121 @@ fn guard_assert_str(guards: &Vec<String>, comp: &str) -> String {
             }
         });
         String::from_utf8(buf).unwrap()
+    }
+}
+
+pub struct HeaderGen<'a> {
+    packet: &'a Packet,
+}
+
+impl<'a> HeaderGen<'a> {
+    pub fn new(packet: &'a Packet) -> Self {
+        Self { packet }
+    }
+
+    pub fn code_gen(&self, mut output: &mut dyn Write) {
+        self.code_gen_for_header_len_const(output);
+        self.code_gen_for_header_template(output);
+
+        // Defines the header struct.
+        let header_struct_gen = Container {
+            container_struct_name: &self.header_struct_name(),
+            derives: &["Debug", "Clone", "Copy"],
+        };
+        header_struct_gen.code_gen(output);
+        let fields = FieldGenerator::new(self.packet.header());
+        let length = LengthGenerator::new(self.packet.header(), self.packet.length());
+
+        {
+            let mut impl_block = impl_block(
+                "T:AsRef<[u8]>",
+                &self.header_struct_name(),
+                "T",
+                &mut output,
+            );
+
+            Container::code_gen_for_parse_unchecked("buf", "T", impl_block.get_writer());
+            Container::code_gen_for_buf("buf", "T", impl_block.get_writer());
+            Container::code_gen_for_release("buf", "T", impl_block.get_writer());
+
+            let parse = Parse::new(self.packet.header(), LENGTH_TEMPLATE_FOR_HEADER);
+            parse.code_gen_for_contiguous_buffer(
+                "parse",
+                "buf",
+                "T",
+                ".as_ref()",
+                impl_block.get_writer(),
+            );
+
+            fields.code_gen("self.buf.as_ref()", None, impl_block.get_writer());
+            length.code_gen("self.buf.as_ref()", None, impl_block.get_writer())
+        }
+
+        {
+            let mut impl_block = impl_block(
+                "T:AsMut<[u8]>",
+                &self.header_struct_name(),
+                "T",
+                &mut output,
+            );
+
+            fields.code_gen("self.buf.as_mut()", Some("value"), impl_block.get_writer());
+            length.code_gen("self.buf.as_mut()", Some("value"), impl_block.get_writer());
+        }
+    }
+
+    // Return the name of the header length const.
+    fn header_len_const_name(&self) -> String {
+        self.packet.protocol_name().to_uppercase() + "_HEADER_LEN"
+    }
+
+    // Return the name of the header struct.
+    fn header_struct_name(&self) -> String {
+        self.packet.protocol_name().to_string() + "Header"
+    }
+
+    // Return the name of the fixed header array.
+    fn header_template_name(&self) -> String {
+        self.packet.protocol_name().to_uppercase() + "_HEADER_TEMPLATE"
+    }
+
+    fn code_gen_for_header_len_const(&self, output: &mut dyn Write) {
+        let header_len = self.packet.header().header_len_in_bytes();
+
+        write!(
+            output,
+            "/// A constant that defines the fixed byte length of the {} protocol header.
+pub const {}: usize = {header_len};
+",
+            &self.packet.protocol_name(),
+            self.header_len_const_name(),
+        )
+        .unwrap();
+    }
+
+    fn code_gen_for_header_template(&self, output: &mut dyn Write) {
+        writeln!(
+            output,
+            "/// A fixed {} header.",
+            self.packet.protocol_name()
+        )
+        .unwrap();
+        write!(
+            output,
+            "pub const {}: {}<[u8;{}]> = {} {{ buf: [",
+            self.header_template_name(),
+            self.header_struct_name(),
+            self.packet.header().header_len_in_bytes(),
+            self.header_struct_name(),
+        )
+        .unwrap();
+
+        for (idx, b) in self.packet.header().header_template().iter().enumerate() {
+            if idx < self.packet.header().header_template().len() - 1 {
+                write!(output, "0x{:02x},", b).unwrap();
+            } else {
+                write!(output, "0x{:02x}] }};\n", b).unwrap()
+            }
+        }
     }
 }

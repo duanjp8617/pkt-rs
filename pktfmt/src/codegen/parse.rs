@@ -2,10 +2,8 @@ use std::io::Write;
 
 use crate::ast::Length;
 
-use super::{guard_assert_str, impl_block, GenerateFieldAccessMethod, StructDefinition};
-use crate::ast::{DefaultVal, Header, LengthField, Packet};
-
-use super::HeadTailWriter;
+use super::guard_assert_str;
+use crate::ast::{DefaultVal, Header, LengthField};
 
 /// A generator for various parse methods.
 ///
@@ -14,11 +12,11 @@ use super::HeadTailWriter;
 /// and in-contiguous ones.
 pub struct Parse<'a> {
     header: &'a Header,
-    length: &'a Length,
+    length: &'a [LengthField],
 }
 
 impl<'a> Parse<'a> {
-    pub fn new(header: &'a Header, length: &'a Length) -> Self {
+    pub fn new(header: &'a Header, length: &'a [LengthField]) -> Self {
         Self { header, length }
     }
 
@@ -37,7 +35,7 @@ impl<'a> Parse<'a> {
             "#[inline]
 pub fn {method_name}({buf_name}: {buf_type}) -> Result<Self, {buf_type}> {{
 let remaining_len = {remaining_len};
-if remainig_len < {} {{
+if remaining_len < {} {{
 return Err({buf_name});
 }}
 let container = Self{{ {buf_name} }};
@@ -47,7 +45,7 @@ let container = Self{{ {buf_name} }};
         .unwrap();
 
         let mut guards = Vec::new();
-        match (self.length.at(0), self.length.at(1), self.length.at(2)) {
+        match (&self.length[0], &self.length[1], &self.length[2]) {
             (LengthField::None, LengthField::None, LengthField::None) => {
                 // no length definition, no changes are needed.
             }
@@ -87,7 +85,7 @@ let container = Self{{ {buf_name} }};
             | (LengthField::None, LengthField::None, _)
             | (_, LengthField::None, _) => {
                 // the packet has a payload length or a packet length
-                let header_len_var = match self.length.at(0) {
+                let header_len_var = match &self.length[0] {
                     LengthField::None => &format!("{}", self.header.header_len_in_bytes()),
                     LengthField::Undefined => {
                         guards.push(format!(
@@ -116,7 +114,7 @@ let container = Self{{ {buf_name} }};
                         "(container.header_len() as usize)"
                     }
                 };
-                if self.length.at(1).appear() {
+                if self.length[1].appear() {
                     guards.push(format!(
                         "(container.payload_len() as usize)+{header_len_var}>remaining_len"
                     ));
@@ -124,7 +122,7 @@ let container = Self{{ {buf_name} }};
                     guards.push(format!(
                         "(container.packet_len() as usize)<{header_len_var}"
                     ));
-                    guards.push(format!("(container.packet_len() as usize)>remaining"));
+                    guards.push(format!("(container.packet_len() as usize)>remaining_len"));
                 }
             }
             _ => {
@@ -164,7 +162,7 @@ return Err(container.{buf_name});
             "#[inline]
 pub fn {method_name}({buf_name}: {buf_type}) -> Result<Self, {buf_type}> {{
 let chunk_len = {chunk_len};
-if remainig_len < {} {{
+if remaining < {} {{
 return Err({buf_name});
 }}
 let container = Self{{ {buf_name} }};
@@ -174,7 +172,7 @@ let container = Self{{ {buf_name} }};
         .unwrap();
 
         let mut guards = Vec::new();
-        let header_len_var = match self.length.at(0) {
+        let header_len_var = match &self.length[0] {
             LengthField::None => &format!("{}", self.header.header_len_in_bytes()),
             LengthField::Undefined => {
                 guards.push(format!(
@@ -206,11 +204,11 @@ let container = Self{{ {buf_name} }};
             }
         };
 
-        if self.length.at(1).appear() {
+        if self.length[1].appear() {
             guards.push(format!(
                 "(container.payload_len() as usize)+{header_len_var}>container.{buf_name}.{remaining_size_suffix}"
             ));
-        } else if self.length.at(2).appear() {
+        } else if self.length[2].appear() {
             guards.push(format!(
                 "(container.packet_len() as usize)<{header_len_var}"
             ));
