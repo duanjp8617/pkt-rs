@@ -160,7 +160,7 @@ return Err(container.{buf_name});
             "#[inline]
 pub fn {method_name}({buf_name}: {buf_type}) -> Result<Self, {buf_type}> {{
 let chunk_len = {chunk_len};
-if remaining < {} {{
+if chunk_len < {} {{
 return Err({buf_name});
 }}
 let container = Self{{ {buf_name} }};

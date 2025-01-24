@@ -204,3 +204,82 @@ pub const {}: usize = {header_len};
         }
     }
 }
+
+/// Packet type generator.
+pub struct PacketGen<'a> {
+    header_gen: HeaderGen<'a>,
+}
+
+impl<'a> PacketGen<'a> {
+    pub fn new(packet: &'a Packet) -> Self {
+        Self {
+            header_gen: HeaderGen::new(packet),
+        }
+    }
+
+    pub fn code_gen(&self, mut output: &mut dyn Write) {
+        // Defines the header struct.
+        let packet_struct_gen = Container {
+            container_struct_name: &self.packet_struct_name(),
+            derives: &["Debug", "Clone", "Copy"],
+        };
+        packet_struct_gen.code_gen(output);
+        let fields = FieldGenerator::new(self.packet().header());
+        let length = LengthGenerator::new(self.packet().header(), self.packet().length());
+
+        {
+            let mut impl_block =
+                impl_block("T:PktBuf", &self.packet_struct_name(), "T", &mut output);
+
+            Container::code_gen_for_parse_unchecked("buf", "T", impl_block.get_writer());
+            Container::code_gen_for_buf("buf", "T", impl_block.get_writer());
+            Container::code_gen_for_release("buf", "T", impl_block.get_writer());
+
+            let parse = Parse::new(self.packet().header(), self.packet().length().as_slice());
+            parse.code_gen_for_pktbuf(
+                "parse",
+                "buf",
+                "T",
+                ".chunk()",
+                "remaining()",
+                impl_block.get_writer(),
+            );
+
+            Container::code_gen_for_header_slice(
+                "header_slice",
+                ".buf.chunk()",
+                &format!("{}", self.packet().header().header_len_in_bytes()),
+                impl_block.get_writer(),
+            );
+
+            fields.code_gen("self.buf.chunk()", None, impl_block.get_writer());
+            length.code_gen("self.buf.chunk()", None, impl_block.get_writer());
+        }
+
+        {
+            let mut impl_block =
+                impl_block("T:BufMut", &self.packet_struct_name(), "T", &mut output);
+
+            fields.code_gen(
+                "self.buf.chunk_mut()",
+                Some("value"),
+                impl_block.get_writer(),
+            );
+            length.code_gen(
+                "self.buf.chunk_mut()",
+                Some("value"),
+                impl_block.get_writer(),
+            );
+        }
+    }
+
+    // Obtain a reference to the packet contained in the `header_impl`.
+    fn packet(&self) -> &Packet {
+        self.header_gen.packet
+    }
+
+    // Obtain the type name of the packet struct.
+    fn packet_struct_name(&self) -> String {
+        self.packet().protocol_name().to_owned() + "Packet"
+    }
+}
