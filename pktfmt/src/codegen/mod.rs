@@ -119,7 +119,7 @@ impl<'a> HeaderGen<'a> {
             );
 
             Container::code_gen_for_header_slice(
-                "as_bytes",
+                "header_slice",
                 ".buf.as_ref()",
                 &format!("{}", self.packet.header().header_len_in_bytes()),
                 impl_block.get_writer(),
@@ -137,8 +137,8 @@ impl<'a> HeaderGen<'a> {
                 &mut output,
             );
 
-            Container::code_gen_for_header_slice(
-                "as_bytes_mut",
+            Container::code_gen_for_header_slice_mut(
+                "header_slice_mut",
                 ".buf.as_mut()",
                 &format!("{}", self.packet.header().header_len_in_bytes()),
                 impl_block.get_writer(),
@@ -268,6 +268,38 @@ impl<'a> PacketGen<'a> {
             length.code_gen(
                 "self.buf.chunk_mut()",
                 Some("value"),
+                impl_block.get_writer(),
+            );
+        }
+
+        {
+            let mut impl_block =
+                impl_block("'a", &self.packet_struct_name(), "Cursor<'a>", &mut output);
+
+            let parse = Parse::new(self.packet().header(), self.packet().length().as_slice());
+            parse.code_gen_for_contiguous_buffer(
+                "parse_for_cursor",
+                "buf",
+                "Cursor<'a>",
+                ".chunk()",
+                impl_block.get_writer(),
+            );
+        }
+
+        {
+            let mut impl_block = impl_block(
+                "'a",
+                &self.packet_struct_name(),
+                "CursorMut<'a>",
+                &mut output,
+            );
+
+            let parse = Parse::new(self.packet().header(), self.packet().length().as_slice());
+            parse.code_gen_for_contiguous_buffer(
+                "parse_for_cursor_mut",
+                "buf",
+                "CursorMut<'a>",
+                ".chunk()",
                 impl_block.get_writer(),
             );
         }

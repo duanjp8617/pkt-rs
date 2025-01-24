@@ -97,7 +97,7 @@ pub fn {method_name}(&self) -> &[u8]{{
         .unwrap();
     }
 
-    pub fn header_slice_mut(
+    pub fn code_gen_for_header_slice_mut(
         method_name: &str,
         buf_access: &str,
         header_len: &str,
