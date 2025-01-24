@@ -79,4 +79,38 @@ self.{buf_name}
         )
         .unwrap();
     }
+
+    pub fn code_gen_for_header_slice(
+        method_name: &str,
+        buf_access: &str,
+        header_len: &str,
+        output: &mut dyn Write,
+    ) {
+        write!(
+            output,
+            "#[inline]
+pub fn {method_name}(&self) -> &[u8]{{
+&self{buf_access}[0..{header_len}]
+}}
+"
+        )
+        .unwrap();
+    }
+
+    pub fn header_slice_mut(
+        method_name: &str,
+        buf_access: &str,
+        header_len: &str,
+        output: &mut dyn Write,
+    ) {
+        write!(
+            output,
+            "#[inline]
+pub fn {method_name}(&mut self) -> &mut [u8]{{
+&mut self{buf_access}[0..{header_len}]
+}}
+"
+        )
+        .unwrap();
+    }
 }

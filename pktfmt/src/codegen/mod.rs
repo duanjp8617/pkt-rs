@@ -118,6 +118,13 @@ impl<'a> HeaderGen<'a> {
                 impl_block.get_writer(),
             );
 
+            Container::code_gen_for_header_slice(
+                "as_bytes",
+                ".buf.as_ref()",
+                &format!("{}", self.packet.header().header_len_in_bytes()),
+                impl_block.get_writer(),
+            );
+
             fields.code_gen("self.buf.as_ref()", None, impl_block.get_writer());
             length.code_gen("self.buf.as_ref()", None, impl_block.get_writer())
         }
@@ -128,6 +135,13 @@ impl<'a> HeaderGen<'a> {
                 &self.header_struct_name(),
                 "T",
                 &mut output,
+            );
+
+            Container::code_gen_for_header_slice(
+                "as_bytes_mut",
+                ".buf.as_mut()",
+                &format!("{}", self.packet.header().header_len_in_bytes()),
+                impl_block.get_writer(),
             );
 
             fields.code_gen("self.buf.as_mut()", Some("value"), impl_block.get_writer());

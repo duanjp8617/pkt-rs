@@ -1,7 +1,5 @@
 use std::io::Write;
 
-use crate::ast::Length;
-
 use super::guard_assert_str;
 use crate::ast::{DefaultVal, Header, LengthField};
 
