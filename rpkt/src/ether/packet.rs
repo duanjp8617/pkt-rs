@@ -1,7 +1,7 @@
 use bytes::Buf;
 
-use crate::PktMut;
 use crate::cursors_old::{Cursor, CursorMut};
+use crate::PktMut;
 
 use super::header::{EtherHeader, ETHER_HEADER_LEN};
 use super::{EtherType, MacAddr};
@@ -96,20 +96,20 @@ impl<T: PktMut> EtherPacket<T> {
 impl<'a> EtherPacket<Cursor<'a>> {
     #[inline]
     pub fn cursor_header(&self) -> EtherHeader<&[u8]> {
-        let data = &self.buf.current_buf()[..ETHER_HEADER_LEN];
+        let data = &self.buf.chunk()[..ETHER_HEADER_LEN];
         EtherHeader::new_unchecked(data)
     }
 
     #[inline]
     pub fn cursor_payload(&self) -> Cursor<'_> {
-        Cursor::new(&self.buf.current_buf()[ETHER_HEADER_LEN..])
+        Cursor::new(&self.buf.chunk()[ETHER_HEADER_LEN..])
     }
 }
 
 impl<'a> EtherPacket<CursorMut<'a>> {
     #[inline]
     pub fn cursor_payload(&mut self) -> CursorMut<'_> {
-        CursorMut::new(&mut self.buf.current_buf()[ETHER_HEADER_LEN..])
+        CursorMut::new(&mut self.buf.chunk_mut()[ETHER_HEADER_LEN..])
     }
 }
 

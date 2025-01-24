@@ -159,18 +159,18 @@ impl<'a> TcpPacket<Cursor<'a>> {
 
     #[inline]
     pub fn cursor_header(&self) -> TcpHeader<&[u8]> {
-        let data = &self.buf.current_buf()[..TCP_HEADER_LEN];
+        let data = &self.buf.chunk()[..TCP_HEADER_LEN];
         TcpHeader::new_unchecked(data)
     }
 
     #[inline]
     pub fn cursor_options(&self) -> &[u8] {
-        &self.buf.current_buf()[TCP_HEADER_LEN..usize::from(self.header_len())]
+        &self.buf.chunk()[TCP_HEADER_LEN..usize::from(self.header_len())]
     }
 
     #[inline]
     pub fn cursor_payload(&self) -> Cursor<'_> {
-        Cursor::new(&self.buf.current_buf()[usize::from(self.header_len())..])
+        Cursor::new(&self.buf.chunk()[usize::from(self.header_len())..])
     }
 }
 
@@ -178,7 +178,7 @@ impl<'a> TcpPacket<CursorMut<'a>> {
     #[inline]
     pub fn cursor_payload(&mut self) -> CursorMut<'_> {
         let header_len = usize::from(self.header_len());
-        CursorMut::new(&mut self.buf.current_buf()[header_len..])
+        CursorMut::new(&mut self.buf.chunk_mut()[header_len..])
     }
 }
 

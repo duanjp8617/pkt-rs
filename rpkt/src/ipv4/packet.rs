@@ -134,19 +134,19 @@ impl<T: PktMut> Ipv4Packet<T> {
 impl<'a> Ipv4Packet<Cursor<'a>> {
     #[inline]
     pub fn cursor_header(&self) -> Ipv4Header<&[u8]> {
-        let data = &self.buf.current_buf()[..IPV4_HEADER_LEN];
+        let data = &self.buf.chunk()[..IPV4_HEADER_LEN];
         Ipv4Header::new_unchecked(data)
     }
 
     #[inline]
     pub fn cursor_options(&self) -> &[u8] {
-        &&self.buf.current_buf()[IPV4_HEADER_LEN..usize::from(self.header_len())]
+        &&self.buf.chunk()[IPV4_HEADER_LEN..usize::from(self.header_len())]
     }
 
     #[inline]
     pub fn cursor_payload(&self) -> Cursor<'_> {
         Cursor::new(
-            &self.buf.current_buf()[usize::from(self.header_len())..usize::from(self.packet_len())],
+            &self.buf.chunk()[usize::from(self.header_len())..usize::from(self.packet_len())],
         )
     }
 }
@@ -156,7 +156,7 @@ impl<'a> Ipv4Packet<CursorMut<'a>> {
     pub fn cursor_payload(&mut self) -> CursorMut<'_> {
         let header_len = usize::from(self.header_len());
         let packet_len = usize::from(self.packet_len());
-        CursorMut::new(&mut self.buf.current_buf()[header_len..packet_len])
+        CursorMut::new(&mut self.buf.chunk_mut()[header_len..packet_len])
     }
 }
 

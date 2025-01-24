@@ -15,13 +15,8 @@ impl<'a> Cursor<'a> {
     }
 
     #[inline]
-    pub fn original_buf(&self) -> &[u8] {
+    pub fn buf(&self) -> &[u8] {
         self.buf
-    }
-
-    #[inline]
-    pub fn current_buf(&self) -> &[u8] {
-        &self.buf[self.cursor..]
     }
 
     #[inline]
@@ -79,13 +74,13 @@ impl<'a> CursorMut<'a> {
     }
 
     #[inline]
-    pub fn original_buf(&mut self) -> &mut [u8] {
+    pub fn buf(&self) -> &[u8] {
         self.buf
     }
 
     #[inline]
-    pub fn current_buf(&mut self) -> &mut [u8] {
-        &mut self.buf[self.cursor..]
+    pub fn buf_mut(&mut self) -> &mut [u8] {
+        self.buf
     }
 
     #[inline]
@@ -124,7 +119,7 @@ impl<'a> PktBuf for CursorMut<'a> {
     #[inline]
     fn trim_off(&mut self, cnt: usize) {
         assert!(cnt <= self.remaining());
-        let truncate_idx = self.original_buf().len() - cnt;
+        let truncate_idx = self.buf().len() - cnt;
 
         let original = std::mem::replace(&mut self.buf, &mut []);
         self.buf = original.split_at_mut(truncate_idx).0;

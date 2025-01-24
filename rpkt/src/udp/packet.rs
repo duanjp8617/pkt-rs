@@ -117,13 +117,13 @@ impl<T: PktMut> UdpPacket<T> {
 impl<'a> UdpPacket<Cursor<'a>> {
     #[inline]
     pub fn cursor_header(&self) -> UdpHeader<&[u8]> {
-        let data = &self.buf.current_buf()[..UDP_HEADER_LEN];
+        let data = &self.buf.chunk()[..UDP_HEADER_LEN];
         UdpHeader::new_unchecked(data)
     }
 
     #[inline]
     pub fn cursor_payload(&self) -> Cursor<'_> {
-        Cursor::new(&self.buf.current_buf()[UDP_HEADER_LEN..usize::from(self.packet_len())])
+        Cursor::new(&self.buf.chunk()[UDP_HEADER_LEN..usize::from(self.packet_len())])
     }
 }
 
@@ -131,7 +131,7 @@ impl<'a> UdpPacket<CursorMut<'a>> {
     #[inline]
     pub fn cursor_payload(&mut self) -> CursorMut<'_> {
         let packet_len = usize::from(self.packet_len());
-        CursorMut::new(&mut self.buf.current_buf()[UDP_HEADER_LEN..packet_len])
+        CursorMut::new(&mut self.buf.chunk_mut()[UDP_HEADER_LEN..packet_len])
     }
 }
 
