@@ -98,7 +98,7 @@ pub fn {method_name}<{trait_type}>(mut {buf_name}: {buf_type}, {header_name}: {h
                 // copy the packet content in
                 write!(
                     output,
-                    "(&mut {buf_name}.chunk_mut()[0..{}]).copy_from_slice(header.as_bytes());\n",
+                    "(&mut {buf_name}.chunk_mut()[0..{}]).copy_from_slice(header.header_slice());\n",
                     self.header.header_len_in_bytes()
                 )
                 .unwrap();
@@ -121,21 +121,21 @@ pub fn {method_name}<{trait_type}>(mut {buf_name}: {buf_type}, {header_name}: {h
                 // copy the packet content in
                 write!(
                     output,
-                    "(&mut {buf_name}.chunk_mut()[0..{}]).copy_from_slice(header.as_bytes());\n",
+                    "(&mut {buf_name}.chunk_mut()[0..{}]).copy_from_slice(header.header_slice());\n",
                     self.header.header_len_in_bytes()
                 )
                 .unwrap();
 
                 // create a mutable packet variable
-                write!(output, "let mut pkt = Self {{ {buf_name} }};\n",).unwrap();
+                write!(output, "let mut container = Self {{ {buf_name} }};\n",).unwrap();
                 // setup the payload length
                 write!(
                     output,
-                    "pkt.set_payload_len(payload_len as {});\n",
+                    "container.set_payload_len(payload_len as {});\n",
                     field.repr.to_string()
                 )
                 .unwrap();
-                write!(output, "pkt\n").unwrap();
+                write!(output, "container\n").unwrap();
             }
             (LengthField::None, LengthField::Expr { expr }) => {
                 // move the cursor back
@@ -153,21 +153,21 @@ pub fn {method_name}<{trait_type}>(mut {buf_name}: {buf_type}, {header_name}: {h
                 // copy the packet content in
                 write!(
                     output,
-                    "(&mut {buf_name}.chunk_mut()[0..{}]).copy_from_slice(header.as_bytes());\n",
+                    "(&mut {buf_name}.chunk_mut()[0..{}]).copy_from_slice(header.header_slice());\n",
                     self.header.header_len_in_bytes()
                 )
                 .unwrap();
 
                 // create a mutable packet variable
-                write!(output, "let mut pkt = Self {{ {buf_name} }};\n",).unwrap();
+                write!(output, "let mut container = Self {{ {buf_name} }};\n",).unwrap();
                 // setup the packet length
                 write!(
                     output,
-                    "pkt.set_packet_len(packet_len as {});\n",
+                    "container.set_packet_len(packet_len as {});\n",
                     field.repr.to_string()
                 )
                 .unwrap();
-                write!(output, "pkt\n").unwrap();
+                write!(output, "container\n").unwrap();
             }
             _ => {
                 panic!()

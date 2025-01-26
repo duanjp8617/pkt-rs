@@ -122,6 +122,7 @@ impl<'a> HeaderGen<'a> {
 
             Container::code_gen_for_header_slice(
                 "header_slice",
+                "&",
                 ".buf.as_ref()",
                 &format!("{}", self.packet.header().header_len_in_bytes()),
                 impl_block.get_writer(),
@@ -139,8 +140,9 @@ impl<'a> HeaderGen<'a> {
                 &mut output,
             );
 
-            Container::code_gen_for_header_slice_mut(
+            Container::code_gen_for_header_slice(
                 "header_slice_mut",
+                "&mut ",
                 ".buf.as_mut()",
                 &format!("{}", self.packet.header().header_len_in_bytes()),
                 impl_block.get_writer(),
@@ -248,6 +250,7 @@ impl<'a> PacketGen<'a> {
 
             Container::code_gen_for_header_slice(
                 "header_slice",
+                "&",
                 ".buf.chunk()",
                 &format!("{}", self.packet().header().header_len_in_bytes()),
                 impl_block.get_writer(),
