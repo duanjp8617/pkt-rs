@@ -1,6 +1,6 @@
 use std::io::Write;
 
-use super::guard_assert_str;
+use super::{guard_assert_str, HeadTailWriter};
 use crate::ast::{DefaultVal, Header, LengthField};
 
 /// A generator for various parse methods.
@@ -101,5 +101,51 @@ buf
         .unwrap();
     }
 
-    pub fn code_gen_for_contiguous_buffer() {}
+    pub fn code_gen_for_contiguous_buffer(
+        &self,
+        method_name: &str,
+        mutable_op: &str,
+        buf_name: &str,
+        buf_type: &str,
+        buf_access: &str,
+        writer_fn: Option<impl Fn(&mut dyn Write, &str)>,
+        output: &mut dyn Write,
+    ) {
+        write!(
+            output,
+            "#[inline]
+pub fn {method_name}({mutable_op}self)->{buf_type}{{
+"
+        )
+        .unwrap();
+
+        let start_index = if self.length[0].appear() {
+            write!(output, "let header_len = self.header_len() as usize;\n").unwrap();
+            format!("header_len")
+        } else {
+            format!("{}", self.header.header_len_in_bytes())
+        };
+
+        let end_index = if self.length[1].appear() {
+            write!(output, "let payload_len = self.payload_len() as usize;\n").unwrap();
+            format!("({start_index}+payload_len)")
+        } else if self.length[2].appear() {
+            write!(output, "let packet_len = self.packet_len() as usize;\n").unwrap();
+            format!("packet_len")
+        } else {
+            "".to_string()
+        };
+
+        let resulting_slice =
+            format!("{mutable_op}self.{buf_name}.{buf_access}[{start_index}..{end_index}]");
+        match writer_fn {
+            Some(f) => {
+                f(output, &format!("{resulting_slice}\n"));
+            }
+            None => {
+                write!(output, "{resulting_slice}\n").unwrap();
+            }
+        }
+        write!(output, "}}\n").unwrap();
+    }
 }

@@ -225,8 +225,12 @@ impl<'a> PacketGen<'a> {
             derives: &["Debug", "Clone", "Copy"],
         };
         packet_struct_gen.code_gen(output);
+
         let fields = FieldGenerator::new(self.packet().header());
         let length = LengthGenerator::new(self.packet().header(), self.packet().length());
+
+        let parse = Parse::new(self.packet().header(), self.packet().length().as_slice());
+        let payload = Payload::new(self.packet().header(), self.packet().length().as_slice());
 
         {
             let mut impl_block =
@@ -236,10 +240,8 @@ impl<'a> PacketGen<'a> {
             Container::code_gen_for_buf("buf", "T", impl_block.get_writer());
             Container::code_gen_for_release("buf", "T", impl_block.get_writer());
 
-            let parse = Parse::new(self.packet().header(), self.packet().length().as_slice());
             parse.code_gen_for_pktbuf("parse", "buf", "T", impl_block.get_writer());
 
-            let payload = Payload::new(self.packet().header(), self.packet().length().as_slice());
             payload.code_gen_for_pktbuf("payload", "buf", "T", impl_block.get_writer());
 
             Container::code_gen_for_header_slice(
@@ -273,12 +275,26 @@ impl<'a> PacketGen<'a> {
             let mut impl_block =
                 impl_block("'a", &self.packet_struct_name(), "Cursor<'a>", &mut output);
 
-            let parse = Parse::new(self.packet().header(), self.packet().length().as_slice());
             parse.code_gen_for_contiguous_buffer(
                 "parse_for_cursor",
                 "buf",
                 "Cursor<'a>",
                 ".chunk()",
+                impl_block.get_writer(),
+            );
+
+            let f = |writer: &mut dyn Write, s: &str| {
+                let mut ht_writer = HeadTailWriter::new(writer, "Cursor::new(", ")");
+                write!(ht_writer.get_writer(), "{s}").unwrap();
+            };
+
+            payload.code_gen_for_contiguous_buffer(
+                "payload_for_cursor",
+                "&",
+                "buf",
+                "Cursor<'_>",
+                "chunk()",
+                Some(f),
                 impl_block.get_writer(),
             );
         }
@@ -291,12 +307,26 @@ impl<'a> PacketGen<'a> {
                 &mut output,
             );
 
-            let parse = Parse::new(self.packet().header(), self.packet().length().as_slice());
             parse.code_gen_for_contiguous_buffer(
                 "parse_for_cursor_mut",
                 "buf",
                 "CursorMut<'a>",
                 ".chunk()",
+                impl_block.get_writer(),
+            );
+
+            let f = |writer: &mut dyn Write, s: &str| {
+                let mut ht_writer = HeadTailWriter::new(writer, "CursorMut::new(", ")");
+                write!(ht_writer.get_writer(), "{s}").unwrap();
+            };
+
+            payload.code_gen_for_contiguous_buffer(
+                "payload_for_cursor_mut",
+                "&mut ",
+                "buf",
+                "CursorMut<'_>",
+                "chunk_mut()",
+                Some(f),
                 impl_block.get_writer(),
             );
         }
