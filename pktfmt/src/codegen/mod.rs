@@ -5,8 +5,6 @@ use crate::ast::{Header, Length, LengthField, Message, Packet, LENGTH_TEMPLATE_F
 mod container;
 use container::*;
 
-mod build;
-
 mod field;
 use field::*;
 
@@ -15,9 +13,12 @@ use length::*;
 
 mod parse;
 use parse::*;
-use payload::Payload;
 
 mod payload;
+use payload::*;
+
+mod build;
+use build::*;
 
 // A writer object that appends prefix string and prepends suffix string to the
 // underlying content.
@@ -231,6 +232,7 @@ impl<'a> PacketGen<'a> {
 
         let parse = Parse::new(self.packet().header(), self.packet().length().as_slice());
         let payload = Payload::new(self.packet().header(), self.packet().length().as_slice());
+        let build = Build::new(self.packet().header(), self.packet().length().as_slice());
 
         {
             let mut impl_block =
@@ -258,6 +260,16 @@ impl<'a> PacketGen<'a> {
         {
             let mut impl_block =
                 impl_block("T:BufMut", &self.packet_struct_name(), "T", &mut output);
+
+            build.code_gen_for_pktbuf(
+                "prepend_header",
+                "HT:AsRef<[u8]>",
+                "buf",
+                "T",
+                "header",
+                &format!("&{}<HT>", self.header_gen.header_struct_name()),
+                impl_block.get_writer(),
+            );
 
             fields.code_gen(
                 "self.buf.chunk_mut()",

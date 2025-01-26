@@ -1,7 +1,6 @@
 use std::io::Write;
 
-use super::{guard_assert_str, HeadTailWriter};
-use crate::ast::{DefaultVal, Header, LengthField};
+use crate::ast::{Header, LengthField};
 
 /// A generator for various parse methods.
 ///
