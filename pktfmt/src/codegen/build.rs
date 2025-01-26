@@ -104,7 +104,7 @@ pub fn {method_name}<{trait_type}>(mut {buf_name}: {buf_type}, {header_name}: {h
                 .unwrap();
                 // If we do not have variable payload length or packet length,
                 // we can construct a packet variable and return it
-                write!(output, "Self::{{ {buf_name} }}\n",).unwrap();
+                write!(output, "Self {{ {buf_name} }}\n",).unwrap();
             }
             (LengthField::Expr { expr }, LengthField::None) => {
                 write!(output, "let payload_len = {buf_name}.remaining();\n").unwrap();
