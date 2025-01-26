@@ -175,4 +175,90 @@ pub fn {method_name}<{trait_type}>(mut {buf_name}: {buf_type}, {header_name}: {h
         }
         write!(output, "}}\n").unwrap();
     }
+
+    // impl<T: AsMut<[u8]>> Packet<T> {
+    //     pub fn build_packet(buf: T) -> Self {
+    //         assert!(buf.as_ref().len() >= 20);
+    //         &mut buf.as_mut()[..20].copy_from_slice(fuck);
+    //         Self{buf}
+    //     }
+
+    //     pub fn build_packet(mut buf: T, header_len: usize) -> Self {
+    //         assert!(buf.as_mut().len() >= header_len && header_len <= max_value);
+    //         &mut buf.as_mut()[..20].copy_from_slice(fuck);
+    //         let container = Self {buf};
+    //         container.set_header_len(header_len as yy)
+    //         container
+    //     }
+    // }
+
+    pub fn code_gen_for_contiguous_buffer(
+        &self,
+        method_name: &str,
+        buf_name: &str,
+        buf_type: &str,
+        buf_access: &str,
+        target_slice_name: &str,
+        output: &mut dyn Write,
+    ) {
+        if matches!(self.length[0], LengthField::Undefined) {
+            // We can't generate the method if the header length field is undefined.
+            return;
+        }
+
+        match &self.length[0] {
+            LengthField::None => {
+                write!(
+                    output,
+                    "pub fn {method_name}({buf_name}: {buf_type}) -> Self {{\n"
+                )
+                .unwrap();
+                write!(
+                    output,
+                    "assert!({buf_name}.{buf_access}.len() >= {});\n",
+                    self.header.header_len_in_bytes()
+                )
+                .unwrap();
+                write!(
+                    output,
+                    "&mut buf.{buf_access}[..{}].copy_from_slice({target_slice_name});\n",
+                    self.header.header_len_in_bytes()
+                )
+                .unwrap();
+                write!(output, "Self{{ {buf_name} }}\n").unwrap();
+                write!(output, "}}\n").unwrap();
+            }
+            LengthField::Expr { expr } => {
+                write!(
+                    output,
+                    "pub fn {method_name}({buf_name}: {buf_type}, header_len: usize) -> Self {{\n"
+                )
+                .unwrap();
+                let (field, _) = self.header.field(expr.field_name()).unwrap();
+                write!(
+                    output,
+                    "assert!(({buf_name}.{buf_access}.len() >= header_len) && (header_len >= {}) && (header_len <= {}));\n",
+                    self.header.header_len_in_bytes(),
+                    max_value(field.bit).unwrap()
+                )
+                .unwrap();
+                write!(
+                    output,
+                    "&mut buf.{buf_access}[..{}].copy_from_slice({target_slice_name});\n",
+                    self.header.header_len_in_bytes()
+                )
+                .unwrap();
+                write!(output, "let mut container = Self{{ {buf_name} }};\n").unwrap();
+                write!(
+                    output,
+                    "container.set_header_len(header_len as {});",
+                    field.repr.to_string()
+                )
+                .unwrap();
+                write!(output, "container\n").unwrap();
+                write!(output, "}}\n").unwrap();
+            }
+            _ => panic!(),
+        }
+    }
 }
