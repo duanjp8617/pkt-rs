@@ -15,6 +15,7 @@ use length::*;
 
 mod parse;
 use parse::*;
+use payload::Payload;
 
 mod payload;
 
@@ -236,14 +237,10 @@ impl<'a> PacketGen<'a> {
             Container::code_gen_for_release("buf", "T", impl_block.get_writer());
 
             let parse = Parse::new(self.packet().header(), self.packet().length().as_slice());
-            parse.code_gen_for_pktbuf(
-                "parse",
-                "buf",
-                "T",
-                ".chunk()",
-                "remaining()",
-                impl_block.get_writer(),
-            );
+            parse.code_gen_for_pktbuf("parse", "buf", "T", impl_block.get_writer());
+
+            let payload = Payload::new(self.packet().header(), self.packet().length().as_slice());
+            payload.code_gen_for_pktbuf("payload", "buf", "T", impl_block.get_writer());
 
             Container::code_gen_for_header_slice(
                 "header_slice",

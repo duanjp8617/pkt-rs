@@ -149,11 +149,9 @@ return Err(container.{buf_name});
         method_name: &str,
         buf_name: &str,
         buf_type: &str,
-        buf_access_infix: &str,
-        remaining_size_suffix: &str,
         output: &mut dyn Write,
     ) {
-        let chunk_len = &format!("{buf_name}{buf_access_infix}.len()");
+        let chunk_len = &format!("{buf_name}.chunk().len()");
 
         write!(
             output,
@@ -204,14 +202,14 @@ let container = Self{{ {buf_name} }};
 
         if self.length[1].appear() {
             guards.push(format!(
-                "(container.payload_len() as usize)+{header_len_var}>container.{buf_name}.{remaining_size_suffix}"
+                "(container.payload_len() as usize)+{header_len_var}>container.{buf_name}.remaining()"
             ));
         } else if self.length[2].appear() {
             guards.push(format!(
                 "(container.packet_len() as usize)<{header_len_var}"
             ));
             guards.push(format!(
-                "(container.packet_len() as usize)>container.{buf_name}.{remaining_size_suffix}"
+                "(container.packet_len() as usize)>container.{buf_name}.remaining()"
             ));
         } else {
             // Do nothing
