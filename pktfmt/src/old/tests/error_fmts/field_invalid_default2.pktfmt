@@ -1,7 +1,0 @@
-// error: default should be a code segment
-Field {
-    bit = 8, 
-    repr = &[u8],
-    arg = &[u8],
-    default = 0,
-}

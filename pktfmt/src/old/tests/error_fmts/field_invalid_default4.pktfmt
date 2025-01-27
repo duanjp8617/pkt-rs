@@ -1,7 +1,0 @@
-// error: default should be code segment
-Field {
-    bit = 1, 
-    repr = u8,
-    arg = %%Ipv4Addr%%,
-    default = 0,
-}

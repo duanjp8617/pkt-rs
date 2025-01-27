@@ -1,5 +1,0 @@
-// error: repr should be u8
-Field {
-    bit = 5, 
-    repr = &[u8],
-}

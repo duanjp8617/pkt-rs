@@ -1,6 +1,0 @@
-// error: arg should be u8
-Field {
-    bit = 2, 
-    repr = u8,
-    arg = bool,
-}
