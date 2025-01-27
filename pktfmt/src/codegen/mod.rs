@@ -299,7 +299,7 @@ impl<'a> PacketGen<'a> {
             );
 
             let f = |writer: &mut dyn Write, s: &str| {
-                let mut ht_writer = HeadTailWriter::new(writer, "Cursor::new(", ")");
+                let mut ht_writer = HeadTailWriter::new(writer, "Cursor::new(", ")\n");
                 write!(ht_writer.get_writer(), "{s}").unwrap();
             };
 
@@ -309,7 +309,7 @@ impl<'a> PacketGen<'a> {
                 "buf",
                 "Cursor<'_>",
                 "chunk()",
-                Some(f),
+                f,
                 impl_block.get_writer(),
             );
         }
@@ -331,7 +331,7 @@ impl<'a> PacketGen<'a> {
             );
 
             let f = |writer: &mut dyn Write, s: &str| {
-                let mut ht_writer = HeadTailWriter::new(writer, "CursorMut::new(", ")");
+                let mut ht_writer = HeadTailWriter::new(writer, "CursorMut::new(", ")\n");
                 write!(ht_writer.get_writer(), "{s}").unwrap();
             };
 
@@ -341,7 +341,7 @@ impl<'a> PacketGen<'a> {
                 "buf",
                 "CursorMut<'_>",
                 "chunk_mut()",
-                Some(f),
+                f,
                 impl_block.get_writer(),
             );
         }
@@ -355,5 +355,130 @@ impl<'a> PacketGen<'a> {
     // Obtain the type name of the packet struct.
     fn packet_struct_name(&self) -> String {
         self.packet().protocol_name().to_owned() + "Packet"
+    }
+}
+
+pub struct MessageGen<'a> {
+    message: &'a Message,
+}
+
+impl<'a> MessageGen<'a> {
+    pub fn new(message: &'a Message) -> Self {
+        Self { message }
+    }
+
+    pub fn code_gen(&self, mut output: &mut dyn Write) {
+        self.code_gen_for_header_array(output);
+
+        // Defines the header struct.
+        let header_struct_gen = Container {
+            container_struct_name: &self.message_struct_name(),
+            derives: &["Debug", "Clone", "Copy"],
+        };
+        header_struct_gen.code_gen(output);
+        let fields = FieldGenerator::new(self.message.header());
+        let length = LengthGenerator::new(self.message.header(), self.message.length());
+        let parse = Parse::new(self.message.header(), self.message.length().as_slice());
+        let payload = Payload::new(self.message.header(), self.message.length().as_slice());
+        let build = Build::new(self.message.header(), self.message.length().as_slice());
+
+        {
+            let mut impl_block = impl_block(
+                "T:AsRef<[u8]>",
+                &self.message_struct_name(),
+                "T",
+                &mut output,
+            );
+
+            Container::code_gen_for_parse_unchecked("buf", "T", impl_block.get_writer());
+            Container::code_gen_for_buf("buf", "T", impl_block.get_writer());
+            Container::code_gen_for_release("buf", "T", impl_block.get_writer());
+
+            parse.code_gen_for_contiguous_buffer(
+                "parse",
+                "buf",
+                "T",
+                ".as_ref()",
+                impl_block.get_writer(),
+            );
+
+            payload.code_gen_for_contiguous_buffer(
+                "payload",
+                "&",
+                "buf",
+                "&[u8]",
+                "as_ref()",
+                |writer, s| write!(writer, "{s}").unwrap(),
+                impl_block.get_writer(),
+            );
+
+            fields.code_gen("self.buf.as_ref()", None, impl_block.get_writer());
+            length.code_gen("self.buf.as_ref()", None, impl_block.get_writer())
+        }
+
+        {
+            let mut impl_block = impl_block(
+                "T:AsMut<[u8]>",
+                &self.message_struct_name(),
+                "T",
+                &mut output,
+            );
+
+            payload.code_gen_for_contiguous_buffer(
+                "payload_mut",
+                "&mut ",
+                "buf",
+                "&mut [u8]",
+                "as_mut()",
+                |writer, s| write!(writer, "{s}").unwrap(),
+                impl_block.get_writer(),
+            );
+
+            build.code_gen_for_contiguous_buffer(
+                "build_message",
+                "buf",
+                "T",
+                "as_mut()",
+                &self.header_array_name(),
+                impl_block.get_writer(),
+            );
+
+            fields.code_gen("self.buf.as_mut()", Some("value"), impl_block.get_writer());
+            length.code_gen("self.buf.as_mut()", Some("value"), impl_block.get_writer());
+        }
+    }
+
+    // Return the name of the fixed header array.
+    fn header_array_name(&self) -> String {
+        self.message.protocol_name().to_uppercase() + "_HEADER_ARRAY"
+    }
+
+    // Return the name of the header struct.
+    fn message_struct_name(&self) -> String {
+        self.message.protocol_name().to_string() + "Message"
+    }
+
+    fn code_gen_for_header_array(&self, output: &mut dyn Write) {
+        writeln!(
+            output,
+            "/// A fixed {} header array.",
+            self.message.protocol_name()
+        )
+        .unwrap();
+        write!(
+            output,
+            "pub const {}: [u8;{}] = [",
+            self.header_array_name(),
+            self.message.header().header_len_in_bytes(),
+        )
+        .unwrap();
+
+        for (idx, b) in self.message.header().header_template().iter().enumerate() {
+            if idx < self.message.header().header_template().len() - 1 {
+                write!(output, "0x{:02x},", b).unwrap();
+            } else {
+                write!(output, "0x{:02x}];\n", b).unwrap()
+            }
+        }
     }
 }

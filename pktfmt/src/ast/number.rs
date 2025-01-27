@@ -1,7 +1,7 @@
 use super::Error;
 
 /// The maximum size of a contiguous memory region for storing the packet.
-pub const MAX_MTU_IN_BYTES: u64 = (1 << 20) - 1;
+pub const MAX_MTU_IN_BYTES: u64 = (1 << 22) - 1;
 
 // in our case, if the packet defines header length and payload length,
 // then the maximum MTU size calculated can be MAX_MTU_IN_BYTES * 2

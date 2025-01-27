@@ -215,6 +215,14 @@ impl<'a> LengthSetMethod<'a> {
             func_def_writer.get_writer(),
         );
     }
+
+    pub fn length_access_method_io_type(&self) -> BuiltinTypes {
+        length_access_method_io_type(&self.expr, &self.field)
+    }
+
+    pub fn max_length(&self) -> u64 {
+        self.expr.exec(max_value(self.field.bit).unwrap()).unwrap()
+    }
 }
 
 // Find out the input and output types of a length field.

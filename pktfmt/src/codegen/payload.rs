@@ -107,7 +107,7 @@ buf
         buf_name: &str,
         buf_type: &str,
         buf_access: &str,
-        writer_fn: Option<impl Fn(&mut dyn Write, &str)>,
+        writer_fn: impl Fn(&mut dyn Write, &str),
         output: &mut dyn Write,
     ) {
         write!(
@@ -135,16 +135,11 @@ pub fn {method_name}({mutable_op}self)->{buf_type}{{
             "".to_string()
         };
 
-        let resulting_slice =
-            format!("{mutable_op}self.{buf_name}.{buf_access}[{start_index}..{end_index}]");
-        match writer_fn {
-            Some(f) => {
-                f(output, &format!("{resulting_slice}\n"));
-            }
-            None => {
-                write!(output, "{resulting_slice}\n").unwrap();
-            }
-        }
+        writer_fn(
+            output,
+            &format!("{mutable_op}self.{buf_name}.{buf_access}[{start_index}..{end_index}]"),
+        );
+
         write!(output, "}}\n").unwrap();
     }
 }

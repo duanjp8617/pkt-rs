@@ -1,0 +1,18 @@
+message Mldv2Query {
+    header = [
+        type_ = Field{bit = 8, default = 130},
+        code = Field{bit = 8},
+        checksum = Field{bit = 16},
+        max_resp_delay = Field{bit = 16},
+        reserved = Field{bit = 16},
+        multicast_addr = Field{bit = 128},
+        resv = Field{bit = 4},
+        s_flag = Field{bit = 1, arg= bool, default = false},
+        qrv = Field{bit = 3},
+        qqic = Field{bit = 8},
+        num_of_src = Field{bit = 16, gen = false},
+    ],
+    length = [
+        header_len = num_of_src*16+28
+    ]
+}

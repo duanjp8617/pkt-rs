@@ -2,7 +2,7 @@ use std::io::Write;
 
 use crate::ast::{max_value, DefaultVal, Header, LengthField};
 
-use super::guard_assert_str;
+use super::{guard_assert_str, LengthSetMethod};
 
 /// A generator for various parse methods.
 ///
@@ -108,11 +108,12 @@ pub fn {method_name}<{trait_type}>(mut {buf_name}: {buf_type}, {header_name}: {h
             }
             (LengthField::Expr { expr }, LengthField::None) => {
                 write!(output, "let payload_len = {buf_name}.remaining();\n").unwrap();
-                let (field, _) = self.header.field(expr.field_name()).unwrap();
+                let (field, start) = self.header.field(expr.field_name()).unwrap();
+                let payload_length_set = LengthSetMethod::new(field, start, expr);
                 write!(
                     output,
                     "assert!(payload_len<={});\n",
-                    max_value(field.bit).unwrap()
+                    payload_length_set.max_length(),
                 )
                 .unwrap();
 
@@ -132,7 +133,9 @@ pub fn {method_name}<{trait_type}>(mut {buf_name}: {buf_type}, {header_name}: {h
                 write!(
                     output,
                     "container.set_payload_len(payload_len as {});\n",
-                    field.repr.to_string()
+                    payload_length_set
+                        .length_access_method_io_type()
+                        .to_string()
                 )
                 .unwrap();
                 write!(output, "container\n").unwrap();
@@ -142,11 +145,12 @@ pub fn {method_name}<{trait_type}>(mut {buf_name}: {buf_type}, {header_name}: {h
                 write!(output, "{buf_name}.move_back({header_len_var});\n",).unwrap();
 
                 write!(output, "let packet_len = {buf_name}.remaining();\n").unwrap();
-                let (field, _) = self.header.field(expr.field_name()).unwrap();
+                let (field, start) = self.header.field(expr.field_name()).unwrap();
+                let packet_length_set = LengthSetMethod::new(field, start, expr);
                 write!(
                     output,
                     "assert!(packet_len<={});\n",
-                    max_value(field.bit).unwrap()
+                    packet_length_set.max_length(),
                 )
                 .unwrap();
 
@@ -164,7 +168,7 @@ pub fn {method_name}<{trait_type}>(mut {buf_name}: {buf_type}, {header_name}: {h
                 write!(
                     output,
                     "container.set_packet_len(packet_len as {});\n",
-                    field.repr.to_string()
+                    packet_length_set.length_access_method_io_type().to_string()
                 )
                 .unwrap();
                 write!(output, "container\n").unwrap();
@@ -234,12 +238,13 @@ pub fn {method_name}<{trait_type}>(mut {buf_name}: {buf_type}, {header_name}: {h
                     "pub fn {method_name}({buf_name}: {buf_type}, header_len: usize) -> Self {{\n"
                 )
                 .unwrap();
-                let (field, _) = self.header.field(expr.field_name()).unwrap();
+                let (field, start) = self.header.field(expr.field_name()).unwrap();
+                let header_length_set = LengthSetMethod::new(field, start, expr);
                 write!(
                     output,
                     "assert!(({buf_name}.{buf_access}.len() >= header_len) && (header_len >= {}) && (header_len <= {}));\n",
                     self.header.header_len_in_bytes(),
-                    max_value(field.bit).unwrap()
+                    header_length_set.max_length(),
                 )
                 .unwrap();
                 write!(
@@ -252,7 +257,7 @@ pub fn {method_name}<{trait_type}>(mut {buf_name}: {buf_type}, {header_name}: {h
                 write!(
                     output,
                     "container.set_header_len(header_len as {});",
-                    field.repr.to_string()
+                    header_length_set.length_access_method_io_type().to_string()
                 )
                 .unwrap();
                 write!(output, "container\n").unwrap();
