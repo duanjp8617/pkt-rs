@@ -101,6 +101,7 @@ impl<'a> HeaderGen<'a> {
         header_struct_gen.code_gen(output);
         let fields = FieldGenerator::new(self.packet.header());
         let length = LengthGenerator::new(self.packet.header(), self.packet.length());
+        let parse = Parse::new(self.packet.header(), LENGTH_TEMPLATE_FOR_HEADER);
 
         {
             let mut impl_block = impl_block(
@@ -116,7 +117,6 @@ impl<'a> HeaderGen<'a> {
             Container::code_gen_for_release("buf", "T", impl_block.get_writer());
 
             // Header parse with format checking.
-            let parse = Parse::new(self.packet.header(), LENGTH_TEMPLATE_FOR_HEADER);
             parse.code_gen_for_contiguous_buffer(
                 "parse",
                 "buf",
@@ -244,7 +244,6 @@ impl<'a> PacketGen<'a> {
 
         let fields = FieldGenerator::new(self.packet().header());
         let length = LengthGenerator::new(self.packet().header(), self.packet().length());
-
         let parse = Parse::new(self.packet().header(), self.packet().length().as_slice());
         let payload = Payload::new(self.packet().header(), self.packet().length().as_slice());
         let build = Build::new(self.packet().header(), self.packet().length().as_slice());
@@ -424,6 +423,7 @@ impl<'a> MessageGen<'a> {
             derives: &["Debug", "Clone", "Copy"],
         };
         header_struct_gen.code_gen(output);
+
         let fields = FieldGenerator::new(self.message.header());
         let length = LengthGenerator::new(self.message.header(), self.message.length());
         let parse = Parse::new(self.message.header(), self.message.length().as_slice());
@@ -483,7 +483,7 @@ impl<'a> MessageGen<'a> {
 
         {
             let mut impl_block = impl_block(
-                "T:AsMut<[u8]>",
+                "T:AsRef<[u8]> + AsMut<[u8]>",
                 &self.message_struct_name(),
                 "T",
                 &mut output,
@@ -556,6 +556,194 @@ impl<'a> MessageGen<'a> {
 
         for (idx, b) in self.message.header().header_template().iter().enumerate() {
             if idx < self.message.header().header_template().len() - 1 {
+                write!(output, "0x{:02x},", b).unwrap();
+            } else {
+                write!(output, "0x{:02x}];\n", b).unwrap()
+            }
+        }
+    }
+}
+
+pub struct PacketGenForContiguousBuf<'a> {
+    packet: &'a Packet,
+}
+
+impl<'a> PacketGenForContiguousBuf<'a> {
+    pub fn new(packet: &'a Packet) -> Self {
+        Self { packet }
+    }
+
+    pub fn code_gen(&self, mut output: &mut dyn Write) {
+        self.code_gen_for_header_array(output);
+
+        // Defines the header struct.
+        let header_struct_gen = Container {
+            container_struct_name: &self.packet_struct_name(),
+            derives: &["Debug", "Clone", "Copy"],
+        };
+        header_struct_gen.code_gen(output);
+
+        let fields = FieldGenerator::new(self.packet.header());
+        let length = LengthGenerator::new(self.packet.header(), self.packet.length());
+        let parse = Parse::new(self.packet.header(), self.packet.length().as_slice());
+        let payload = Payload::new(self.packet.header(), self.packet.length().as_slice());
+        let build = Build::new(self.packet.header(), self.packet.length().as_slice());
+
+        {
+            let mut impl_block = impl_block(
+                "T:AsRef<[u8]>",
+                &self.packet_struct_name(),
+                "T",
+                &mut output,
+            );
+
+            // Bsasic container buffer conversion.
+            Container::code_gen_for_parse_unchecked("buf", "T", impl_block.get_writer());
+            Container::code_gen_for_buf("buf", "T", impl_block.get_writer());
+            Container::code_gen_for_release("buf", "T", impl_block.get_writer());
+
+            // Parse with format checking.
+            parse.code_gen_for_contiguous_buffer(
+                "parse",
+                "buf",
+                "T",
+                ".as_ref()",
+                impl_block.get_writer(),
+            );
+
+            // Message payload.
+            payload.code_gen_for_contiguous_buffer(
+                "payload",
+                "&",
+                "buf",
+                "&[u8]",
+                "as_ref()",
+                |writer, s| write!(writer, "{s}").unwrap(),
+                impl_block.get_writer(),
+            );
+
+            // Header slice.
+            Container::code_gen_for_header_slice(
+                "header_slice",
+                "&",
+                ".buf.as_ref()",
+                &format!("{}", self.packet.header().header_len_in_bytes()),
+                impl_block.get_writer(),
+            );
+
+            // Option slice.
+            if self.packet.length().at(0).appear() {
+                Container::code_gen_for_option_slice(
+                    "option_slice",
+                    "&",
+                    ".buf.as_ref()",
+                    &format!("{}", self.packet.header().header_len_in_bytes()),
+                    impl_block.get_writer(),
+                );
+            }
+
+            // Field getters.
+            fields.code_gen("self.buf.as_ref()", None, impl_block.get_writer());
+
+            // Length field setters.
+            length.code_gen("self.buf.as_ref()", None, impl_block.get_writer())
+        }
+
+        {
+            let mut impl_block = impl_block(
+                "'a, T:AsRef<[u8]> + ?Sized",
+                &self.packet_struct_name(),
+                "&'a T",
+                &mut output,
+            );
+
+            // Message payload.
+            payload.code_gen_for_contiguous_buffer(
+                "payload_with_extended_lifetime",
+                "&",
+                "buf",
+                "&'a [u8]",
+                "as_ref()",
+                |writer, s| write!(writer, "{s}").unwrap(),
+                impl_block.get_writer(),
+            );
+        }
+
+        {
+            let mut impl_block = impl_block(
+                "T:AsRef<[u8]> + AsMut<[u8]>",
+                &self.packet_struct_name(),
+                "T",
+                &mut output,
+            );
+
+            // Message mutable payload.
+            payload.code_gen_for_contiguous_buffer(
+                "payload_mut",
+                "&mut ",
+                "buf",
+                "&mut [u8]",
+                "as_mut()",
+                |writer, s| write!(writer, "{s}").unwrap(),
+                impl_block.get_writer(),
+            );
+
+            // Message build.
+            build.code_gen_for_contiguous_buffer(
+                "build_packet",
+                "buf",
+                "T",
+                "as_mut()",
+                &self.header_array_name(),
+                impl_block.get_writer(),
+            );
+
+            // Mutable option slice.
+            if self.packet.length().at(0).appear() {
+                Container::code_gen_for_option_slice(
+                    "option_slice_mut",
+                    "&mut ",
+                    ".buf.as_mut()",
+                    &format!("{}", self.packet.header().header_len_in_bytes()),
+                    impl_block.get_writer(),
+                );
+            }
+
+            // Field setters.
+            fields.code_gen("self.buf.as_mut()", Some("value"), impl_block.get_writer());
+
+            // Length field setters.
+            length.code_gen("self.buf.as_mut()", Some("value"), impl_block.get_writer());
+        }
+    }
+
+    // Return the name of the fixed header array.
+    fn header_array_name(&self) -> String {
+        self.packet.protocol_name().to_uppercase() + "_HEADER_ARRAY"
+    }
+
+    // Return the name of the header struct.
+    fn packet_struct_name(&self) -> String {
+        self.packet.protocol_name().to_string() + "Packet"
+    }
+
+    fn code_gen_for_header_array(&self, output: &mut dyn Write) {
+        writeln!(
+            output,
+            "/// A fixed {} header array.",
+            self.packet.protocol_name()
+        )
+        .unwrap();
+        write!(
+            output,
+            "pub const {}: [u8;{}] = [",
+            self.header_array_name(),
+            self.packet.header().header_len_in_bytes(),
+        )
+        .unwrap();
+
+        for (idx, b) in self.packet.header().header_template().iter().enumerate() {
+            if idx < self.packet.header().header_template().len() - 1 {
                 write!(output, "0x{:02x},", b).unwrap();
             } else {
                 write!(output, "0x{:02x}];\n", b).unwrap()
