@@ -97,4 +97,24 @@ pub fn {method_name}({mutable_op}self) -> {mutable_op}[u8]{{
         )
         .unwrap();
     }
+
+    // A generator for the option bytes.
+    pub fn code_gen_for_option_slice(
+        method_name: &str,
+        mutable_op: &str,
+        buf_access: &str,
+        header_len: &str,
+        output: &mut dyn Write,
+    ) {
+        write!(
+            output,
+            "#[inline]
+pub fn {method_name}({mutable_op}self)->{mutable_op}[u8]{{
+let header_len = (self.header_len() as usize);
+{mutable_op}self{buf_access}[{header_len}..header_len]
+}}
+"
+        )
+        .unwrap();
+    }
 }

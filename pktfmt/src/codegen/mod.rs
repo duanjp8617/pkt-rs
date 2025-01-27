@@ -256,6 +256,16 @@ impl<'a> PacketGen<'a> {
                 impl_block.get_writer(),
             );
 
+            if self.packet().length().at(0).appear() {
+                Container::code_gen_for_option_slice(
+                    "option_slice",
+                    "&",
+                    ".buf.chunk()",
+                    &format!("{}", self.packet().header().header_len_in_bytes()),
+                    impl_block.get_writer(),
+                );
+            }
+
             fields.code_gen("self.buf.chunk()", None, impl_block.get_writer());
             length.code_gen("self.buf.chunk()", None, impl_block.get_writer());
         }
@@ -273,6 +283,16 @@ impl<'a> PacketGen<'a> {
                 &format!("&{}<HT>", self.header_gen.header_struct_name()),
                 impl_block.get_writer(),
             );
+
+            if self.packet().length().at(0).appear() {
+                Container::code_gen_for_option_slice(
+                    "option_slice_mut",
+                    "&mut ",
+                    ".buf.chunk_mut()",
+                    &format!("{}", self.packet().header().header_len_in_bytes()),
+                    impl_block.get_writer(),
+                );
+            }
 
             fields.code_gen(
                 "self.buf.chunk_mut()",
@@ -412,6 +432,16 @@ impl<'a> MessageGen<'a> {
                 impl_block.get_writer(),
             );
 
+            if self.message.length().at(0).appear() {
+                Container::code_gen_for_option_slice(
+                    "option_slice",
+                    "&",
+                    ".buf.as_ref()",
+                    &format!("{}", self.message.header().header_len_in_bytes()),
+                    impl_block.get_writer(),
+                );
+            }
+
             fields.code_gen("self.buf.as_ref()", None, impl_block.get_writer());
             length.code_gen("self.buf.as_ref()", None, impl_block.get_writer())
         }
@@ -442,6 +472,16 @@ impl<'a> MessageGen<'a> {
                 &self.header_array_name(),
                 impl_block.get_writer(),
             );
+
+            if self.message.length().at(0).appear() {
+                Container::code_gen_for_option_slice(
+                    "option_slice_mut",
+                    "&mut ",
+                    ".buf.as_mut()",
+                    &format!("{}", self.message.header().header_len_in_bytes()),
+                    impl_block.get_writer(),
+                );
+            }
 
             fields.code_gen("self.buf.as_mut()", Some("value"), impl_block.get_writer());
             length.code_gen("self.buf.as_mut()", Some("value"), impl_block.get_writer());
