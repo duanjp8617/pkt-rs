@@ -1,6 +1,6 @@
 use std::io::Write;
 
-use crate::ast::{max_value, DefaultVal, Header, LengthField};
+use crate::ast::{DefaultVal, Header, LengthField};
 
 use super::{guard_assert_str, LengthSetMethod};
 

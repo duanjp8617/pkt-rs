@@ -1,6 +1,6 @@
 use std::io::Write;
 
-use crate::ast::{Header, Length, LengthField, Message, Packet, LENGTH_TEMPLATE_FOR_HEADER};
+use crate::ast::{Message, Packet, LENGTH_TEMPLATE_FOR_HEADER};
 
 mod container;
 use container::*;
@@ -87,7 +87,10 @@ impl<'a> HeaderGen<'a> {
     }
 
     pub fn code_gen(&self, mut output: &mut dyn Write) {
+        // Header length const.
         self.code_gen_for_header_len_const(output);
+
+        // Header template.
         self.code_gen_for_header_template(output);
 
         // Defines the header struct.
@@ -107,10 +110,12 @@ impl<'a> HeaderGen<'a> {
                 &mut output,
             );
 
+            // Basic container buffer conversion.
             Container::code_gen_for_parse_unchecked("buf", "T", impl_block.get_writer());
             Container::code_gen_for_buf("buf", "T", impl_block.get_writer());
             Container::code_gen_for_release("buf", "T", impl_block.get_writer());
 
+            // Header parse with format checking.
             let parse = Parse::new(self.packet.header(), LENGTH_TEMPLATE_FOR_HEADER);
             parse.code_gen_for_contiguous_buffer(
                 "parse",
@@ -120,6 +125,7 @@ impl<'a> HeaderGen<'a> {
                 impl_block.get_writer(),
             );
 
+            // Header slice.
             Container::code_gen_for_header_slice(
                 "header_slice",
                 "&",
@@ -128,7 +134,10 @@ impl<'a> HeaderGen<'a> {
                 impl_block.get_writer(),
             );
 
+            // Field getters.
             fields.code_gen("self.buf.as_ref()", None, impl_block.get_writer());
+
+            // Length field getters.
             length.code_gen("self.buf.as_ref()", None, impl_block.get_writer())
         }
 
@@ -140,6 +149,7 @@ impl<'a> HeaderGen<'a> {
                 &mut output,
             );
 
+            // Mutable header slice.
             Container::code_gen_for_header_slice(
                 "header_slice_mut",
                 "&mut ",
@@ -148,7 +158,10 @@ impl<'a> HeaderGen<'a> {
                 impl_block.get_writer(),
             );
 
+            // Field setters.
             fields.code_gen("self.buf.as_mut()", Some("value"), impl_block.get_writer());
+
+            // Length field setters.
             length.code_gen("self.buf.as_mut()", Some("value"), impl_block.get_writer());
         }
     }
@@ -240,14 +253,18 @@ impl<'a> PacketGen<'a> {
             let mut impl_block =
                 impl_block("T:PktBuf", &self.packet_struct_name(), "T", &mut output);
 
+            // Basic container-buffer conversion.
             Container::code_gen_for_parse_unchecked("buf", "T", impl_block.get_writer());
             Container::code_gen_for_buf("buf", "T", impl_block.get_writer());
             Container::code_gen_for_release("buf", "T", impl_block.get_writer());
 
+            // Packet parse with format checking.
             parse.code_gen_for_pktbuf("parse", "buf", "T", impl_block.get_writer());
 
+            // Packet payload.
             payload.code_gen_for_pktbuf("payload", "buf", "T", impl_block.get_writer());
 
+            // Fixed length header slice.
             Container::code_gen_for_header_slice(
                 "header_slice",
                 "&",
@@ -256,6 +273,7 @@ impl<'a> PacketGen<'a> {
                 impl_block.get_writer(),
             );
 
+            // Option slice.
             if self.packet().length().at(0).appear() {
                 Container::code_gen_for_option_slice(
                     "option_slice",
@@ -266,7 +284,10 @@ impl<'a> PacketGen<'a> {
                 );
             }
 
+            // Field getters.
             fields.code_gen("self.buf.chunk()", None, impl_block.get_writer());
+
+            // Length field setters.
             length.code_gen("self.buf.chunk()", None, impl_block.get_writer());
         }
 
@@ -274,6 +295,7 @@ impl<'a> PacketGen<'a> {
             let mut impl_block =
                 impl_block("T:BufMut", &self.packet_struct_name(), "T", &mut output);
 
+            // Packet build.
             build.code_gen_for_pktbuf(
                 "prepend_header",
                 "HT:AsRef<[u8]>",
@@ -284,6 +306,7 @@ impl<'a> PacketGen<'a> {
                 impl_block.get_writer(),
             );
 
+            // Mutable option slice.
             if self.packet().length().at(0).appear() {
                 Container::code_gen_for_option_slice(
                     "option_slice_mut",
@@ -294,11 +317,14 @@ impl<'a> PacketGen<'a> {
                 );
             }
 
+            // Field setters.
             fields.code_gen(
                 "self.buf.chunk_mut()",
                 Some("value"),
                 impl_block.get_writer(),
             );
+
+            // Length field setters.
             length.code_gen(
                 "self.buf.chunk_mut()",
                 Some("value"),
@@ -310,6 +336,7 @@ impl<'a> PacketGen<'a> {
             let mut impl_block =
                 impl_block("'a", &self.packet_struct_name(), "Cursor<'a>", &mut output);
 
+            // Specialized parse for Cursor with format checking.
             parse.code_gen_for_contiguous_buffer(
                 "parse_for_cursor",
                 "buf",
@@ -318,11 +345,11 @@ impl<'a> PacketGen<'a> {
                 impl_block.get_writer(),
             );
 
+            // Specialized payload for Cursor.
             let f = |writer: &mut dyn Write, s: &str| {
                 let mut ht_writer = HeadTailWriter::new(writer, "Cursor::new(", ")\n");
                 write!(ht_writer.get_writer(), "{s}").unwrap();
             };
-
             payload.code_gen_for_contiguous_buffer(
                 "payload_for_cursor",
                 "&",
@@ -342,6 +369,7 @@ impl<'a> PacketGen<'a> {
                 &mut output,
             );
 
+            // Specialized parse for CursorMut with format checking.
             parse.code_gen_for_contiguous_buffer(
                 "parse_for_cursor_mut",
                 "buf",
@@ -350,11 +378,11 @@ impl<'a> PacketGen<'a> {
                 impl_block.get_writer(),
             );
 
+            // Specialized payload for CursorMut.
             let f = |writer: &mut dyn Write, s: &str| {
                 let mut ht_writer = HeadTailWriter::new(writer, "CursorMut::new(", ")\n");
                 write!(ht_writer.get_writer(), "{s}").unwrap();
             };
-
             payload.code_gen_for_contiguous_buffer(
                 "payload_for_cursor_mut",
                 "&mut ",
@@ -410,10 +438,12 @@ impl<'a> MessageGen<'a> {
                 &mut output,
             );
 
+            // Bsasic container buffer conversion.
             Container::code_gen_for_parse_unchecked("buf", "T", impl_block.get_writer());
             Container::code_gen_for_buf("buf", "T", impl_block.get_writer());
             Container::code_gen_for_release("buf", "T", impl_block.get_writer());
 
+            // Parse with format checking.
             parse.code_gen_for_contiguous_buffer(
                 "parse",
                 "buf",
@@ -422,6 +452,7 @@ impl<'a> MessageGen<'a> {
                 impl_block.get_writer(),
             );
 
+            // Message payload.
             payload.code_gen_for_contiguous_buffer(
                 "payload",
                 "&",
@@ -432,6 +463,7 @@ impl<'a> MessageGen<'a> {
                 impl_block.get_writer(),
             );
 
+            // Option slice.
             if self.message.length().at(0).appear() {
                 Container::code_gen_for_option_slice(
                     "option_slice",
@@ -442,7 +474,10 @@ impl<'a> MessageGen<'a> {
                 );
             }
 
+            // Field getters.
             fields.code_gen("self.buf.as_ref()", None, impl_block.get_writer());
+
+            // Length field setters.
             length.code_gen("self.buf.as_ref()", None, impl_block.get_writer())
         }
 
@@ -454,6 +489,7 @@ impl<'a> MessageGen<'a> {
                 &mut output,
             );
 
+            // Message mutable payload.
             payload.code_gen_for_contiguous_buffer(
                 "payload_mut",
                 "&mut ",
@@ -464,6 +500,7 @@ impl<'a> MessageGen<'a> {
                 impl_block.get_writer(),
             );
 
+            // Message build.
             build.code_gen_for_contiguous_buffer(
                 "build_message",
                 "buf",
@@ -473,6 +510,7 @@ impl<'a> MessageGen<'a> {
                 impl_block.get_writer(),
             );
 
+            // Mutable option slice.
             if self.message.length().at(0).appear() {
                 Container::code_gen_for_option_slice(
                     "option_slice_mut",
@@ -483,7 +521,10 @@ impl<'a> MessageGen<'a> {
                 );
             }
 
+            // Field setters.
             fields.code_gen("self.buf.as_mut()", Some("value"), impl_block.get_writer());
+
+            // Length field setters.
             length.code_gen("self.buf.as_mut()", Some("value"), impl_block.get_writer());
         }
     }
