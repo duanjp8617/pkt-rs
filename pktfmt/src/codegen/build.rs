@@ -189,6 +189,7 @@ pub fn {method_name}<{trait_type}>(mut {buf_name}: {buf_type}, {header_name}: {h
         target_slice_name: &str,
         output: &mut dyn Write,
     ) {
+        write!(output, "#[inline]\n").unwrap();
         write!(
             output,
             "pub fn {method_name}({buf_name}: {buf_type}) -> Self {{\n"
