@@ -1,6 +1,6 @@
 use std::io::Write;
 
-use crate::ast::{Message, Packet, LENGTH_TEMPLATE_FOR_HEADER};
+use crate::ast::{BitPos, Field, Message, Packet, TopLevel, LENGTH_TEMPLATE_FOR_HEADER};
 
 mod container;
 use container::*;
@@ -749,5 +749,105 @@ impl<'a> PacketGenForContiguousBuf<'a> {
                 write!(output, "0x{:02x}];\n", b).unwrap()
             }
         }
+    }
+}
+
+pub struct GroupMessageGen<'a> {
+    group_message_name: String,
+    cond_field: Field,
+    cond_pos: BitPos,
+    msgs: Vec<&'a Message>,
+}
+
+impl<'a> GroupMessageGen<'a> {
+    pub fn new(defined_name: &str, top_level: &TopLevel<'a>) -> Self {
+        let msgs = top_level.msg_groups().get(defined_name).unwrap();
+
+        let msg = msgs[0];
+        if let Some(cond) = msg.cond() {
+            let (field, pos) = msg.header().field(cond.field_name()).unwrap();
+            Self {
+                group_message_name: defined_name.to_string() + "Group",
+                cond_field: field.clone(),
+                cond_pos: pos,
+                msgs: msgs.clone(),
+            }
+        } else {
+            panic!()
+        }
+    }
+
+    pub fn code_gen(&self, mut output: &mut dyn Write) {
+        self.code_gen_for_enum(&self.group_message_name, "T", output);
+
+        {
+            let mut impl_block =
+                impl_block("T:AsRef<[u8]>", &self.group_message_name, "T", &mut output);
+        }
+    }
+
+    fn code_gen_for_enum(&self, enum_name: &str, buf_type: &str, output: &mut dyn Write) {
+        write!(output, "pub enum {enum_name}<{buf_type}> {{\n").unwrap();
+        for msg in self.msgs.iter() {
+            let msg_name = msg.protocol_name().to_string();
+            write!(output, "{msg_name}_({msg_name}<{buf_type}>),\n").unwrap();
+        }
+        write!(output, "}}\n").unwrap();
+    }
+
+    fn code_gen_for_grouped_parse(
+        &self,
+        method_name: &str,
+        buf_name: &str,
+        buf_type: &str,
+        buf_access: &str,
+        mut output: &mut dyn Write,
+    ) {
+        write!(
+            output,
+            "pub fn {method_name}({buf_name}: {buf_type}) -> Result<Self, {buf_type}> {{\n"
+        )
+        .unwrap();
+
+        // First, make sure that we can access the cond field
+        let buf_min_len = self.cond_pos.next_pos(self.cond_field.bit).byte_pos() + 1;
+        write!(
+            output,
+            "if {buf_name}.{buf_access}.len() < {buf_min_len} {{\n"
+        )
+        .unwrap();
+        write!(output, "return Err({buf_name});\n").unwrap();
+        write!(output, "}}\n").unwrap();
+
+        // Read the cond field.
+        let cond_field_access = FieldGetMethod::new(&self.cond_field, self.cond_pos);
+        write!(output, "let cond_value = ").unwrap();
+        cond_field_access.read_repr(&format!("{buf_name}.{buf_access}"), &mut output);
+        write!(output, ";\n").unwrap();
+
+        // Match on different cond value for different output.
+        write!(output, "match cond_value {{\n").unwrap();
+        for msg in self.msgs.iter() {
+            // Write out the matched condition.
+            let mut compared_values = (*msg).cond().as_ref().unwrap().compared_values().iter();
+            write!(output, "{}", compared_values.next().unwrap()).unwrap();
+            compared_values.for_each(|value| write!(output, "| {value}").unwrap());
+            write!(output, "=> {{\n").unwrap();
+
+            // Try to parse the buf into the corresponding message.
+            let message_gen = MessageGen::new(msg);
+            let msg_strut_name = message_gen.message_struct_name();
+            write!(
+                output,
+                "{msg_strut_name}::parse({buf_name}).map(|msg| {}::{msg_strut_name}_(msg))\n",
+                &self.group_message_name
+            )
+            .unwrap();
+
+            write!(output, "}}\n").unwrap();
+        }
+        write!(output, "}}\n").unwrap();
+
+        write!(output, "}}\n").unwrap();
     }
 }

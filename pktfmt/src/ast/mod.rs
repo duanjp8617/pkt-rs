@@ -1,4 +1,7 @@
+use std::collections::{HashMap, HashSet};
 use std::fmt;
+
+use crate::utils::render_error;
 
 mod number;
 pub use number::*;
@@ -97,6 +100,35 @@ impl Message {
     }
 }
 
+#[derive(Debug)]
+pub struct MessageGroupName {
+    name: String,
+    msg_names: Vec<String>,
+    pos: (usize, usize),
+}
+
+impl MessageGroupName {
+    pub fn new(name: String, msg_names: Vec<String>, pos: (usize, usize)) -> Self {
+        Self {
+            name,
+            msg_names,
+            pos,
+        }
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn msg_names(&self) -> &Vec<String> {
+        &self.msg_names
+    }
+
+    pub fn pos(&self) -> (usize, usize) {
+        self.pos
+    }
+}
+
 // An enum type to describe the type of the error
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ErrorType {
@@ -108,7 +140,10 @@ enum ErrorType {
     HeaderDef,
     // 10 errors
     LengthDef,
+    // x errors
     CondDef,
+    // top-level errors
+    TopLevel,
 }
 
 // Record the error type and error index.
@@ -123,6 +158,7 @@ impl fmt::Display for ErrorPos {
             ErrorType::HeaderDef => write!(fmt, "header error {}", self.1),
             ErrorType::LengthDef => write!(fmt, "length error {}", self.1),
             ErrorType::CondDef => write!(fmt, "conditional error {}", self.1),
+            ErrorType::TopLevel => write!(fmt, "top level error {}", self.1),
         }
     }
 }
@@ -177,6 +213,13 @@ impl Error {
             reason,
         }
     }
+
+    pub fn top_level(index: usize, reason: String) -> Self {
+        Self {
+            pos: ErrorPos(ErrorType::TopLevel, index),
+            reason,
+        }
+    }
 }
 
 // calculate the max value of `bit` bits for `u64`
@@ -191,3 +234,70 @@ pub(crate) fn max_value(bit: u64) -> Option<u64> {
         Some(u64::MAX)
     }
 }
+
+pub enum ParsedItem {
+    Packet_(Packet),
+    Message_(Message),
+    MessageGroupName_(MessageGroupName),
+}
+
+pub struct TopLevel<'a> {
+    items: &'a [&'a ParsedItem],
+    msg_groups: HashMap<&'a str, Vec<&'a Message>>,
+}
+
+impl<'a> TopLevel<'a> {
+    pub fn msg_groups(&self) -> &HashMap<&'a str, Vec<&'a Message>> {
+        &self.msg_groups
+    }
+}
+
+// impl<'a> TopLevel<'a> {
+//     pub fn new(parsed_items: &'a [&ParsedItem]) -> Result<Self, Error> {
+//         let mut all_names = HashMap::new();
+//         let mut msg_groups = HashMap::new();
+
+//         for (idx, parsed_item) in parsed_items.iter().enumerate() {
+//             let name = match parsed_item {
+//                 ParsedItem::Packet_(p) => p.protocol_name(),
+//                 ParsedItem::Message_(m) => m.protocol_name(),
+//                 ParsedItem::MessageGroupName_(mg) => mg.name(),
+//             };
+//             if all_names.contains_key(name) {
+//                 return_err!(Error::top_level(
+//                     1,
+//                     format!("duplicated packet/message/(message group) name
+// {}", name)                 ))
+//             }
+//             all_names.insert(name, idx);
+//             match parsed_item {
+//                 ParsedItem::MessageGroupName_(_) => {
+//                     msg_groups.insert(name, idx);
+//                 }
+//                 _ => {}
+//             };
+//         }
+
+//         let obj = Self {
+//             items: parsed_items,
+//             all_names,
+//             msg_groups,
+//         };
+
+//         Ok(obj)
+//     }
+
+//     fn check_msg_group(mg: &'a MessageGroup, msgs: HashMap<&'a str, &'a
+// Message>) {         // 1. There are no duplicated message names in a message
+// group.         // 2. Each message is a valid message that is globally
+// defined.         // 3. If the message has a variable header length, then the
+// corresponding field for deriving the length must be at the same position.
+//         // 4. The message must has a condition, and the field that is used to
+// calculate the condition must be at the same position.
+
+//         let mut msg_name_dedup = HashSet::new();
+//         for msg_name in mg.msg_names().iter() {
+
+//         }
+//     }
+// }
