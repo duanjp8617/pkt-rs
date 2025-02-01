@@ -1,7 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt;
-
-use crate::utils::render_error;
+use std::hash::RandomState;
 
 mod number;
 pub use number::*;
@@ -104,16 +103,11 @@ impl Message {
 pub struct MessageGroupName {
     name: String,
     msg_names: Vec<String>,
-    pos: (usize, usize),
 }
 
 impl MessageGroupName {
-    pub fn new(name: String, msg_names: Vec<String>, pos: (usize, usize)) -> Self {
-        Self {
-            name,
-            msg_names,
-            pos,
-        }
+    pub fn new(name: String, msg_names: Vec<String>) -> Self {
+        Self { name, msg_names }
     }
 
     pub fn name(&self) -> &str {
@@ -122,10 +116,6 @@ impl MessageGroupName {
 
     pub fn msg_names(&self) -> &Vec<String> {
         &self.msg_names
-    }
-
-    pub fn pos(&self) -> (usize, usize) {
-        self.pos
     }
 }
 
@@ -242,62 +232,130 @@ pub enum ParsedItem {
 }
 
 pub struct TopLevel<'a> {
-    items: &'a [&'a ParsedItem],
+    items: &'a [&'a (ParsedItem, (usize, usize))],
     msg_groups: HashMap<&'a str, Vec<&'a Message>>,
 }
 
 impl<'a> TopLevel<'a> {
-    pub fn msg_groups(&self) -> &HashMap<&'a str, Vec<&'a Message>> {
-        &self.msg_groups
+    pub fn new(
+        parsed_items: &'a [&(ParsedItem, (usize, usize))],
+    ) -> Result<Self, (Error, (usize, usize))> {
+        let mut all_names = HashSet::new();
+        let mut all_msgs = HashMap::new();
+        let mut msg_groups = Vec::new();
+
+        for (parsed_item, span) in parsed_items.iter() {
+            let name = match parsed_item {
+                ParsedItem::Packet_(p) => p.protocol_name(),
+                ParsedItem::Message_(m) => {
+                    all_msgs.insert(m.protocol_name(), m);
+                    m.protocol_name()
+                }
+                ParsedItem::MessageGroupName_(mg) => {
+                    msg_groups.push((mg, span));
+                    mg.name()
+                }
+            };
+            if all_names.contains(name) {
+                return_err!((
+                    Error::top_level(
+                        1,
+                        format!("duplicated packet/message/(message group) name {}", name)
+                    ),
+                    *span
+                ))
+            }
+            all_names.insert(name);
+        }
+
+        let mut resulting_map = HashMap::new();
+        for (mg, span) in msg_groups {
+            let msgs = Self::check_msg_group(mg, &all_msgs).map_err(|err| (err, *span))?;
+            resulting_map.insert(mg.name(), msgs);
+        }
+
+        Ok(Self {
+            items: parsed_items,
+            msg_groups: resulting_map,
+        })
+    }
+
+    pub fn item_iter(&self) -> impl Iterator<Item = &'a ParsedItem> {
+        self.items.iter().map(|t| &t.0)
+    }
+
+    pub fn msg_group(&self, msg_group_name: &'a str) -> Option<&Vec<&'a Message>> {
+        self.msg_groups.get(msg_group_name)
+    }
+
+    fn check_msg_group(
+        mg: &MessageGroupName,
+        msgs: &HashMap<&'a str, &'a Message>,
+    ) -> Result<Vec<&'a Message>, Error> {
+        let mut names_iter = mg.msg_names.iter();
+
+        let Some(first_msg_name) = names_iter.next() else {
+            panic!()
+        };
+        let first_msg = msgs.get(&(*first_msg_name)[..]).ok_or(Error::top_level(
+            3,
+            format!("message {first_msg_name} is not defined"),
+        ))?;
+        let first_cond = first_msg.cond().as_ref().ok_or(Error::top_level(
+            4,
+            format!("cond of message {first_msg_name} is not defined"),
+        ))?;
+
+        let mut name_dedup = HashSet::new();
+        name_dedup.insert(&(*first_msg_name)[..]);
+        let (target_field, target_pos) = first_msg.header().field(first_cond.field_name()).unwrap();
+        let mut result_vec = vec![*first_msg];
+        let mut compared_values_dedup: HashSet<u64, RandomState> =
+            HashSet::from_iter(first_cond.compared_values().iter().map(|val| *val));
+
+        for name in names_iter {
+            // 1. the names of the `mg` should not be duplicated.
+            if name_dedup.contains(&(*name)[..]) {
+                return_err!(Error::top_level(2, format!("message {name} appears twice")))
+            }
+            name_dedup.insert(&(*name)[..]);
+
+            // 2. Each message name contained in the message group should be defined.
+            let subsequent_msg = msgs.get(&(*name)[..]).ok_or(Error::top_level(
+                3,
+                format!("message {first_msg_name} is not defined"),
+            ))?;
+
+            // 3. Each message should has a valid cond.
+            let subsequent_cond = subsequent_msg.cond().as_ref().ok_or(Error::top_level(
+                4,
+                format!("cond of message {name} is not defined"),
+            ))?;
+
+            // 4. the position, bit size, repr of the cond field should be the same
+            let (cond_field, cond_pos) = subsequent_msg
+                .header()
+                .field(subsequent_cond.field_name())
+                .unwrap();
+            if (cond_field.bit != target_field.bit)
+                || (cond_pos != target_pos)
+                || (cond_field.repr != target_field.repr)
+            {
+                return_err!(
+                    Error::top_level(5, format!("the cond field of message {name} is not the same as that of message {first_msg_name}")))
+            }
+
+            // 5. the compared value should not be the same.
+            for compared_value in subsequent_cond.compared_values() {
+                if compared_values_dedup.contains(compared_value) {
+                    return_err!(Error::top_level(6, format!("message {name} appears twice")))
+                }
+                compared_values_dedup.insert(*compared_value);
+            }
+
+            result_vec.push(*subsequent_msg);
+        }
+
+        Ok(result_vec)
     }
 }
-
-// impl<'a> TopLevel<'a> {
-//     pub fn new(parsed_items: &'a [&ParsedItem]) -> Result<Self, Error> {
-//         let mut all_names = HashMap::new();
-//         let mut msg_groups = HashMap::new();
-
-//         for (idx, parsed_item) in parsed_items.iter().enumerate() {
-//             let name = match parsed_item {
-//                 ParsedItem::Packet_(p) => p.protocol_name(),
-//                 ParsedItem::Message_(m) => m.protocol_name(),
-//                 ParsedItem::MessageGroupName_(mg) => mg.name(),
-//             };
-//             if all_names.contains_key(name) {
-//                 return_err!(Error::top_level(
-//                     1,
-//                     format!("duplicated packet/message/(message group) name
-// {}", name)                 ))
-//             }
-//             all_names.insert(name, idx);
-//             match parsed_item {
-//                 ParsedItem::MessageGroupName_(_) => {
-//                     msg_groups.insert(name, idx);
-//                 }
-//                 _ => {}
-//             };
-//         }
-
-//         let obj = Self {
-//             items: parsed_items,
-//             all_names,
-//             msg_groups,
-//         };
-
-//         Ok(obj)
-//     }
-
-//     fn check_msg_group(mg: &'a MessageGroup, msgs: HashMap<&'a str, &'a
-// Message>) {         // 1. There are no duplicated message names in a message
-// group.         // 2. Each message is a valid message that is globally
-// defined.         // 3. If the message has a variable header length, then the
-// corresponding field for deriving the length must be at the same position.
-//         // 4. The message must has a condition, and the field that is used to
-// calculate the condition must be at the same position.
-
-//         let mut msg_name_dedup = HashSet::new();
-//         for msg_name in mg.msg_names().iter() {
-
-//         }
-//     }
-// }

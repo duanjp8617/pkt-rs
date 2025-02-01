@@ -1,6 +1,6 @@
 use std::io::Write;
 
-use crate::ast::{BitPos, Field, Message, Packet, TopLevel, LENGTH_TEMPLATE_FOR_HEADER};
+use crate::ast::{BitPos, Field, Message, Packet, LENGTH_TEMPLATE_FOR_HEADER};
 
 mod container;
 use container::*;
@@ -760,10 +760,9 @@ pub struct GroupMessageGen<'a> {
 }
 
 impl<'a> GroupMessageGen<'a> {
-    pub fn new(defined_name: &str, top_level: &TopLevel<'a>) -> Self {
-        let msgs = top_level.msg_groups().get(defined_name).unwrap();
-
+    pub fn new(defined_name: &str, msgs: &Vec<&'a Message>) -> Self {
         let msg = msgs[0];
+
         if let Some(cond) = msg.cond() {
             let (field, pos) = msg.header().field(cond.field_name()).unwrap();
             Self {
@@ -783,6 +782,14 @@ impl<'a> GroupMessageGen<'a> {
         {
             let mut impl_block =
                 impl_block("T:AsRef<[u8]>", &self.group_message_name, "T", &mut output);
+
+            self.code_gen_for_grouped_parse(
+                "group_parse",
+                "buf",
+                "T",
+                "as_ref()",
+                impl_block.get_writer(),
+            );
         }
     }
 
