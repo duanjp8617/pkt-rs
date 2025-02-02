@@ -3,7 +3,7 @@ use std::str::FromStr;
 use lalrpop_util::ParseError;
 
 use crate::ast::{
-    Field, BuiltinTypes, Arg, DefaultVal, Header, AlgOp, AlgExpr, parse_to_byte_val, LengthField, Length, Packet, Message
+    Field, BuiltinTypes, Arg, DefaultVal, Header, AlgOp, AlgExpr, parse_to_byte_val, LengthField, Length, Packet, Message, Cond
 };
 use crate::utils::{Spanned, Error};
 use crate::token::Token;
@@ -272,6 +272,23 @@ LengthFieldList: (Vec<LengthField>, (usize, usize)) = {
       (list, (l, r))
 }
 
+CondTuple: (String, u64) = {
+    <cond_name: "ident"> "=" <num: "num"> => {
+        (cond_name.to_string(), u64::from_str(num).unwrap())
+    }
+}
+
+CondList: Vec<(String, u64)> = {
+    "(" <head: CondTuple> ")"  <tail: ("||" "(" <CondTuple> ")" )*> => {
+        vec![head].into_iter().chain(tail).collect()
+    }
+}
+
+CondFieldList: (Vec<(String, u64)>, (usize, usize)) = {
+    <l: @L> "cond" "=" <cond_list: CondList> <r: @R> => 
+      (cond_list, (l, r))
+}
+
 pub Packet: Packet = {
     "packet" <name: "ident"> "{"
         <header: Header>
@@ -294,6 +311,7 @@ pub Message: Message = {
     "message" <name: "ident"> "{"
         <header: Header>
         <length_fields_with_pos_opt: ("," <LengthFieldList>)?>
+        <cond_field_with_pos_opt: ("," <CondFieldList>)?>
         ","?
     "}" =>? {
         let (length_fields, span) = length_fields_with_pos_opt.unwrap_or(
@@ -304,6 +322,17 @@ pub Message: Message = {
             ParseError::User{ error }
         })?;
 
-        Ok(Message::new(name, header, length, None))
+        let cond_opt = match cond_field_with_pos_opt {
+            None => None,
+            Some((cond_list, span)) => {
+                let cond = Cond::from_cond_list(cond_list, &header).map_err(|err| {
+                    let error = Error::Ast{err, span};
+                    ParseError::User{ error }
+                })?;
+                Some(cond)
+            }
+        };
+
+        Ok(Message::new(name, header, length, cond_opt))
     }
 }
