@@ -4,7 +4,7 @@ use lalrpop_util::ParseError;
 
 use crate::ast::{
     Field, BuiltinTypes, Arg, DefaultVal, Header, AlgOp, AlgExpr, parse_to_byte_val, 
-    LengthField, Length, Packet, Message, Cond, MessageGroupName
+    LengthField, Length, Packet, Message, Cond, MessageGroupName, ParsedItem
 };
 use crate::utils::{Spanned, Error};
 use crate::token::Token;
@@ -339,7 +339,7 @@ pub Message: Message = {
     }
 }
 
-pub MessageGroup: MessageGroupName = {
+pub MessageGroupName: MessageGroupName = {
     "message_group" <name: "ident"> "=" "["
         <first_name: "ident"> 
         <subsequent_names: ("," <"ident">)*>
@@ -348,3 +348,16 @@ pub MessageGroup: MessageGroupName = {
         MessageGroupName::new(name.to_string(),  vec![first_name.to_string()].into_iter().chain(subsequent_names.into_iter().map(|s| s.to_string())).collect())
     }
 }
+
+pub ParsedItem: (ParsedItem, (usize, usize)) = {
+    <l: @L> <packet: Packet> <r: @R> => {
+        (ParsedItem::Packet_(packet), (l,r))
+    },
+    <l: @L> <message: Message> <r: @R> => {
+        (ParsedItem::Message_(message), (l,r))
+    },
+    <l: @L> <message_group_name: MessageGroupName> <r: @R> => {
+        (ParsedItem::MessageGroupName_(message_group_name), (l,r))
+    }
+}
+
