@@ -361,3 +361,14 @@ pub ParsedItem: (ParsedItem, (usize, usize)) = {
     }
 }
 
+pub TopLevel: (String, Vec<(ParsedItem, (usize, usize))>, Option<String>) = {
+    <start_code: "code">
+    <items: (<ParsedItem>)+>
+    <end_code: ("code")?> => {
+        (
+            (&start_code[2..(start_code.len()-2)]).to_string(), 
+            items, 
+            end_code.map(|s| (&s[2..(s.len()-2)]).to_string())
+        )
+    }
+}
