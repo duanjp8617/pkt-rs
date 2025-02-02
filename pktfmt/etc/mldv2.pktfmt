@@ -5,7 +5,7 @@ message Mldv2Query {
         checksum = Field{bit = 16},
         max_resp_delay = Field{bit = 16},
         reserved = Field{bit = 16},
-        multicast_addr = Field{bit = 128},
+        multicast_addr = Field{bit = 128, repr=&[u8]},
         resv = Field{bit = 4},
         s_flag = Field{bit = 1, arg= bool, default = false},
         qrv = Field{bit = 3},
@@ -14,5 +14,6 @@ message Mldv2Query {
     ],
     length = [
         header_len = num_of_src*16+28
-    ]
+    ],
+    cond = (type_ == 130) 
 }

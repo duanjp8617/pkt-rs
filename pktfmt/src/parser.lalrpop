@@ -273,7 +273,7 @@ LengthFieldList: (Vec<LengthField>, (usize, usize)) = {
 }
 
 CondTuple: (String, u64) = {
-    <cond_name: "ident"> "=" <num: "num"> => {
+    <cond_name: "ident"> "==" <num: "num"> => {
         (cond_name.to_string(), u64::from_str(num).unwrap())
     }
 }
