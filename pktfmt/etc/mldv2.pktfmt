@@ -1,3 +1,7 @@
+%%
+use std::fmt::*;
+%%
+
 message Mldv2Query {
     header = [
         type_ = Field{bit = 8, default = 130},

@@ -232,13 +232,13 @@ pub enum ParsedItem {
 }
 
 pub struct TopLevel<'a> {
-    items: &'a [&'a (ParsedItem, (usize, usize))],
+    items: &'a [(ParsedItem, (usize, usize))],
     msg_groups: HashMap<&'a str, Vec<&'a Message>>,
 }
 
 impl<'a> TopLevel<'a> {
     pub fn new(
-        parsed_items: &'a [&(ParsedItem, (usize, usize))],
+        parsed_items: &'a [(ParsedItem, (usize, usize))],
     ) -> Result<Self, (Error, (usize, usize))> {
         let mut all_names = HashSet::new();
         let mut all_msgs = HashMap::new();

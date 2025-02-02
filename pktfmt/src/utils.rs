@@ -31,6 +31,9 @@ quick_error! {
             display("{}", err)
         }
         Lalrpop(err_str: String) {
+            display("lalrpop error: {}", err_str)
+        }
+        ErrStr(err_str: String) {
             display("{}", err_str)
         }
     }
@@ -78,6 +81,9 @@ pub fn render_error(file_text: &FileText, error: Error, out: &mut dyn Write) {
         }
         Error::Lalrpop(_) => {
             writeln!(out, "lalrpop parse error").unwrap();
+        }
+        Error::ErrStr(_) => {
+            writeln!(out, "error").unwrap();
         }
     }
     // print error details
