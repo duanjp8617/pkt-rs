@@ -3,7 +3,8 @@ use std::str::FromStr;
 use lalrpop_util::ParseError;
 
 use crate::ast::{
-    Field, BuiltinTypes, Arg, DefaultVal, Header, AlgOp, AlgExpr, parse_to_byte_val, LengthField, Length, Packet, Message, Cond
+    Field, BuiltinTypes, Arg, DefaultVal, Header, AlgOp, AlgExpr, parse_to_byte_val, 
+    LengthField, Length, Packet, Message, Cond, MessageGroupName
 };
 use crate::utils::{Spanned, Error};
 use crate::token::Token;
@@ -18,6 +19,7 @@ extern {
         // top-level 
         "packet" => Token::Packet,
         "message" => Token::Message,
+        "message_group" => Token::MessageGroup,
         
         // header
         "header" => Token::Header,
@@ -334,5 +336,15 @@ pub Message: Message = {
         };
 
         Ok(Message::new(name, header, length, cond_opt))
+    }
+}
+
+pub MessageGroup: MessageGroupName = {
+    "message_group" <name: "ident"> "=" "["
+        <first_name: "ident"> 
+        <subsequent_names: ("," <"ident">)*>
+        ","?
+    "]" => {
+        MessageGroupName::new(name.to_string(),  vec![first_name.to_string()].into_iter().chain(subsequent_names.into_iter().map(|s| s.to_string())).collect())
     }
 }

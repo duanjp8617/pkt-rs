@@ -38,6 +38,7 @@ pub enum Token<'input> {
     // top-level keywords
     Packet,
     Message,
+    MessageGroup,
 
     // header definition keywords
     Header,
@@ -126,6 +127,7 @@ impl<'input> std::fmt::Display for Token<'input> {
 const KEYWORDS: &[(&str, Token)] = &[
     ("packet", Token::Packet),
     ("message", Token::Message),
+    ("message_group", Token::MessageGroup),
     ("header", Token::Header),
     ("Field", Token::Field),
     ("bit", Token::Bit),
