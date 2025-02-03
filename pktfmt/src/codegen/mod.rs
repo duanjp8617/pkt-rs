@@ -1,6 +1,8 @@
 use std::io::Write;
 
-use crate::ast::{BitPos, Field, Message, Packet, LENGTH_TEMPLATE_FOR_HEADER};
+use crate::ast::{
+    BitPos, DefaultVal, Field, LengthField, Message, Packet, LENGTH_TEMPLATE_FOR_HEADER,
+};
 
 mod container;
 use container::*;
@@ -274,13 +276,34 @@ impl<'a> PacketGen<'a> {
 
             // Option slice.
             if self.packet().length().at(0).appear() {
-                Container::code_gen_for_option_slice(
-                    "option_slice",
-                    "&",
-                    ".buf.chunk()",
-                    &format!("{}", self.packet().header().header_len_in_bytes()),
-                    impl_block.get_writer(),
-                );
+                let mut do_generation = true;
+                match self.packet().length().at(0) {
+                    LengthField::Expr { expr } => {
+                        let (field, _) = self.packet().header().field(expr.field_name()).unwrap();
+                        if field.default_fix {
+                            let default_val = match field.default {
+                                DefaultVal::Num(n) => n,
+                                _ => panic!(),
+                            };
+                            let fixed_header_len = expr.exec(default_val).unwrap();
+                            if fixed_header_len
+                                == self.packet().header().header_len_in_bytes() as u64
+                            {
+                                do_generation = false;
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+                if do_generation {
+                    Container::code_gen_for_option_slice(
+                        "option_slice",
+                        "&",
+                        ".buf.chunk()",
+                        &format!("{}", self.packet().header().header_len_in_bytes()),
+                        impl_block.get_writer(),
+                    );
+                }
             }
 
             // Field getters.
@@ -307,13 +330,34 @@ impl<'a> PacketGen<'a> {
 
             // Mutable option slice.
             if self.packet().length().at(0).appear() {
-                Container::code_gen_for_option_slice(
-                    "option_slice_mut",
-                    "&mut ",
-                    ".buf.chunk_mut()",
-                    &format!("{}", self.packet().header().header_len_in_bytes()),
-                    impl_block.get_writer(),
-                );
+                let mut do_generation = true;
+                match self.packet().length().at(0) {
+                    LengthField::Expr { expr } => {
+                        let (field, _) = self.packet().header().field(expr.field_name()).unwrap();
+                        if field.default_fix {
+                            let default_val = match field.default {
+                                DefaultVal::Num(n) => n,
+                                _ => panic!(),
+                            };
+                            let fixed_header_len = expr.exec(default_val).unwrap();
+                            if fixed_header_len
+                                == self.packet().header().header_len_in_bytes() as u64
+                            {
+                                do_generation = false;
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+                if do_generation {
+                    Container::code_gen_for_option_slice(
+                        "option_slice_mut",
+                        "&mut ",
+                        ".buf.chunk_mut()",
+                        &format!("{}", self.packet().header().header_len_in_bytes()),
+                        impl_block.get_writer(),
+                    );
+                }
             }
 
             // Field setters.
@@ -465,13 +509,34 @@ impl<'a> MessageGen<'a> {
 
             // Option slice.
             if self.message.length().at(0).appear() {
-                Container::code_gen_for_option_slice(
-                    "option_slice",
-                    "&",
-                    ".buf.as_ref()",
-                    &format!("{}", self.message.header().header_len_in_bytes()),
-                    impl_block.get_writer(),
-                );
+                let mut do_generation = true;
+                match self.message.length().at(0) {
+                    LengthField::Expr { expr } => {
+                        let (field, _) = self.message.header().field(expr.field_name()).unwrap();
+                        if field.default_fix {
+                            let default_val = match field.default {
+                                DefaultVal::Num(n) => n,
+                                _ => panic!(),
+                            };
+                            let fixed_header_len = expr.exec(default_val).unwrap();
+                            if fixed_header_len
+                                == self.message.header().header_len_in_bytes() as u64
+                            {
+                                do_generation = false;
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+                if do_generation {
+                    Container::code_gen_for_option_slice(
+                        "option_slice",
+                        "&",
+                        ".buf.as_ref()",
+                        &format!("{}", self.message.header().header_len_in_bytes()),
+                        impl_block.get_writer(),
+                    );
+                }
             }
 
             // Field getters.
@@ -512,13 +577,34 @@ impl<'a> MessageGen<'a> {
 
             // Mutable option slice.
             if self.message.length().at(0).appear() {
-                Container::code_gen_for_option_slice(
-                    "option_slice_mut",
-                    "&mut ",
-                    ".buf.as_mut()",
-                    &format!("{}", self.message.header().header_len_in_bytes()),
-                    impl_block.get_writer(),
-                );
+                let mut do_generation = true;
+                match self.message.length().at(0) {
+                    LengthField::Expr { expr } => {
+                        let (field, _) = self.message.header().field(expr.field_name()).unwrap();
+                        if field.default_fix {
+                            let default_val = match field.default {
+                                DefaultVal::Num(n) => n,
+                                _ => panic!(),
+                            };
+                            let fixed_header_len = expr.exec(default_val).unwrap();
+                            if fixed_header_len
+                                == self.message.header().header_len_in_bytes() as u64
+                            {
+                                do_generation = false;
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+                if do_generation {
+                    Container::code_gen_for_option_slice(
+                        "option_slice_mut",
+                        "&mut ",
+                        ".buf.as_mut()",
+                        &format!("{}", self.message.header().header_len_in_bytes()),
+                        impl_block.get_writer(),
+                    );
+                }
             }
 
             // Field setters.
@@ -633,13 +719,33 @@ impl<'a> PacketGenForContiguousBuf<'a> {
 
             // Option slice.
             if self.packet.length().at(0).appear() {
-                Container::code_gen_for_option_slice(
-                    "option_slice",
-                    "&",
-                    ".buf.as_ref()",
-                    &format!("{}", self.packet.header().header_len_in_bytes()),
-                    impl_block.get_writer(),
-                );
+                let mut do_generation = true;
+                match self.packet.length().at(0) {
+                    LengthField::Expr { expr } => {
+                        let (field, _) = self.packet.header().field(expr.field_name()).unwrap();
+                        if field.default_fix {
+                            let default_val = match field.default {
+                                DefaultVal::Num(n) => n,
+                                _ => panic!(),
+                            };
+                            let fixed_header_len = expr.exec(default_val).unwrap();
+                            if fixed_header_len == self.packet.header().header_len_in_bytes() as u64
+                            {
+                                do_generation = false;
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+                if do_generation {
+                    Container::code_gen_for_option_slice(
+                        "option_slice",
+                        "&",
+                        ".buf.as_ref()",
+                        &format!("{}", self.packet.header().header_len_in_bytes()),
+                        impl_block.get_writer(),
+                    );
+                }
             }
 
             // Field getters.
@@ -700,13 +806,33 @@ impl<'a> PacketGenForContiguousBuf<'a> {
 
             // Mutable option slice.
             if self.packet.length().at(0).appear() {
-                Container::code_gen_for_option_slice(
-                    "option_slice_mut",
-                    "&mut ",
-                    ".buf.as_mut()",
-                    &format!("{}", self.packet.header().header_len_in_bytes()),
-                    impl_block.get_writer(),
-                );
+                let mut do_generation = true;
+                match self.packet.length().at(0) {
+                    LengthField::Expr { expr } => {
+                        let (field, _) = self.packet.header().field(expr.field_name()).unwrap();
+                        if field.default_fix {
+                            let default_val = match field.default {
+                                DefaultVal::Num(n) => n,
+                                _ => panic!(),
+                            };
+                            let fixed_header_len = expr.exec(default_val).unwrap();
+                            if fixed_header_len == self.packet.header().header_len_in_bytes() as u64
+                            {
+                                do_generation = false;
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+                if do_generation {
+                    Container::code_gen_for_option_slice(
+                        "option_slice_mut",
+                        "&mut ",
+                        ".buf.as_mut()",
+                        &format!("{}", self.packet.header().header_len_in_bytes()),
+                        impl_block.get_writer(),
+                    );
+                }
             }
 
             // Field setters.
