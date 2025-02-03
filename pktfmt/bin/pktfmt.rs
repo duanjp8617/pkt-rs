@@ -1,5 +1,5 @@
 use std::env;
-use std::fs::{self, File};
+use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
 
@@ -25,16 +25,10 @@ Options:
     while i < args.len() {
         if (&args[i]).ends_with(".pktfmt") && args[i].len() > ".pktfmt".len() {
             // Find a ".pktfmt" suffix, which should be an input file
-            input_path = Some(
-                fs::canonicalize(&PathBuf::from(&args[i]))
-                    .map_err(|_| format!("invalid file path: {}", &args[i]))?,
-            );
+            input_path = Some(&args[i]);
             i += 1;
         } else if &args[i] == "-o" && (i + 1 < args.len()) {
-            output_path = Some(
-                fs::canonicalize(&PathBuf::from(&args[i + 1]))
-                    .map_err(|_| format!("invalid file path: {}", &args[i + 1]))?,
-            );
+            output_path = Some(&args[i + 1]);
             i += 2;
         } else if &args[i] == "-h" {
             print!("{help}");
@@ -45,20 +39,19 @@ Options:
     }
 
     match (input_path, output_path) {
-        (Some(i), Some(o)) => Ok((i, o)),
+        (Some(i), Some(o)) => Ok((PathBuf::from(i), PathBuf::from(o))),
         (Some(i), None) => {
-            let fname = i
-                .file_name()
-                .and_then(|s| s.to_str())
-                .ok_or(format!("invalid file name"))?;
-            let end_idx = fname.rfind(".pktfmt").ok_or(format!("invalid file name"))?;
-            if end_idx > 0 {
-                let o = std::env::current_dir()
-                    .unwrap()
-                    .join(format!("{}.rs", &fname[..end_idx]));
-                Ok((i, o))
+            let end_idx = i.rfind(".pktfmt").unwrap();
+            let start_idx = i.rfind("/").unwrap_or(0);
+            if start_idx == end_idx {
+                Err(format!("invalid input file name: {i}"))
             } else {
-                Err(format!("invalid file name"))
+                Ok((
+                    PathBuf::from(i),
+                    std::env::current_dir()
+                        .unwrap()
+                        .join(PathBuf::from(format!("{}.rs", &i[start_idx..end_idx]))),
+                ))
             }
         }
         _ => Err(format!("missing input file")),
