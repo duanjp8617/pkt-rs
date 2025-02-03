@@ -323,7 +323,7 @@ impl<'a> TopLevel<'a> {
             // 2. Each message name contained in the message group should be defined.
             let subsequent_msg = msgs.get(&(*name)[..]).ok_or(Error::top_level(
                 3,
-                format!("message {first_msg_name} is not defined"),
+                format!("message {name} is not defined"),
             ))?;
 
             // 3. Each message should has a valid cond.

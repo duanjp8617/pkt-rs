@@ -1,3 +1,7 @@
+%%
+use std::io;
+%%
+
 packet Ether {
     header = [
         dest_mac = Field {bit = 48, repr = &[u8], arg = %%MacAddr%%, },

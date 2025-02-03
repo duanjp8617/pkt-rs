@@ -1,3 +1,7 @@
+%%
+use std::io;
+%%
+
 packet Ipv4 {
     header = [
         version = Field{bit = 4, default = @4},
@@ -21,3 +25,75 @@ packet Ipv4 {
         packet_len = packet_len_
     ]
 }
+
+message Eol {
+    header = [
+        type_ = Field {bit = 8, default = @0},
+    ],
+    cond = (type_ == 0),
+}
+
+message Nop {
+    header = [
+        type_ = Field {bit = 8, default = @1},
+    ],
+    cond = (type_ == 1),
+}
+
+message Timestamp {
+    header = [
+        type_ = Field {bit = 8, default = @68},
+        len = Field {
+            bit = 8,
+            default = 4,
+            gen = false,
+        },
+        pointer = Field {bit = 8, default = 5},
+        oflw = Field {bit = 4}, 
+        flg = Field {bit = 4},
+    ],
+    length = [
+        header_len=
+    ],
+    cond = (type_ == 68)
+}
+
+message RecordRoute {
+    header = [
+        type_ = Field {bit = 8, default = @7},
+        len = Field {
+            bit = 8,
+            default = 3,
+            gen = false,
+        },
+        pointer = Field {bit = 8, default = 4},
+    ],
+    length = [
+        header_len=
+    ],
+    cond = (type_ == 7),
+}
+
+message RouteAlert {
+    header = [
+        type_ = Field {bit = 8, default = @148},
+        len = Field {
+            bit = 8,            
+            default = @4,
+            gen = false,
+        },
+        data = Field{bit = 16}
+    ],
+    length = [
+        header_len=len
+    ],
+    cond = (type_ == 148),
+}
+
+message_group Ipv4Opt = [
+    Eol,
+    Nop,
+    Timestamp,
+    RecordRoute,
+    RouteAlert
+]

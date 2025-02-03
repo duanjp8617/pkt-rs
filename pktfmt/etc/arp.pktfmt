@@ -1,3 +1,7 @@
+%%
+use std::io;
+%%
+
 packet Arp {
     header = [
         hardware_type = Field{bit = 16, arg = %%Hardware%%, default = 1},
