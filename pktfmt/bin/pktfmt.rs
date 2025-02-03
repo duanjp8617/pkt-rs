@@ -25,10 +25,16 @@ Options:
     while i < args.len() {
         if (&args[i]).ends_with(".pktfmt") && args[i].len() > ".pktfmt".len() {
             // Find a ".pktfmt" suffix, which should be an input file
-            input_path = Some(&args[i]);
+            match input_path {
+                None => input_path = Some(&args[i]),
+                Some(_) => return Err(format!("found another input file: {}", &args[i])),
+            }
             i += 1;
         } else if &args[i] == "-o" && (i + 1 < args.len()) {
-            output_path = Some(&args[i + 1]);
+            match output_path {
+                None => output_path = Some(&args[i + 1]),
+                Some(_) => return Err(format!("found another output file: {}", &args[i + 1])),
+            }
             i += 2;
         } else if &args[i] == "-h" {
             print!("{help}");
@@ -42,7 +48,10 @@ Options:
         (Some(i), Some(o)) => Ok((PathBuf::from(i), PathBuf::from(o))),
         (Some(i), None) => {
             let end_idx = i.rfind(".pktfmt").unwrap();
-            let start_idx = i.rfind("/").unwrap_or(0);
+            let start_idx = match i.rfind("/") {
+                Some(i) => i + 1,
+                None => 0,
+            };
             if start_idx == end_idx {
                 Err(format!("invalid input file name: {i}"))
             } else {
@@ -50,7 +59,7 @@ Options:
                     PathBuf::from(i),
                     std::env::current_dir()
                         .unwrap()
-                        .join(PathBuf::from(format!("{}.rs", &i[start_idx..end_idx]))),
+                        .join(format!("{}.rs", &i[start_idx..end_idx])),
                 ))
             }
         }
