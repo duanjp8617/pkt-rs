@@ -96,6 +96,7 @@ fn driver(file_text: &file_text::FileText, output_file: &PathBuf) -> Result<(), 
             ast::ParsedItem::Packet_(p) => {
                 let header = codegen::HeaderGen::new(&p);
                 header.code_gen(&mut output_f);
+                writeln!(&mut output_f, "").unwrap();
                 let packet = codegen::PacketGen::new(&p);
                 packet.code_gen(&mut output_f);
             }

@@ -30,3 +30,123 @@ packet Tcp {
         header_len =data_off*4,
     ]
 }
+
+message Eol {
+    header = [
+        type_ = Field {bit = 8, default = @0},
+    ],
+    cond = (type_ == 0),
+}
+
+message Nop {
+    header = [
+        type_ = Field {bit = 8, default = @1},
+    ],
+    cond = (type_ == 1),
+}
+
+message Mss {
+    header = [
+        type_ = Field {bit = 8, default = @2},
+        len = Field {
+            bit = 8, 
+            default = @4,
+            gen = false,
+        },
+        mss = Field {bit = 16}
+    ],
+    length = [
+        header_len = len
+    ],
+    cond = (type_ == 2),
+}
+
+message Wsopt {
+    header = [
+        type_ = Field {bit = 8, default = @3},
+        len = Field {
+            bit = 8, 
+            default = @3,
+            gen = false,
+        },
+        wsopt = Field {bit = 8}
+    ],
+    length = [
+        header_len = len
+    ],
+    cond = (type_ == 3),
+}
+
+message Sackperm {
+    header = [
+        type_ = Field {bit = 8, default = @4},
+        len = Field {
+            bit = 8, 
+            default = @2,
+            gen = false,
+        },
+    ],
+    length = [
+        header_len = len
+    ],
+    cond = (type_ == 4),
+}
+
+message Sack {
+    header = [
+        type_ = Field {bit = 8, default = @5},
+        len = Field {
+            bit = 8, 
+            default = 10,
+            gen = false,
+        },
+    ],
+    length = [
+        header_len=
+    ],
+    cond = (type_ == 5),
+}
+
+message Ts {
+    header = [
+        type_ = Field {bit = 8, default = @8},
+        len = Field {
+            bit = 8, 
+            default = @10,
+            gen = false,
+        },
+        ts = Field {bit = 32},
+        ts_echo = Field {bit = 32},
+    ],
+    length = [
+        header_len = len
+    ],
+    cond = (type_ == 8),
+}
+
+message Fo {
+    header = [
+        type_ = Field {bit = 8, default = @34},
+        len = Field {
+            bit = 8, 
+            default = @18,
+            gen = false,
+        },
+        fo = Field {bit = 128},
+    ],
+    length = [
+        header_len = len
+    ],
+    cond = (type_ == 34),
+}
+
+message_group TcpOpt = [
+    Eol, 
+    Nop,
+    Mss,
+    Wsopt,
+    Sackperm,
+    Sack,
+    Ts,
+    Fo
+]
