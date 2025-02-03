@@ -1,3 +1,7 @@
+%%
+use std::io;
+%%
+
 packet Udp {
     header = [
         src_port = Field {bit = 16},
