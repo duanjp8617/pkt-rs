@@ -1,0 +1,23 @@
+%%
+use std::io;
+%%
+
+packet Ipv6 {
+    header = [
+        version = Field{bit = 4, default = 6}, 
+        traffic_class = Field{bit = 8},
+        flow_label = Field {bit = 20},
+        payload_len_ = Field{
+            bit = 16,
+            default = 0,
+            gen = false
+        },
+        next_header = Field{bit = 8, arg = %%IpProtocol%%, default=4},
+        hop_limit = Field{bit = 8},
+        src_addr = Field{bit = 128},
+        dst_addr = Field{bit = 128},
+    ],
+    length = [
+        payload_len=payload_len_
+    ]
+}
